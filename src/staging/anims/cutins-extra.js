@@ -649,7 +649,8 @@ export const CUTINS_EXTRA = {
       const badgeP = clamp01((p - 0.3) / 0.3);
       if (badgeP > 0) {
         ctx.save();
-        ctx.translate(cx + 30, cy + 26);
+        // 胸元 = サメの胸びれの上あたり。口が大きくなった v3 の体型に合わせてある
+        ctx.translate(cx + 16, cy + 50);
         const s = easeOutBack(badgeP);
         ctx.scale(s, s);
         ctx.beginPath();

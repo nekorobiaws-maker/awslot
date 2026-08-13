@@ -748,18 +748,36 @@ export const UPPER_AT_SPEC_BY_ID = Object.fromEntries(
   UPPER_AT_SPECS.specs.map((s) => [s.id, s]),
 );
 
-/** 引き戻し層(DESIGN.md 3.12) */
+/**
+ * 引き戻し層(DESIGN.md 3.12)
+ *
+ * 2026-08-13 ユーザー指摘「転落してホットスタンバイから、さらに転落して
+ * ROUTE53モードになるのはなぜ? どっちかで良い」を受けて **1段に統合**した。
+ *
+ * 総合の引き戻し率は等価を保っている:
+ *   旧 … 0.35 + 0.65 × 0.10 = 41.5%(2段)
+ *   新 … **0.40**(1段) ← 体感を変えずに手順だけ簡素化
+ * 失敗したらそのまま通常時へ転落する。
+ */
 export const RECOVERY_SPECS = {
   id: 'recovery_specs',
-  chain: ['HOT_STANDBY', 'ROUTE53_FAILOVER'],
+  chain: ['HOT_STANDBY'],
+  /** 2段だった頃の連鎖(戻す時の基準) */
+  previousChain: ['HOT_STANDBY', 'ROUTE53_FAILOVER'],
   specs: [
     {
       id: 'HOT_STANDBY', name: 'ホットスタンバイ (Multi-AZ)',
-      games: 10, successRate: 0.35, onSuccess: 'RESUME_PREVIOUS_AT',
-      resumeDc: 2, onFail: 'ROUTE53_FAILOVER',
+      games: 10, successRate: 0.40, previousSuccessRate: 0.35,
+      onSuccess: 'RESUME_PREVIOUS_AT',
+      resumeDc: 2, onFail: 'FREE_TIER',
     },
     {
-      id: 'ROUTE53_FAILOVER', name: 'Route 53 フェイルオーバー',
+      /**
+       * 【退役】2026-08-13 の1段化で通常プレイからは到達しない。
+       * モードハンドラとデータは ?mode=ROUTE53_FAILOVER の直撃デバッグ用に残してある。
+       * DNS切替のテーマはホットスタンバイの最終フェーズへ吸収済み。
+       */
+      id: 'ROUTE53_FAILOVER', name: 'Route 53 フェイルオーバー', retired: true,
       games: 3, successRate: 0.10, onSuccess: 'RESUME_PREVIOUS_AT',
       resumeDc: 1, onFail: 'FREE_TIER',
     },

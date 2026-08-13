@@ -36,9 +36,9 @@ export const MODE_TRANSITIONS = {
     { from: 'SERVERLESS_RUSH',  on: 'set_fail',      to: 'HOT_STANDBY',         kind: 'replace', implemented: true },
     { from: 'MULTI_REGION',     on: 'set_fail',      to: 'HOT_STANDBY',         kind: 'replace', implemented: true },
     { from: 'HOT_STANDBY',      on: 'success',       to: 'RESUME_PREVIOUS_AT',  kind: 'replace', implemented: true },
-    { from: 'HOT_STANDBY',      on: 'fail',          to: 'ROUTE53_FAILOVER',    kind: 'replace', implemented: true },
-    { from: 'ROUTE53_FAILOVER', on: 'success',       to: 'RESUME_PREVIOUS_AT',  kind: 'replace', implemented: true },
-    { from: 'ROUTE53_FAILOVER', on: 'fail',          to: 'FREE_TIER',           kind: 'replace', implemented: true },
+    // 2026-08-13: 引き戻しは1段に統合。失敗はそのまま通常時へ転落する
+    { from: 'HOT_STANDBY',      on: 'fail',          to: 'FREE_TIER',           kind: 'replace', implemented: true },
+    // 【退役】ROUTE53_FAILOVER は通常プレイから到達しない(直撃デバッグ用にハンドラのみ残置)
     { from: '*',                on: 'ending_cond',   to: 'REINVENT_ED',         kind: 'force',   implemented: true },
     { from: 'REINVENT_ED',      on: 'end',           to: 'FREE_TIER',           kind: 'replace', implemented: true },
   ],

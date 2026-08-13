@@ -7,6 +7,17 @@
 <link rel="stylesheet" href="./style.css">
 </head>
 <body>
+<!-- 起動時のちらつき防止。JSが動く前からHTML直書きで最前面に出す。
+     main.js が UI画像(筐体アート)の読み込み完了(または4秒タイムアウト)を
+     確認してからフェードアウトする(下の #viewport は既定 opacity:0)。 -->
+<div id="boot-screen" class="boot-screen" role="status" aria-live="polite" aria-label="読み込み中">
+  <p class="boot-logo">AWSLOT</p>
+  <p class="boot-loading">
+    <span>読み込み中</span>
+    <span class="boot-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+  </p>
+</div>
+
 <div id="viewport">
   <!-- 論理解像度 720×1080。CSS transform: scale() でビューポートにフィットする -->
   <div id="cabinet">
@@ -125,6 +136,57 @@
     </div>
   </div>
 </div>
+
+<!-- PC表示(横幅1100px以上)のときだけ、筐体の右横に出す操作ガイド。
+     実機の「打ち方説明プレート」を模した見た目(#guide-plate)。
+     #viewport の外側の兄弟要素なので #cabinet の scale() 計算には一切関与しない。
+     narrow画面/スマホでは style.css の @media で非表示。 -->
+<aside id="controls-guide" class="controls-guide" aria-label="キーボード操作ガイド">
+  <div class="guide-plate">
+    <span class="guide-rivet guide-rivet-tl" aria-hidden="true"></span>
+    <span class="guide-rivet guide-rivet-tr" aria-hidden="true"></span>
+    <span class="guide-rivet guide-rivet-bl" aria-hidden="true"></span>
+    <span class="guide-rivet guide-rivet-br" aria-hidden="true"></span>
+
+    <p class="guide-header">
+      <span class="guide-header-en">HOW TO PLAY</span>
+      <span class="guide-header-jp">打ち方</span>
+    </p>
+
+    <dl class="guide-list">
+      <div class="guide-row">
+        <dt class="key key-up" aria-hidden="true">↑</dt>
+        <dd>ベット / スタート<span class="guide-note">2回押しでリールが回ります</span></dd>
+      </div>
+      <div class="guide-row">
+        <dt class="key-trio" aria-hidden="true">
+          <span class="key key-arrow">←</span><span class="key key-arrow">↓</span><span class="key key-arrow">→</span>
+        </dt>
+        <dd>リール停止<span class="guide-note">左 / 中 / 右</span></dd>
+      </div>
+    </dl>
+
+    <p class="guide-footnote">
+      <span class="guide-sub-item"><span class="key key-sm" aria-hidden="true">R</span>もう一度</span>
+      <span class="guide-sub-item"><span class="key key-sm" aria-hidden="true">H</span>キー一覧</span>
+      <span class="guide-sub-item"><span class="key key-sm" aria-hidden="true">M</span>ミュート</span>
+    </p>
+  </div>
+</aside>
+
+<!-- スマホ縦持ちなど、幅基準スケーリングで上下に余白が出るときだけ出す飾り。
+     #viewport の外側の兄弟要素なので #controls-guide と同じ流儀で
+     #cabinet の scale() 計算には一切関与しない。横長PCでは style.css の
+     @media(aspect-ratio) で非表示になり、#controls-guide とは独立して切り替わる。 -->
+<div id="mobile-title" class="mobile-title" aria-hidden="true">
+  <span class="mobile-title-text">オースロット</span>
+</div>
+<p id="mobile-rule" class="mobile-rule">
+  <!-- ゲーム数はハードコード禁止方針のため、main.js が起動時に
+       src/data/session.js の SESSION.totalGames で書き換える。
+       この "100" は JS 無効時のフォールバック表示用。 -->
+  <span id="mobile-rule-games">100</span>ゲーム行い、残クレジットを競う。
+</p>
 
 <noscript>
   <p style="color:#fff;text-align:center;padding:2rem;">AWSLOT の実行には JavaScript が必要です。</p>

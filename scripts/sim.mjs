@@ -30,7 +30,7 @@ import { categorizeLine, payoutOf, BONUS_NET_PER_GAME } from '../src/data/payout
 import {
   RUSH_DERIVED_ENTRY, SERVERLESS_UPGRADE, ENDING,
   CZ_ENTRY, CZ_TYPES, CZ_SPEC_BY_ID, NORMAL_SUBSTATES, AS_RUSH_CORE,
-  BONUS_SPEC_BY_ID, ZONE_SPEC_BY_ID, czStars,
+  BONUS_SPEC_BY_ID, ZONE_SPEC_BY_ID, czStars, RECOVERY_SPECS,
 } from '../src/data/modes.js';
 import { SESSION } from '../src/data/session.js';
 import { applyCzMultiplier } from '../src/game/lottery.js';
@@ -654,17 +654,32 @@ function checkRareRoutes() {
     results.push([`Spot 中断通知 → 最低${minG}G保証`, ok, `${games}G で ${modes.currentId} へ復帰`]);
   }
 
-  // (4) HOT_STANDBY 失敗 → ROUTE53 → 失敗 → FREE_TIER
+  // (4) 引き戻しは1段(2026-08-13 ユーザー指摘で ROUTE53 への連鎖を廃止)。
+  //     失敗したら Route 53 を経由せず、そのまま通常時へ落ちる。
   {
-    const modes = new ModeMachine({ rng: new FixedRng(0.999), bus: new EventBus() });
-    modes.start('HOT_STANDBY', { resumeMode: 'AS_RUSH' });
+    const fail = new ModeMachine({ rng: new FixedRng(0.999), bus: new EventBus() });
+    fail.start('HOT_STANDBY', { resumeMode: 'AS_RUSH' });
     const path = ['HOT_STANDBY'];
     for (let i = 0; i < 20; i++) {
-      step(modes, { flag: 'LOSE', win: 'LOSE', payout: 0 });
-      if (path[path.length - 1] !== modes.currentId) path.push(modes.currentId);
+      step(fail, { flag: 'LOSE', win: 'LOSE', payout: 0 });
+      if (path[path.length - 1] !== fail.currentId) path.push(fail.currentId);
     }
-    const ok = path.join('>') === 'HOT_STANDBY>ROUTE53_FAILOVER>FREE_TIER';
-    results.push(['引き戻し2段 → 転落', ok, path.join(' > ')]);
+    // 成功側は元のATへ戻る(1段でも復帰の道は残っている)
+    const win = new ModeMachine({ rng: new FixedRng(0.001), bus: new EventBus() });
+    win.start('HOT_STANDBY', { resumeMode: 'AS_RUSH' });
+    const winPath = ['HOT_STANDBY'];
+    for (let i = 0; i < 20; i++) {
+      step(win, { flag: 'LOSE', win: 'LOSE', payout: 0 });
+      if (winPath[winPath.length - 1] !== win.currentId) winPath.push(win.currentId);
+    }
+    const ok = path.join('>') === 'HOT_STANDBY>FREE_TIER'
+      && winPath.join('>') === 'HOT_STANDBY>AS_RUSH'
+      && RECOVERY_SPECS.chain.length === 1
+      && !path.includes('ROUTE53_FAILOVER');
+    results.push([
+      '引き戻しは1段(Route53を経由しない)', ok,
+      `失敗 ${path.join(' > ')} / 成功 ${winPath.join(' > ')}`,
+    ]);
   }
 
   // (5) 上乗せ特化ゾーンが「枚数」で上乗せし、最上位レコードでは母体ATへセットも積む
@@ -1224,11 +1239,17 @@ function report({ stat, totals }) {
   console.log('\n■ モード別');
   console.log('  モード              突入   消化G  平均G   平均獲得');
   const ids = Object.keys(MODE_HANDLERS);
+  /**
+   * 退役モード(2026-08-13 の引き戻し1段化で ROUTE53_FAILOVER が該当)。
+   * 通常プレイからは到達しないので「全モード突入」の対象から外す。
+   * ハンドラは直撃デバッグ用に残っているため MODE_HANDLERS には居る。
+   */
+  const retired = new Set(RECOVERY_SPECS.specs.filter((sp) => sp.retired).map((sp) => sp.id));
   const missing = [];
   const unbalanced = [];
   for (const id of ids) {
     const n = stat.enter[id] ?? 0;
-    if (n === 0) missing.push(id);
+    if (n === 0 && !retired.has(id)) missing.push(id);
     const games = stat.games[id] ?? 0;
     const gained = stat.gained[id] ?? 0;
     const ex = stat.exit[id] ?? 0;
@@ -1236,7 +1257,8 @@ function report({ stat, totals }) {
     if (n > 0 && ex === 0) unbalanced.push(id);
     console.log(
       `  ${id.padEnd(18)}${String(n).padStart(5)}${String(games).padStart(8)}` +
-      `${fmt(games / Math.max(1, n), 1).padStart(7)}${fmt(gained / Math.max(1, n), 1).padStart(10)}枚`,
+      `${fmt(games / Math.max(1, n), 1).padStart(7)}${fmt(gained / Math.max(1, n), 1).padStart(10)}枚` +
+      (retired.has(id) ? '  ※退役(直撃デバッグ用)' : ''),
     );
   }
 

@@ -1,9 +1,12 @@
 /**
  * M18/M19. 引き戻し層。DESIGN.md 2.2 / 3.12
  *
- *   ホットスタンバイ(10G / 35%) ──失敗──> Route 53 フェイルオーバー(3G / 10%)
- *        │成功                                    │成功        │失敗
- *        └────────── 直前のATへ復帰 ─────────────┘            └─> FREE_TIER
+ *   ホットスタンバイ(10G / 40%) ──成功──> 直前のATへ復帰
+ *        └──────────────失敗──> FREE_TIER
+ *
+ * 2026-08-13 ユーザー指摘「2段はくどい」で **1段に統合**(旧: HOT_STANDBY → ROUTE53_FAILOVER)。
+ * 総合引き戻し率は 0.35+0.65×0.10=41.5% → 単体 0.40 で等価に保っている。
+ * ROUTE53_FAILOVER のハンドラは直撃デバッグ用に残置(通常プレイからは到達しない)。
  *
  * どちらも突入時に成否を確定させ、ゲージ/TTLはその結果へ向かって動く
  * (DESIGN.md 4.2「演出は結果を先に知っている」)。
@@ -29,7 +32,8 @@
 const STANDBY_PHASES = [
   { at: 0.00, label: 'HEALTH CHECK', text: 'AZ-a のヘルスチェックを再試行中…' },
   { at: 0.34, label: 'PROMOTE',      text: '稼働中の AZ-c を昇格中…' },
-  { at: 0.67, label: 'SWITCHOVER',   text: '接続を AZ-c へ切り替え中…' },
+  // 1段化(2026-08-13)で退役した Route 53 の「DNS切替」テーマをここへ吸収した
+  { at: 0.67, label: 'SWITCHOVER',   text: '接続と DNS の向き先を AZ-c へ切り替え中…' },
 ];
 
 /** 進捗からフェーズを引く */
@@ -111,30 +115,30 @@ export const hotStandby = {
     if (state.success) {
       state.gauge = 1;
       state.phase = 'SWITCHED';
-      state.phaseText = 'AZ-c が本番系になりました';
+      state.phaseText = 'DNS が AZ-c を向きました';
       return {
         setEnd: { result: 'RECOVERY_RESULT', success: true, layer: 'HOT_STANDBY' },
         transition: resumeTransition(state),
-        telop: 'AZ-c へ切替完了 — RUSH 復帰!!',
+        telop: 'DNS 切替完了 — RUSH 復帰!!',
       };
     }
+    // 2026-08-13 の1段化: ここで通常時へ転落する(Route 53 への連鎖は廃止)
     state.phase = 'FAILED';
     state.phaseText = '切り替えが完了しませんでした';
     return {
       setEnd: { result: 'RECOVERY_RESULT', success: false, layer: 'HOT_STANDBY' },
-      transition: {
-        to: 'ROUTE53_FAILOVER',
-        params: {
-          resumeMode: state.resumeMode,
-          resumeDc: state.resumeDc,
-          resumeStock: state.resumeStock,
-        },
-      },
-      telop: 'AZ 単位では戻せず RTO 超過… 最後の砦へ',
+      transition: { to: 'FREE_TIER' },
+      telop: 'RTO 超過… 通常運転へ戻ります',
     };
   },
 };
 
+/**
+ * 【退役】Route 53 フェイルオーバー。
+ * 2026-08-13 の引き戻し1段化で通常プレイからは到達しない。
+ * `?mode=ROUTE53_FAILOVER` の直撃デバッグ用にハンドラだけ残置している。
+ * DNS切替のテーマは上の hotStandby の最終フェーズへ吸収済み。
+ */
 export const route53Failover = {
   id: 'ROUTE53_FAILOVER',
   name: 'ROUTE 53 フェイルオーバー',

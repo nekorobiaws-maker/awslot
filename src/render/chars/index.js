@@ -345,7 +345,8 @@ export class CharacterLayer {
 
     const g = this.chars.george;
     if (g.visible && g.alpha > 0) {
-      const base = GEORGE_POSES[g.pose] ?? GEORGE_POSES.normal;
+      const poseName = GEORGE_POSES[g.pose] ? g.pose : 'normal';
+      const base = GEORGE_POSES[poseName];
       drawGeorge(ctx, {
         x: g.x + g.offsetX,
         y: g.y + g.offsetY,
@@ -353,6 +354,9 @@ export class CharacterLayer {
         dir: g.dir,
         t: this.t,
         alpha: g.alpha * g.alphaMul,
+        // pose も渡すと george.js 側が視線などポーズ固有の味付けを拾える。
+        // mouthOpen / tailAngle はモーションによる上書きを優先する
+        pose: poseName,
         mouthOpen: g.mouthOpen ?? base.mouthOpen,
         tailAngle: g.tailAngle ?? base.tailAngle,
         brow: base.brow,

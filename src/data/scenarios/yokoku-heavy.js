@@ -149,31 +149,42 @@ export default [
     ],
   },
 
-  /* ── Bedrockタイピング予告。IDEAS.md 2-28 / docs/BACKLOG.md「P」──────────────
+  /* ── Bedrockストリーミング生成予告。IDEAS.md 2-28 / docs/BACKLOG.md「P」────────
    *
    * 生成される文言で期待度を示唆する。文言は
-   *   staging/anims/lcdanims-extra.js の BEDROCK_LINES(弱6 / 中6 / ガセ6 / 激アツ5 = 23種)
+   *   staging/anims/lcdanims-extra.js の BEDROCK_LINES
+   *   (弱6 / Bedrock揃い6 / 中6 / ガセ6 / 激アツ5 = 29種)
    * に配列で置き、`bedrock_typing` アニメが tier ごとに演出用RNG(Math.random)で引く。
    * ゲーム抽選RNGは一切消費しないので、文言を足してもバランスは動かない。
+   *
+   * ■ 見せ方は「トークンのストリーミング出力」(2026-08-13 ユーザー要望)
+   *   等速タイプライターではなく、2〜5文字のチャンクが不揃いな間合いで届き、
+   *   途中に「推論の間」が入る。パネル上部のステータス行が
+   *   PROMPT受信 → 推論中… → ストリーミング出力 → 推論完了 と遷移し、
+   *   トークンカウンタがカタカタ増える。文言も「引き当てた」ではなく
+   *   「生成しました / 出力しました / 推論の結果、〜」で統一している。
    *
    * ■ 「BONUS」を含む文言は当選ゲーム限定
    *   BONUS 入りの文言は tier:'hot' にしか存在せず、pickBedrockLine() は
    *   hot 以外で BONUS を含む文言を機械的に除外する。そのうえで hot を渡すのは
-   *     yh_bedrock_typing_hit   … 前兆の結果告知(zencho_end / ENTRY / BONUS・AT)
-   *                               = 当選を保持した前兆の最終Gにしか流れない
-   *     yh_bedrock_typing_ready … ボーナス入賞待ち(mode: BONUS_READY)のレバーON
-   *                               = ボーナス確定後にしか存在しないモード
-   *   の2本だけ。どちらも when 条件だけで当選が確定しているので、
+   *     yh_bedrock_typing_hit … 前兆の結果告知(zencho_end / ENTRY / BONUS・AT)
+   *                             = 当選を保持した前兆の最終Gにしか流れない
+   *   の **1本だけ**。when 条件だけで当選が確定しているので、
    *   **画面に BONUS と出たら 100% 当たっている**。
    *   非当選側(gase / bluff / idle)は tier を weak・mid・gase しか指定しない。
    *
-   * ■ 打ち終わりのテロップ
-   *   盤面(パネル)は y44〜104、告知テロップ(lcd.text)は y168〜236 と場所が違うので、
-   *   打ち終わりの一言だけ可読性エンジン(最低表示時間 + sticky)へ乗せている。
+   *   ※ 以前あった yh_bedrock_typing_ready(BONUS_READY のレバーONで発火)は
+   *      削除した(2026-08-13 ユーザー指示)。確定後は「図柄を揃えろ」に集中する
+   *      場面で、生成演出を挟むのは冗長という判断。入賞待ちの賑やかしは
+   *      他シナリオ側に任せる。
+   *
+   * ■ 出力し終わりのテロップ
+   *   盤面(パネル)は y44〜120、告知テロップ(lcd.text)は y168〜236 と場所が違うので、
+   *   出力し終わりの一言だけ可読性エンジン(最低表示時間 + sticky)へ乗せている。
    */
   {
     id: 'yh_bedrock_typing_hit',
-    name: 'Bedrockタイピング予告(当選確定・BONUSまで打ち切る)',
+    name: 'Bedrock生成予告(当選確定・BONUS を出力し切る)',
     // 前兆が当選を保持したまま最終Gへ到達したときにしか出ないイベント = ボーナス/AT確定。
     // 直後にモード遷移(= lcdAnims.clear())が走るため、キューは at:0 を使わず 40ms から始める。
     when: {
@@ -185,45 +196,27 @@ export default [
     cues: [
       { at: 40,   layer: 'sfx',  action: 'synth', params: { preset: 'charge_up' } },
       { at: 40,   layer: 'lamp', action: 'pattern', params: { pattern: 'bonus' } },
-      { at: 60,   layer: 'lcd',  action: 'anim', params: { anim: 'bedrock_typing', tier: 'hot', phase: 0 } },
-      { at: 500,  layer: 'lcd',  action: 'anim', params: { anim: 'bedrock_typing', tier: 'hot', phase: 1 } },
-      { at: 900,  layer: 'lcd',  action: 'anim', params: { anim: 'bedrock_typing', tier: 'hot', phase: 2 } },
+      // キュー間隔 400ms に合わせて revealSpan を詰める(既定 468ms だと流し切る前に差し替わる)
+      { at: 60,   layer: 'lcd',  action: 'anim',
+        params: { anim: 'bedrock_typing', tier: 'hot', phase: 0, revealSpan: 0.15 } },
+      { at: 500,  layer: 'lcd',  action: 'anim',
+        params: { anim: 'bedrock_typing', tier: 'hot', phase: 1, revealSpan: 0.15 } },
+      { at: 900,  layer: 'lcd',  action: 'anim',
+        params: { anim: 'bedrock_typing', tier: 'hot', phase: 2, revealSpan: 0.15 } },
       { at: 1300, layer: 'lcd',  action: 'anim',
-        params: { anim: 'bedrock_typing', tier: 'hot', phase: 3, ms: 2000 } },
+        params: { anim: 'bedrock_typing', tier: 'hot', phase: 3, ms: 2000, revealSpan: 0.16 } },
       { at: 1420, layer: 'overlay', action: 'flash', params: { color: '#ffe066', ms: 300 } },
       { at: 1440, layer: 'overlay', action: 'shake', params: { power: 14, ms: 460 } },
       { at: 1480, layer: 'sfx',     action: 'synth', params: { preset: 'upgrade_chime' } },
       { at: 1520, layer: 'char',    action: 'show',  params: { char: 'kiro', pose: 'premium' } },
       { at: 1560, layer: 'lcd',     action: 'text',
-        params: { text: 'BONUS 生成完了', sub: 'Bedrock が引き当てた', ms: 1800, color: '#ff8a00' } },
+        params: { text: 'BONUS 生成完了', sub: '推論の結果、BONUS を出力した', ms: 1800, color: '#ff8a00' } },
       { at: 1800, layer: 'overlay', action: 'particles', params: { preset: 'rainbow', x: 360, y: 400, count: 20 } },
     ],
   },
   {
-    id: 'yh_bedrock_typing_ready',
-    name: 'Bedrockタイピング予告(入賞待ち・BONUSまで打ち切る)',
-    // BONUS_READY はボーナス確定後にしか存在しないモード = 当選確定。
-    // 入賞待ちはリールを止めて図柄を揃えるゲームなので、停止に合わせて打ち進められる。
-    when: { event: 'leverOn', mode: ['BONUS_READY'] },
-    weight: { BONUS_READY: 100, default: 0 },
-    chance: 0.4,
-    duration: 2800,
-    cues: [
-      { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'charge_up' } },
-      { at: 80,  layer: 'lcd', action: 'anim', params: { anim: 'bedrock_typing', tier: 'hot', phase: 0 } },
-      { waitFor: 'stop1', layer: 'lcd', action: 'anim', params: { anim: 'bedrock_typing', tier: 'hot', phase: 1 } },
-      { waitFor: 'stop2', layer: 'lcd', action: 'anim', params: { anim: 'bedrock_typing', tier: 'hot', phase: 2 } },
-      { waitFor: 'stop3', after: 80, layer: 'lcd', action: 'anim',
-        params: { anim: 'bedrock_typing', tier: 'hot', phase: 3, ms: 2000 } },
-      { waitFor: 'stop3', after: 200, layer: 'overlay', action: 'flash', params: { color: '#ffe066', ms: 260 } },
-      { waitFor: 'stop3', after: 240, layer: 'sfx', action: 'synth', params: { preset: 'upgrade_chime' } },
-      { waitFor: 'stop3', after: 280, layer: 'lcd', action: 'text',
-        params: { text: 'BONUS 生成完了', sub: '図柄を揃えろ', ms: 1600, color: '#ff8a00' } },
-    ],
-  },
-  {
     id: 'yh_bedrock_typing_gase',
-    name: '【ガセ】Bedrockタイピング予告(中・レア役で期待させる)',
+    name: '【ガセ】Bedrock生成予告(中・レア役で期待させる)',
     // レア役は期待度が高いだけで当選確定ではない。tier:'mid' には BONUS を含む文言が無い
     when: {
       event: 'leverOn', mode: ['FREE_TIER'],
@@ -241,13 +234,13 @@ export default [
         params: { anim: 'bedrock_typing', tier: 'mid', phase: 3, ms: 1800 } },
       { waitFor: 'stop3', after: 200, layer: 'sfx', action: 'synth', params: { preset: 'announce' } },
       { waitFor: 'stop3', after: 240, layer: 'lcd', action: 'text',
-        params: { text: 'GENERATED', sub: '提案が上がってきた', ms: 1200, color: '#ffd166' } },
+        params: { text: 'GENERATED', sub: '推論の結果、提案が出力された', ms: 1200, color: '#ffd166' } },
     ],
   },
   {
     id: 'yh_bedrock_typing_bluff',
-    name: '【ガセ】Bedrockタイピング予告(BON… まで打って肩透かし)',
-    // BON まで打つが BONUS には着地しない。tier:'gase' は BONUS を含まない肩透かし文言だけ
+    name: '【ガセ】Bedrock生成予告(BON… まで出力して肩透かし)',
+    // BON まで出力するが BONUS には着地しない。tier:'gase' は BONUS を含まない肩透かし文言だけ
     when: {
       event: 'leverOn', mode: ['FREE_TIER'],
       flag: ['WEAK_CHERRY', 'MELON', 'LOSE', 'BELL'], match: { 'modeState.zenchoActive': [false] } },
@@ -262,7 +255,7 @@ export default [
       { waitFor: 'stop3', after: 100, layer: 'lcd', action: 'anim',
         params: { anim: 'bedrock_typing', tier: 'gase', phase: 3, ms: 1800 } },
       { waitFor: 'stop3', after: 240, layer: 'lcd', action: 'text',
-        params: { text: '生成完了', sub: '……惜しい', ms: 1300, color: '#8ad4ff' } },
+        params: { text: '生成完了', sub: '……出力はここで終わった', ms: 1300, color: '#8ad4ff' } },
     ],
   },
   /* ── Bedrock揃い(ALARM役)= LLM生成イベント ────────────────────────────
@@ -276,7 +269,7 @@ export default [
    *        tier:'alarm'(運用小ネタ。BONUS を含まない)で「起動した」ことだけ見せる
    *   2段目 yb_bedrock_alarm_escalate … 同じゲームの払出処理で前兆が始まったとき。
    *        freetier.js が当選 or ガセ前兆の開始で zencho(step:1) を投げるので、
-   *        そこを拾って tier:'mid' へ格上げし「Bedrock が異常を検知した」と示唆する。
+   *        そこを拾って tier:'mid' へ格上げし「もう一度推論を回した」形で示唆する。
    *        前兆が始まらなかったゲーム(= 素の非当選)では1段目の小ネタで終わる。
    *
    * ■ BONUS 文言限定ルールは維持
@@ -305,12 +298,13 @@ export default [
       { at: 0,   layer: 'lamp',   action: 'pattern', params: { pattern: 'rare' } },
       { at: 60,  layer: 'overlay', action: 'flash', params: { color: '#ffd166', ms: 220 } },
       { at: 80,  layer: 'reelfx', action: 'highlight', params: { ms: 640, color: '#ffd166' } },
-      // AI起動
+      // AI起動 → プロンプト受信(bedrock_boot が二拍ぶん見せる。1200ms)
       { at: 140, layer: 'lcd',    action: 'anim',  params: { anim: 'bedrock_boot' } },
       { at: 180, layer: 'sfx',    action: 'synth', params: { preset: 'charge_up' } },
       { at: 220, layer: 'char',   action: 'show',  params: { char: 'kiro', pose: 'surprised' } },
-      // 生成(リール停止に合わせて打ち進む)
-      { at: 640, layer: 'lcd',    action: 'anim', params: { anim: 'bedrock_typing', tier: 'alarm', phase: 0 } },
+      // 推論 → ストリーミング出力(リール停止に合わせて流れる)。
+      // 生成パネルは起動ラベルの上へ被さるので、「受信しました」を読ませてから出す
+      { at: 880, layer: 'lcd',    action: 'anim', params: { anim: 'bedrock_typing', tier: 'alarm', phase: 0 } },
       { waitFor: 'stop1', layer: 'lcd', action: 'anim', params: { anim: 'bedrock_typing', tier: 'alarm', phase: 1 } },
       { waitFor: 'stop2', layer: 'lcd', action: 'anim', params: { anim: 'bedrock_typing', tier: 'alarm', phase: 2 } },
       { waitFor: 'stop3', after: 80, layer: 'lcd', action: 'anim',
@@ -330,29 +324,34 @@ export default [
     },
     // 前兆パターン演出(zn_*、weight 100)より優先する。Bedrock揃いのゲームは Bedrock が主役
     weight: { FREE_TIER: 9000, default: 0 },
-    duration: 3200,
+    duration: 3500,
     cues: [
-      // 1段目の「生成完了」を読ませてから、もう一度火が入る
+      // 1段目の「推論完了」を読ませてから、もう一度火が入る
       { at: 600,  layer: 'sfx',     action: 'synth', params: { preset: 'alarm_beep' } },
       { at: 620,  layer: 'overlay', action: 'flash', params: { color: '#ffd166', ms: 240 } },
       { at: 660,  layer: 'lcd',     action: 'anim',  params: { anim: 'bedrock_boot' } },
       { at: 700,  layer: 'char',    action: 'show',  params: { char: 'kiro', pose: 'panic' } },
-      { at: 980,  layer: 'lcd',     action: 'anim', params: { anim: 'bedrock_typing', tier: 'mid', phase: 0 } },
-      { at: 1300, layer: 'lcd',     action: 'anim', params: { anim: 'bedrock_typing', tier: 'mid', phase: 1 } },
-      { at: 1620, layer: 'lcd',     action: 'anim', params: { anim: 'bedrock_typing', tier: 'mid', phase: 2 } },
-      { at: 1940, layer: 'lcd',     action: 'anim',
-        params: { anim: 'bedrock_typing', tier: 'mid', phase: 3, ms: 1900 } },
-      { at: 2100, layer: 'sfx',     action: 'synth', params: { preset: 'charge_up' } },
+      // リール停止と無関係に進む再生なので、revealSpan をキュー間隔(320ms)へ合わせる。
+      // 既定(0.18 × 2600ms = 468ms)のままだと流し切る前に次のフェーズへ差し替わる
+      { at: 1360, layer: 'lcd',     action: 'anim',
+        params: { anim: 'bedrock_typing', tier: 'mid', phase: 0, revealSpan: 0.12 } },
+      { at: 1680, layer: 'lcd',     action: 'anim',
+        params: { anim: 'bedrock_typing', tier: 'mid', phase: 1, revealSpan: 0.12 } },
+      { at: 2000, layer: 'lcd',     action: 'anim',
+        params: { anim: 'bedrock_typing', tier: 'mid', phase: 2, revealSpan: 0.12 } },
+      { at: 2320, layer: 'lcd',     action: 'anim',
+        params: { anim: 'bedrock_typing', tier: 'mid', phase: 3, ms: 1900, revealSpan: 0.14 } },
+      { at: 2480, layer: 'sfx',     action: 'synth', params: { preset: 'charge_up' } },
       // 当選確定ではないので sticky にならない文言にしておく(「確定」「突入」を使わない)
-      { at: 2260, layer: 'lcd',     action: 'text',
-        params: { text: 'RE-GENERATED', sub: 'Bedrock が異常を検知した', color: '#ffd166', ms: 1500 } },
-      { at: 2400, layer: 'char',    action: 'pose', params: { char: 'kiro', pose: 'surprised' } },
+      { at: 2660, layer: 'lcd',     action: 'text',
+        params: { text: 'RE-GENERATED', sub: '再推論の結果、異常を出力した', color: '#ffd166', ms: 1500 } },
+      { at: 2800, layer: 'char',    action: 'pose', params: { char: 'kiro', pose: 'surprised' } },
     ],
   },
 
   {
     id: 'yh_bedrock_typing_idle',
-    name: '【弱】Bedrockタイピング予告(日常の作業ログ)',
+    name: '【弱】Bedrock生成予告(日常の作業ログ)',
     // 賑やかし。tier:'weak' は当たり外れと関係ない日常の作業ログだけ
     when: {
       event: 'leverOn', mode: ['FREE_TIER'],
@@ -555,7 +554,7 @@ export default [
         params: { anim: 'bedrock_typing', tier: 'mid', phase: 3, ms: 1800 } },
       { waitFor: 'stop3', after: 220, layer: 'sfx', action: 'synth', params: { preset: 'alarm_beep' } },
       { waitFor: 'stop3', after: 260, layer: 'lcd', action: 'text',
-        params: { text: '緊急提案', sub: 'Bedrock が最優先で起案した', tone: 'hot', color: '#ff3b30', ms: 1400 } },
+        params: { text: '緊急提案を生成', sub: '推論の結果、最優先で出力された', tone: 'hot', color: '#ff3b30', ms: 1400 } },
     ],
   },
 

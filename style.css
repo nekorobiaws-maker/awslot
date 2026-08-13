@@ -47,7 +47,13 @@ body::before {
   position: fixed;
   inset: 0;
   z-index: 1;
+  /* 起動時のちらつき防止(#boot-screen)。main.js が本体の準備を確認してから
+     .is-ready を付けてフェードインする。それまでは筐体アート読み込み中の
+     CSSフォールバック等が一切見えない。 */
+  opacity: 0;
+  transition: opacity 0.3s ease;
 }
+#viewport.is-ready { opacity: 1; }
 
 #cabinet {
   position: absolute;
@@ -630,16 +636,20 @@ body::before {
  *   横: 0.76倍の等倍(元絵 x=541 が論理 x=360)
  *   縦: CABINET2_BANDS のバンド伸縮
  * で論理720×1080へ載せている。ここの座標はその写像の実測値。
- *   MAX BET  中心(213, 700)  ヒット 168,681 90×42   ※絵に文字があるのでcapは隠す
- *   停止ボタン 中心(282/359/436, 775) ヒット 各 50×50
- *   レバー    中心(699, 661)  ヒット 677,639 43×45   ※旧絵と逆で右側
- *   下部パネル 67,801 585×175(幽霊パネルの絵に重なる発光とテロップの器)
+ *   MAX BET  中心(213, 726.4)  ヒット 168,707.4 90×42   ※絵に文字があるのでcapは隠す
+ *   停止ボタン 中心(282/359/436, 801.4) ヒット 各 50×50
+ *   レバー    中心(699, 687.4)  ヒット 677,665.4 43×45   ※旧絵と逆で右側
+ *   下部パネル 67,827.4 585×175(幽霊パネルの絵に重なる発光とテロップの器)
  * キーボード操作(Enter/Space/矢印)は data-action 経由なので影響なし。
+ *
+ * 2026-08-13 修正: render/cabinet.js の CABINET2_BANDS を「頭が切れる」不具合対応で
+ * 冠帯以降すべて+26.4px下へ平行移動したため、ここの top 値も同じだけ+26.4pxしてある
+ * (left/width/height は横方向・各帯の縦倍率とも無変更なのでそのまま)。
  * ══════════════════════════════════════════════════════════ */
 
 /* 側面のLED帯(液晶横〜リール横)に電飾を重ねる */
 #cabinet.art-cabinet2 .lamp {
-  top: 84px;
+  top: 110.4px;
   width: 23px;
   height: 595px;
   padding: 4px 2px;
@@ -652,7 +662,7 @@ body::before {
 /* MAX BET(操作デッキの左寄り。楕円キャップ) */
 #cabinet.art-cabinet2 .btn-maxbet {
   left: 168px;
-  top: 681px;
+  top: 707.4px;
   width: 90px;
   height: 42px;
   padding-bottom: 0;
@@ -661,7 +671,7 @@ body::before {
 #cabinet.art-cabinet2 .btn-maxbet .cap { display: none; }
 
 /* 停止ボタン(中央下段の赤ボタン3個) */
-#cabinet.art-cabinet2 .btn-stop { top: 750px; }
+#cabinet.art-cabinet2 .btn-stop { top: 776.4px; }
 #cabinet.art-cabinet2 .stop-0 { left: 257px; }
 #cabinet.art-cabinet2 .stop-1 { left: 334px; }
 #cabinet.art-cabinet2 .stop-2 { left: 411px; }
@@ -671,7 +681,7 @@ body::before {
    「絵にレバーが描かれているのに押せないと不自然」なので残した補助ヒットエリア。 */
 #cabinet.art-cabinet2 .lever {
   left: 677px;
-  top: 639px;
+  top: 665.4px;
   width: 43px;
   height: 45px;
   border-radius: 50%;
@@ -683,7 +693,7 @@ body::before {
 #cabinet.art-cabinet2 .lever-left {
   display: block;
   left: 101px;
-  top: 742px;
+  top: 768.4px;
   width: 52px;
   height: 57px;
   border-radius: 50%;
@@ -716,7 +726,7 @@ body::before {
 /* 下部パネル(幽霊パネル)。絵は #cabinet-art 側で描かれている */
 #cabinet.art-cabinet2 .panel {
   left: 67px;
-  top: 801px;
+  top: 827.4px;
   width: 585px;
   height: 175px;
   border-radius: 16px;
@@ -955,3 +965,404 @@ body::before {
    Hキーの表示切替はインライン style を書くのでこの指定より優先される。 */
 .debug-bar { display: none; }
 body.debug .debug-bar { display: flex; }
+
+/* ══════════════════════════════════════════════════════════
+ * PC表示時の操作ガイドパネル(#controls-guide)
+ *
+ * #viewport(position:fixed; inset:0)の外側の兄弟要素として body 直下に置く。
+ * #cabinet の scale()/translate() は engine/layers.js が #viewport の
+ * clientWidth/clientHeight から算出しており、このパネルはその計算に
+ * 一切関与しない(#viewport の子でも影響しないが、念のため兄弟に置いている)。
+ *
+ * 位置合わせ: #cabinet は常に画面の中心(50vw, 50vh)に来る(fit() のオフセット式
+ * が左右上下とも均等に寄せるため)。デスクトップの横長ウィンドウでは高さが
+ * ボトルネックになりスケールは vh/1080 で決まるので、筐体の右端は
+ * おおよそ 50vw + 360*(vh/1080) = 50vw + 33.34vh。この座標を基準にパネルを
+ * 置くことで、JS 側の値を一切読まずに「筐体の右横」へ寄せている。
+ * (幅がボトルネックになる極端な縦長ウィンドウでは右端の推定がずれるが、
+ *  width の min()/max() で 0px までしか縮まないようにして重なりを防いでいる) */
+:root {
+  --guide-left: calc(50vw + 33.34vh + 18px);
+}
+
+.controls-guide {
+  display: none;
+  position: fixed;
+  top: 50%;
+  left: var(--guide-left);
+  /* 実機の筐体に立てかけた説明プレートのように、ほんの少しだけ傾ける */
+  transform: translateY(-50%) rotate(-1.6deg);
+  z-index: 2;
+  width: max(0px, min(228px, calc(100vw - var(--guide-left) - 18px)));
+  pointer-events: none;
+  font-family: inherit;
+}
+
+/* 筐体+パネルが並べられる横幅(目安1100px)を確保できるときだけ表示。
+   それ未満・スマホでは非表示。 */
+@media (min-width: 1100px) {
+  .controls-guide { display: block; }
+}
+
+/* ── プレート本体 ──────────────────────────
+ * 実機の「打ち方」ステッカー/インストラクションカードを模した、
+ * 艶のある濃紫プレート+金縁。汎用カードっぽさを消すため、
+ * 角丸は控えめ・グロス(斜めのハイライト)・四隅のネジ留め風ドット付き。 */
+.controls-guide .guide-plate {
+  position: relative;
+  overflow: hidden;
+  border-radius: 8px;
+  border: 3px solid rgba(255, 214, 130, 0.75);
+  background: linear-gradient(165deg, #4a1080 0%, #35095f 40%, #240544 72%, #170331 100%);
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.55),
+    0 0 24px rgba(150, 60, 255, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    inset 0 -16px 26px rgba(0, 0, 0, 0.45);
+}
+/* 斜めのグロス(プラスチックの艶っぽさ) */
+.controls-guide .guide-plate::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(112deg,
+    rgba(255, 255, 255, 0.20) 0%,
+    rgba(255, 255, 255, 0.05) 16%,
+    transparent 32%);
+  pointer-events: none;
+}
+
+/* 四隅のネジ留め風ドット(金属丸+溝1本) */
+.controls-guide .guide-rivet {
+  position: absolute;
+  z-index: 1;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 30%, #f4efe0, #cbb877 55%, #7a5f22);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.65), inset 0 0 1px rgba(255, 255, 255, 0.6);
+}
+.controls-guide .guide-rivet::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 15%;
+  right: 15%;
+  height: 1px;
+  background: rgba(60, 40, 10, 0.65);
+  transform: translateY(-50%) rotate(24deg);
+}
+.controls-guide .guide-rivet-tl { top: 7px; left: 7px; }
+.controls-guide .guide-rivet-tr { top: 7px; right: 7px; }
+.controls-guide .guide-rivet-bl { bottom: 7px; left: 7px; }
+.controls-guide .guide-rivet-br { bottom: 7px; right: 7px; }
+
+/* ── 見出し帯「HOW TO PLAY / 打ち方」 ── */
+.controls-guide .guide-header {
+  position: relative;
+  z-index: 1;
+  margin: 0;
+  padding: 9px 10px 7px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(0, 0, 0, 0.3));
+  border-bottom: 2px solid rgba(255, 214, 130, 0.6);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+.controls-guide .guide-header-en {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.24em;
+  color: #ffd166;
+  text-shadow: 0 0 8px rgba(255, 190, 60, 0.65);
+}
+.controls-guide .guide-header-jp {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.4em;
+  /* 頭の文字だけ詰まって見えないよう、行頭のインデントで字間を打ち消す */
+  text-indent: 0.4em;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.controls-guide .guide-list {
+  position: relative;
+  z-index: 1;
+  margin: 0;
+  padding: 6px 16px 8px;
+  display: flex;
+  flex-direction: column;
+}
+
+.controls-guide .guide-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 9px 0;
+}
+.controls-guide .guide-row + .guide-row {
+  border-top: 1px dashed rgba(255, 214, 130, 0.28);
+}
+
+.controls-guide .guide-row dd {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  line-height: 1.35;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+.controls-guide .guide-note {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: rgba(255, 220, 170, 0.75);
+}
+
+/* キーキャップ風の見た目(上面ハイライト+下面シャドウで2px押し出す) */
+.controls-guide .key {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  height: 34px;
+  padding: 0 6px;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 224, 160, 0.55);
+  background: linear-gradient(180deg, #8a3fd6 0%, var(--purple-lit) 42%, var(--purple) 100%);
+  box-shadow:
+    0 3px 0 #1c0636,
+    0 5px 8px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    inset 0 -6px 8px rgba(0, 0, 0, 0.3);
+  color: var(--gold);
+  font-weight: 900;
+  font-size: 16px;
+  font-family: "SFMono-Regular", Menlo, monospace;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.5);
+}
+
+.controls-guide .key-trio {
+  display: inline-flex;
+  gap: 4px;
+}
+.controls-guide .key-arrow {
+  min-width: 26px;
+  height: 26px;
+  font-size: 13px;
+  border-radius: 6px;
+}
+
+.controls-guide .key-sm {
+  min-width: 20px;
+  height: 20px;
+  margin: 0 4px 0 0;
+  border-radius: 5px;
+  font-size: 10px;
+  box-shadow:
+    0 2px 0 #1c0636,
+    0 3px 5px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    inset 0 -4px 6px rgba(0, 0, 0, 0.3);
+}
+
+/* ── 下部の脚注帯(凹んだ金属プレートの銘板っぽく) ── */
+.controls-guide .guide-footnote {
+  position: relative;
+  z-index: 1;
+  margin: 0;
+  padding: 8px 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 0;
+  background: rgba(0, 0, 0, 0.32);
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.45);
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.72);
+  text-align: left;
+}
+/* 「キー+ラベル」の1組は折り返しの単位として崩さない(単語の途中で
+   改行されて読みにくくなるのを防ぐ)。 */
+.controls-guide .guide-sub-item {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  margin-right: 10px;
+}
+
+/* ══════════════════════════════════════════════════════════
+ * スマホ縦持ちなどの上下余白の飾り(#mobile-title / #mobile-rule)
+ *
+ * #controls-guide と同じ流儀: #viewport の外側の兄弟要素として置き、
+ * #cabinet の scale()/translate() 計算(engine/layers.js の fit())には
+ * 一切関与しない。
+ *
+ * 表示条件: 画面が筐体(720:1080)より縦長 = 幅基準でスケールが決まり、
+ * 上下に均等な余白ができるケース。このとき
+ *   scale = vw/720、offsetY(上下の余白) = (vh - 1080*scale)/2 = 0.5vh - 0.75vw
+ * になる(#controls-guide の右横配置と同じ考え方で、JS側の値を読まずに
+ * calc(vw, vh) だけで求めている)。
+ * ※ vh/vw の1単位=対象寸法の1%なので、係数0.5/0.75はCSS上では
+ *   50vh/75vw(=50%/75%)と書く。0.5vh と書くと0.5%(=1/100)になってしまうので注意。
+ *
+ * 位置(2026-08-13 フィードバック反映): タイトルは余白の中央ではなく
+ * **筐体のすぐ上**(間隔10px)に寄せる。top を筐体の上端(offsetY)から
+ * 10px引いた値にし、要素自身は transform: translate(-50%,-100%) で
+ * 「下端がその位置に来る」ように反転させることで、余白が狭くても
+ * 常に筐体との間隔がちょうど10pxになる。
+ * ══════════════════════════════════════════════════════════ */
+:root {
+  /* 上下余白(片側ぶん)の見積り。width基準スケール時のみ正の値になる */
+  --mobile-margin: calc(50vh - 75vw);
+}
+
+.mobile-title,
+.mobile-rule {
+  display: none;
+  position: fixed;
+  left: 50%;
+  z-index: 2;
+  pointer-events: none;
+  text-align: center;
+  font-family: inherit;
+}
+
+/* 筐体(720:1080)より画面が縦長のときだけ出す。
+   横長PC(#controls-guide の表示条件)とは独立した判定なので、
+   お互いの表示/非表示の切り替えを妨げない。 */
+@media (max-aspect-ratio: 720/1080) {
+  .mobile-title,
+  .mobile-rule { display: block; }
+}
+
+.mobile-title {
+  /* 筐体の上端(--mobile-margin)から10px上。translate(-50%,-100%)で
+     要素の下端をこの位置に揃えるので、隙間は常にちょうど10pxになる */
+  top: calc(var(--mobile-margin) - 10px);
+  transform: translate(-50%, -100%);
+  max-width: 92vw;
+}
+
+/* パチスロロゴ風の文字装飾。
+ * - 極太(900)+わずかな斜体(skewX)+文字間を詰める
+ * - 金→オレンジのグラデーション文字(background-clip:text)
+ * - 濃紫の太い縁取り(-webkit-text-stroke)+外側に紫の発光(filter:drop-shadow)
+ * - 外部フォントは読み込まず、システムの極太ゴシックを土台にする
+ * background-clip:text 非対応環境向けに、まず不透明色で見える状態を
+ * 基本にし、対応環境だけ @supports でグラデーション化する(文字が消えない保険)。 */
+.mobile-title-text {
+  display: inline-block;
+  transform: skewX(-8deg);
+  font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", sans-serif;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  /* 余白(--mobile-margin)を基準にした文字サイズ。狭い機種では自動で縮む */
+  font-size: clamp(16px, calc(var(--mobile-margin) * 0.52), 38px);
+  color: #ffc93c;
+  -webkit-text-stroke: 0.13em #2a0a4e;
+  paint-order: stroke fill;
+}
+@supports (background-clip: text) or (-webkit-background-clip: text) {
+  .mobile-title-text {
+    background: linear-gradient(180deg, #fff6d5 0%, #ffd166 34%, #ffb238 62%, #ff8a1e 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+}
+.mobile-title-text {
+  filter:
+    drop-shadow(0 0 6px rgba(170, 80, 255, 0.9))
+    drop-shadow(0 0 16px rgba(140, 50, 230, 0.6));
+}
+
+.mobile-rule {
+  top: calc(75vh + 37.5vw);
+  transform: translate(-50%, -50%);
+  max-width: 88vw;
+  white-space: normal;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
+  font-size: clamp(10px, calc(var(--mobile-margin) * 0.26), 15px);
+  color: rgba(255, 226, 168, 0.92);
+  text-shadow: 0 0 8px rgba(255, 190, 60, 0.55), 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+/* ══════════════════════════════════════════════════════════
+ * 起動時のちらつき防止(#boot-screen)
+ *
+ * #viewport(筐体アートPNG読み込み前は一瞬CSSフォールバック筐体が見える)を
+ * 覆い隠すための全画面スクリーン。HTMLに直書きしてあるのでJS実行前から見える。
+ * main.js が loadUiAssets() の解決(または4秒タイムアウト)を確認してから
+ * is-hidden を付けてフェードアウトし、DOMから取り除く。
+ * z-index は #result-panel(10)や #controls-guide(2)より上、
+ * main.js の致命的エラー表示(z-index:99、インラインstyle)より下にしてある。
+ * ══════════════════════════════════════════════════════════ */
+.boot-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: radial-gradient(circle at 50% 42%, #1d0a34 0%, #0a0512 68%, #060309 100%);
+  transition: opacity 0.3s ease;
+}
+.boot-screen.is-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.boot-logo {
+  margin: 0;
+  font-family: "Arial Black", "Helvetica Neue", sans-serif;
+  font-size: 44px;
+  letter-spacing: 0.16em;
+  color: #fff;
+  text-shadow:
+    0 0 10px rgba(255, 120, 255, 0.9),
+    0 0 26px rgba(150, 80, 255, 0.9),
+    0 3px 0 #3a0a68;
+}
+
+.boot-loading {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: rgba(255, 220, 150, 0.85);
+}
+
+.boot-dots { display: inline-flex; gap: 4px; }
+.boot-dots i {
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--gold);
+  box-shadow: 0 0 8px rgba(255, 201, 60, 0.8);
+  animation: boot-dot-blink 1.2s ease-in-out infinite;
+}
+.boot-dots i:nth-child(2) { animation-delay: 0.15s; }
+.boot-dots i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes boot-dot-blink {
+  0%, 80%, 100% { opacity: 0.25; transform: scale(0.85); }
+  40% { opacity: 1; transform: scale(1); }
+}

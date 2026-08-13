@@ -12,7 +12,7 @@ import { Loop } from './engine/loop.js';
 import { Input } from './engine/input.js';
 import { Rng } from './engine/rng.js';
 import { EventBus } from './engine/eventbus.js';
-import { symbolAssets } from './engine/assets.js';
+import { symbolAssets, loadUiAssets } from './engine/assets.js';
 import { Timeline } from './engine/timeline.js';
 import { audio } from './engine/audio.js';
 import { initVoice } from './engine/voice.js';
@@ -42,6 +42,7 @@ import { DEBUG_FLAG_KEYS, FLAG_BY_ID, isRare } from './data/flags.js';
 import { verifyStrips } from './data/reelstrips.js';
 import { SCENARIOS, validateScenarios } from './data/scenarios/index.js';
 import { MODE_BGM, FLAG_SFX } from './data/sfx-presets.js';
+import { SESSION } from './data/session.js';
 
 /**
  * 起動時に有効なモードID(?mode= 用)。
@@ -132,8 +133,46 @@ function dedupeTelop(telop, lcdTexts) {
   return telop;
 }
 
+/**
+ * 起動時のちらつき防止(#boot-screen)を隠して本体をフェードインする。
+ *
+ * 呼び出しタイミングは boot() の末尾(loop.start() の後)で
+ *   Promise.race([loadUiAssets(), 4秒タイムアウト]).then(revealApp)
+ * として配線する。loadUiAssets() は engine/assets.js 側でキャッシュされた
+ * 同一Promiseなので、render/cabinet.js が内部で呼んでいる
+ * loadUiAssets().then(...)(筐体アートPNGの適用)より必ず後に実行される
+ * (同じPromiseへの .then() は登録順にマイクロタスクが走るため)。
+ * これにより「フォールバック筐体 → アートPNG」の差し替えが完了してから
+ * 画面が見えるようになり、起動時のちらつきが起きない。
+ */
+function revealApp() {
+  const boot = document.getElementById('boot-screen');
+  const viewport = document.getElementById('viewport');
+  viewport?.classList.add('is-ready');
+  if (!boot) return;
+  boot.classList.add('is-hidden');
+  boot.setAttribute('aria-hidden', 'true');
+  const cleanup = () => boot.remove();
+  boot.addEventListener('transitionend', cleanup, { once: true });
+  // transitionend が発火しない環境(テスト等)向けの保険
+  setTimeout(cleanup, 500);
+}
+
 async function boot() {
   const params = readParams();
+
+  // UI画像(筐体アート)の読み込みは symbol 絵柄より先に着手しておく。
+  // 直列だと「絵柄を待ってから筐体画像を待つ」になり起動が遅くなるため、
+  // ここで先に走らせて2つの読み込みを並列化する。
+  // (loadUiAssets() は同一Promiseをキャッシュするので、
+  //  render/cabinet.js 側の呼び出しと二重フェッチにはならない)
+  const uiAssetsReady = loadUiAssets();
+
+  // スマホ縦持ち用の余白ルール文(index.html)にゲーム数を差し込む。
+  // ハードコード禁止方針のため、静的HTML側の "100" は無効時のフォールバックに留め、
+  // 表示用の値は必ず data/session.js の SESSION.totalGames を参照する。
+  const mobileRuleGamesEl = document.getElementById('mobile-rule-games');
+  if (mobileRuleGamesEl) mobileRuleGamesEl.textContent = String(SESSION.totalGames);
 
   // データ定義の自己チェック(DESIGN.md 注意事項3)
   const verify = verifyStrips();
@@ -451,6 +490,13 @@ async function boot() {
   });
   loop.timeScale = params.turbo;
   loop.start();
+
+  // ── 起動画面のフェード ──────────────────────
+  // 筐体アート(loadUiAssets)の解決を待ってから #boot-screen を隠す。
+  // 回線が遅い/失敗しても詰まないよう、最大4秒でタイムアウトして強制表示する
+  // (その場合はCSSフォールバック筐体が見えるが、無反応で止まるよりはよい)。
+  const bootTimeout = new Promise((resolve) => setTimeout(resolve, 4000));
+  Promise.race([uiAssetsReady, bootTimeout]).then(revealApp, revealApp);
 
   console.info(
     `[AWSLOT] 起動しました  seed=${rng.seed}  turbo=x${params.turbo}  mode=${startMode}` +

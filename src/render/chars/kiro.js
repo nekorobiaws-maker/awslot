@@ -60,6 +60,15 @@ export function drawKiro(ctx, state) {
   ctx.shadowBlur = 18;
   ctx.fill();
   ctx.shadowBlur = 0;
+  /*
+   * 輪郭線(2026-08-13)。assets/ui/bottom_panel.png の幽霊は暗色の縁取りがあり、
+   * ジョージ側をセル塗りへ寄せた結果こちらだけ線が無いのが浮いていたので合わせた。
+   * サメより細い線にして「ふわっとした幽霊」の質感は保つ。
+   */
+  ctx.strokeStyle = 'rgba(42,16,64,0.85)';
+  ctx.lineWidth = 3.4;
+  ctx.lineJoin = 'round';
+  ctx.stroke();
 
   drawFace(ctx, p, t);
   ctx.restore();
