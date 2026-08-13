@@ -1,0 +1,1360 @@
+# AWSLOT 全体設計書
+
+設計: rin-planner / 演出素材: hinata-explorer(`docs/IDEAS.md`) / 絵柄アセット: `docs/IMAGE_PROMPTS.md`(GPT Image 2でユーザーが生成) / 参考画像: `docs/sample.png`
+
+> 統合時の修正メモ(hika): 絵柄割り当てはユーザー確定値(**EC2=ベル、IAM=チェリー、S3=スイカ、Lambda=チャンス目**)に修正済み。絵柄描画は「GPT Image 2で生成したPNGアセットを読み込み、未生成時はプロシージャル描画でフォールバック」方式に変更済み。
+
+## 0. 調査サマリ(設計の前提として確認した事実)
+
+| 確認項目 | 結果 |
+|---|---|
+| プロジェクトディレクトリ | `awslot/` はグリーンフィールド(docs/のみ) |
+| 参考画像 | `docs/sample.png`(1086×1448px)を確認済み |
+| ビルド不要SPAの前例 | `study_yamachan/zelda/` が `<script type="module">` + `src/engine`・`src/game` 分割で稼働中。この構成を踏襲 |
+| 音声事前生成の前例 | `~/Work/claude-code-agent-dashboard/PET/scripts/generate-click-voices.mjs` に Aivis Cloud での一括生成パターンあり(リトライ3回・既存スキップ・3秒間引き) |
+| Aivis Cloud API | `https://api.aivis-project.com/v1/tts/synthesize`、`Bearer` 認証、`model_uuid` + `text` + `speaking_rate` |
+
+既存スクリプトの冒頭コメントに「配列インデックスからファイル名を決めるとフレーズ追加時に既存MP3が別テキストとして再利用される事故が起きる」という教訓があり、本設計の音声設計(6.7節)に取り込み済み。
+
+---
+
+## 1. コンセプト
+
+### 一言コンセプト
+
+> **「クラウドは、勝手にスケールする。」**
+> AWSサービスを積み上げて、止まらないアーキテクチャを組み上げるパチスロ。
+
+### 遊び味
+
+プレイヤーは *無料枠(Free Tier)* からスタートし、レア役を引いてチャンスゾーンを突破、ボーナスを経て上位モード **Auto Scaling RUSH** に到達する。RUSH中の出玉スピードと継続率は **Desired Capacity(インスタンス台数)** という単一のパラメータで決まり、レア役で **スケールアウト(+1台)** すると「速くなる」と「落ちにくくなる」が同時に起こる。
+
+この「1つの数字が育つほど全部良くなる」構造が本機の爽快感の核。実機のような複雑な内部数値の探り合いは排し、**画面のインスタンスアイコンが増えていく気持ちよさ**だけで理解できるようにする。
+
+### キャラクター2枚看板
+
+| キャラ | 役割 | 性格・出方 |
+|---|---|---|
+| **Kiro(幽霊)** | メインナビゲーター。通常時の案内、CZ挑戦、モード説明 | 白い幽霊。常時ふわふわ浮遊。表情変化で期待度を示す。基本ここにいる |
+| **ジョージ・ジョーズ・ユージー(サメ)** | 爆発・上乗せ担当 兼 破壊担当 | 登場=波乱。**噛みつけば大量上乗せ、飲み込めば強制終了(Spot中断)**の二面性。出た瞬間に画面が揺れる格 |
+
+ジョージの二面性は Spot インスタンスのメタファーそのもの。「サメが来た=アツいのか終わるのか分からない」という緊張が本機の味付けになる。
+
+---
+
+## 2. モード体系と状態遷移
+
+### 2.1 全体マップ
+
+```
+                        ┌──────────────────────────────┐
+                        │  [ED] re:Invent キーノート     │ ← 差枚+2222 or 15セット
+                        └──────────────▲───────────────┘
+                                       │
+┌────────────────────────────────────────────────────────────────┐
+│ ■ 上位モード層(AT / RUSH)                                       │
+│                                                                │
+│   Auto Scaling RUSH ──昇格──> Serverless RUSH ──> Multi-Region  │
+│        │  ▲                                     アクティブ・     │
+│        │  │                                     アクティブ      │
+│        │  └──── 引き戻し成功 ────┐                              │
+│        │                        │                              │
+│   [派生ゾーン] ← 抽選で突入      │                              │
+│    Spot インスタンスゾーン        │                              │
+│    EC2 バーストモード             │                              │
+│    Graviton モード                │                              │
+│    Reserved Instance ゾーン       │                              │
+│   [上乗せ特化]                    │                              │
+│    CloudFront エッジ上乗せ        │                              │
+│    Kinesis 上乗せストリーム       │                              │
+│    Step Functions チャレンジ      │                              │
+└────────┬───────────────────────────┼──────────────────────────┘
+         │ DC枯渇 / セット非継続      │
+         ▼                           │
+┌────────────────────────┐           │
+│ ■ 引き戻し層            │           │
+│  ホットスタンバイ(Multi-AZ) ──成功──┘
+│        │ 失敗
+│  Route 53 フェイルオーバー ──成功───┘
+└────────┬───────────────┘
+         │ 失敗
+         ▼
+┌────────────────────────────────────────────────────────────────┐
+│ ■ 通常時: Free Tier                                             │
+│   内部状態: Cold Start(低確) / Warm Pool(高確) / Provisioned(超高確) │
+│   天井: 999G「SLA 99.9% 保証」で CZ 当選確定                     │
+└────────┬───────────────────────────────────────────────────────┘
+         │ レア役 or 天井
+         ▼
+┌────────────────────────────────────────────────────────────────┐
+│ ■ CZ層                                                          │
+│   CloudWatch アラートCZ / Trusted Advisor CZ / Well-Architected CZ │
+└────────┬───────────────────────────────────────────────────────┘
+         │ 突破
+         ▼
+┌────────────────────────────────────────────────────────────────┐
+│ ■ ボーナス層(初当り)                                             │
+│   入賞待ち(揃えろ!)→ Lambda REG / S3 BIG / DynamoDB BIG        │
+└────────┬───────────────────────────────────────────────────────┘
+         │ AT当選 → 上位モード層へ
+         ▼
+```
+
+### 2.1b ゲームフォーマット: 50回転スコアアタック(2026-08-13 ユーザー決定)
+
+本機は「座って延々回す」台ではなく、**1プレイ50回転で終わるスコアアタック**である。
+docs/BACKLOG.md「M: メカニクス改修」に基づく決定で、以下が全モード共通の枠組みになる。
+
+```json
+{
+  "id": "session",
+  "totalGames": 50,
+  "warnAt": 5,
+  "rule": "通常時・CZ・入賞待ち・ボーナス・AT・派生ゾーンを問わず、レバーONを通算で数える",
+  "onEnd": "残存価値を買い取ってクレジットへ加算 → RESULT モードへ"
+}
+```
+
+**残存価値の買い取り**: 50回転目がボーナスやATの途中でも、消化していない権利を枚数へ換算して払い出す。
+
+| 買い取る | 換算 |
+|---|---|
+| ボーナス残G | 残G × ボーナス中の期待純増(≒9.76枚/G) |
+| 入賞待ち | **ボーナス1回ぶん丸ごと**(当選確定でまだ1枚も受け取っていないため) |
+| AT残G | 残G × 現在のDC純増 |
+| 上乗せストック | セット数 × (1セットG数 × 純増) |
+| ゾーンの保証G | 保証残G × そのゾーンの純増 |
+
+買い取らないのは「まだ引いていないセット継続抽選」と「CZの突破期待値」。
+どちらも所有していない権利で、買うと「終了間際にCZへ入るのが一番得」という歪みが出る。
+
+実装は各モードハンドラの `residualValue(state, ctx)` が明細を返し、
+`ModeMachine#collectResidualValue()` がスタックを舐めて合計する。
+`game/flow.js` はモード固有の知識を持たない。
+
+**バランス指標**: 機械割ではなく **50回転あたりのスコア分布**で見る。
+目標は平均200〜300枚・上位1%で1000枚超。実測は README を参照。
+
+**RESULT モード**: 終端状態。ゲームは進まず、`R` / `↑` / レバーで新しい50回転が始まる
+(`GameFlow#restart()` がクレジット・統計・モードスタックを完全に初期化する)。
+
+### 2.2 各モード詳細(全20モード + 入賞待ち M05a)
+
+#### ■ 通常時層
+
+**M01. Free Tier(通常時)**
+無料枠でチマチマ回す通常時。ベルとリプレイでコインを繋ぎながらレア役を待つ。内部的には **Cold Start(低確)→ Warm Pool(高確)→ Provisioned Concurrency(超高確)** の3段階の内部状態を持ち、CZ抽選確率がそれぞれ ×1.0 / ×2.0 / ×4.0 に変動する。内部状態は液晶のステージ(背景)で示唆され、Warm Pool 以上ではKiroの周囲にコンテナが温まっているエフェクトが出る。ハマった場合は **999G の「SLA 99.9% 保証」天井** でCZ当選が確定する(AWSのSLA返金クレジットのパロディで、「サービスクレジットの付与」というテロップが出る)。
+
+#### ■ CZ層(チャンスゾーン)
+
+**M02. CloudWatch アラートCZ(5G / 突破率 30%)**
+最も頻発する軽量CZ。液晶に折れ線グラフが表示され、5ゲームの間にメトリクスが閾値ラインを突き抜ければ突破。レア役を引くとグラフが跳ね上がる直感的なゲーム性で、3ゲーム目時点でのグラフ位置が期待度そのもの。ALARM 状態に遷移すればボーナス確定。
+
+**M03. Trusted Advisor CZ(7G / 突破率 50%)**
+中位CZ。5項目のチェックリスト(コスト最適化・パフォーマンス・セキュリティ・耐障害性・サービス制限)が並び、毎ゲーム抽選で赤→黄→緑に変化する。**3項目以上グリーンで突破**というルールで、残りゲーム数と緑の数から逆算できる「あと何個」の分かりやすさを持たせる。
+
+**M04. Well-Architected レビューCZ(10G / 突破率 75%)**
+最上位CZ。**W-A フレームワークの6本の柱**を1本ずつ立てていく構成で、ジョージが柱を運んでくる。突破時は上位ボーナス(S3 BIG 以上)が濃厚となり、6本すべて立てば **DynamoDB BIG 確定=Auto Scaling RUSH の DC 初期値+2** という最上級の恩恵。突入時点でほぼ勝ちが見えている「ご褒美CZ」の位置付け。
+
+#### ■ ボーナス層(初当り)
+
+> **仕様変更(2026-08-13 ユーザー決定)**
+> 1. BIG BONUS(S3 BIG)を **50G → 15G**、REG BONUS(Lambda REG)を **30G → 6G** に短縮
+> 2. 「固定純増n枚/G」方式を撤去し、実機と同じ **「ボーナス中はベルが高確率(約1/1.2)で揃い、揃うたびに15枚」** 方式へ変更(3.7)
+> 3. ボーナスは当選した瞬間には始まらない。**入賞待ち(M05a)でボーナス図柄を揃えて初めて消化開始**
+>
+> 獲得枚数は旧仕様とほぼ同じ(BIG 約150枚 / REG 約60枚)まま、消化ゲーム数だけが 1/3〜1/5 になり、
+> 「短く・一気に増える」体感になる。
+
+**M05a. ボーナス入賞待ち(BONUS_READY / 平均 約1.6G)**
+ボーナス当選から消化開始までの橋渡し。液晶に「BONUS 確定!!」を告知し、**BIG系はゴースト7(`GHOST7`)、REGはサメBAR(`SHARKBAR`)を「揃えろ!」** と指示する。小役が成立したゲームは小役が優先されて揃わず(リプレイなら再遊技)、**ハズレのゲームだけリールが対応図柄を自動で引き込む**ため、カジュアル方針どおり目押し精度は不要で、停止ボタンを押すだけで揃う。通常時のハズレは約63%なので平均 1.6G ほどで揃い、コインが減り続けることはない。揃った瞬間に入賞ファンファーレが鳴り、次ゲームからボーナス消化が始まる。
+
+**M05. Lambda REG BONUS(6G / ベル15枚 / 約60枚)**
+軽量ボーナス。「15分でタイムアウトする」というLambdaの性質どおり短時間で終わる。6ゲームでベルが約5回揃って終わる、まさに一瞬のボーナス。消化中にAT抽選を行い、**当選率30%**。非当選なら通常時に戻るが、その場合は Warm Pool 以上の高確からの再スタートが保証される。消化中のレア役は通常時と同じ確率で成立し、AT当選期待度の示唆として機能する。
+
+**M06. S3 BIG BONUS(15G / ベル15枚 / 約150枚)**
+王道BIG。「イレブンナインの耐久性」を謳い文句に、**AT当選確定**の安心感を持たせる。sample.png の「BIG BONUS」演出はこのモードのもの。15ゲームでベルが約12.5回揃い、1回ごとに15枚が跳ねる。消化中は Auto Scaling RUSH の初期 DC を抽選しており、獲得枚数の内訳表示(バケットにオブジェクトが溜まっていく演出)と連動させる。
+
+**M07. DynamoDB BIG BONUS(1セット15G / 継続率 70% / ベル15枚)**
+セット継続型の重量級ボーナス。「無限にスケールする」という性質から、継続すればするほど伸びる。1セット約146枚 × 平均3.3セット ≒ **約480枚**。継続抽選は「キャパシティユニットが足りているか」という表現で行い、オンデマンドモードに切り替われば継続確定という激アツパターンを持たせる。**AT当選確定+DC初期値+2**。
+
+#### ■ 上位モード層(AT / RUSH)
+
+**M08. Auto Scaling RUSH(本機の母体AT / 1セット20G)**
+本機のメイン出玉源であり、すべての上位モードの母体。中核は **Desired Capacity(DC、1〜8)** という単一パラメータで、これが**純増と継続率の両方**を決める。レア役で **スケールアウト(DC+1)** し、液晶にインスタンスアイコンが1つ増える。セット終了時の **ヘルスチェック** に失敗するとセット終了(→引き戻し層)。「台数を増やせば速くなるし落ちにくくなる」という一目で分かる構造が、カジュアル層への訴求点。
+
+**M09. Serverless RUSH(上位AT / 1セット20G / 純増4枚 / 継続率80%固定)**
+Auto Scaling RUSH からの昇格先。「サーバー管理から解放される」=DC管理から解放され、純増4枚・継続率80%が固定で保証される。DCの上下に一喜一憂する必要がなくなる代わりに、上振れの天井もなくなる「安定した上位」の位置付け。昇格契機はRUSH中のサメ揃い、またはセット継続を5回連続で成功させること。
+
+**M10. Multi-Region アクティブ・アクティブ(最上位AT / 純増6枚 / 継続率85%)**
+最上位モード。複数リージョンで同時稼働するため、**全レア役で上乗せ確定**という破格の性能。突入契機は Serverless RUSH 中のゴースト揃い、または Step Functions チャレンジの完全制覇のみ。液晶は世界地図となり、リージョンが1つずつ点灯していく演出で、全リージョン点灯がエンディング直結の合図。
+
+**M11. Spot インスタンスゾーン(派生 / 純増8枚 / 最低15G保証)**
+本機で最も緊張感のある爆発ゾーン。純増8枚という圧倒的なスピードで出玉が増えるが、**毎ゲーム 1/30 で「中断通知(interruption notice)」が発生**し、通知から**2ゲーム後に強制終了**する。この2ゲームの猶予が「2分前通知」のメタファー。通知を運んでくるのがジョージで、サメが画面に現れた瞬間に終わりを悟る、という体験を作る。**最低15G保証**があるため、突入即終了で理不尽になることはない。平均約30G=240枚、上振れれば一撃1000枚級。
+
+**M12. EC2 バーストモード(派生 / クレジット消費型 / 純増5枚)**
+ユーザー要望の「クレジット消費型の爆発モード」。**CPUクレジット 100 を持って突入**し、毎ゲーム **-4** ずつ消費、**レア役で +25前後** 回復する。クレジットが 0 になった時点で終了(=ベースライン性能に落ちる)。純増5枚で、レア役を引き続ける限り無限に続く。画面にはクレジット残高のゲージが常時表示され、減っていく緊張とレア役での回復の落差が体験の核。平均25G=125枚だが、レア役次第で青天井。
+
+**M13. Graviton モード(派生 / 純増1.6枚 / 1セット50G / 継続率90%)**
+「省電力・高コスパ」を体現した安定型ゾーン。純増は低いものの、1セット50Gと長く、継続率90%という高さで淡々と積み上げる。爆発力はないが安心感があり、**Spot ゾーンの対極**として設計。1セット約80枚で、長時間の安定消化が持ち味。「ARM は静かに強い」という煽りが入る。
+
+**M14. Reserved Instance ゾーン(派生 / ゲーム数保証)**
+RUSH中に当選する「保証」系の恩恵。**1年契約 = +50G保証 / 3年契約 = +150G保証**の2種類があり、契約期間中はヘルスチェックによる終了が発生しない。純増は母体のRUSHに準じる。「前払いすれば安くなるし止まらない」という Reserved Instance の性質そのままで、当選時は契約書にサインする演出が入る。3年契約は激アツ枠。
+
+**M15. CloudFront エッジ上乗せ(上乗せ特化 / 10G)**
+短時間・高純度の上乗せ特化ゾーン。「エッジロケーションからの高速配信」を表現し、10ゲームの間、**1ゲームごとに世界中のエッジロケーションからセット数が飛んでくる**演出になる。平均+2セット、最大+10セット。短くて派手、という特化ゾーンの王道形。
+
+**M16. Kinesis 上乗せストリーム(上乗せ特化 / シャード数依存)**
+上乗せがストリームとして流れてくる特化ゾーン。突入時に **シャード数(1〜10)** が決定され、**シャード数ぶんの上乗せレコードが順に流れてくる**。シャード数が多いほど大量上乗せで、10シャードなら画面が上乗せで埋まる。CloudFront が「時間で区切る」のに対し、こちらは「回数で区切る」設計で、体験の質を差別化。
+
+**M17. Step Functions チャレンジ(擬似ゲーム型 / 分岐選択)**
+唯一のプレイヤー選択が入るモード。液晶にステートマシンの図が表示され、**プレイヤーが Choice State で分岐を選択**しながらステートを進む。Task State ごとに上乗せ、Fail State に落ちれば終了、**Success State 到達で Multi-Region アクティブ・アクティブ突入**という構成。ワークフロー図を進む見た目がそのままゲーム性になっており、AWSネタとして最も「そのまま」なモード。
+
+#### ■ 引き戻し層
+
+**M18. ホットスタンバイ(Multi-AZ)(引き戻し / 10G / 成功率35%)**
+ユーザー要望の引き戻しゾーン。RUSH終了時に必ず突入する。**AZ-a が落ちた状態から AZ-c へのフェイルオーバーを待つ**10ゲームで、成功すればRUSHに復帰。液晶は2つのAZが並ぶ図で、待機系のインスタンスが起動していく様子がゲージで示される。「もう1台動いているから大丈夫」という Multi-AZ の安心感を、引き戻しの期待感に翻訳。RTO内(10G以内)に復旧できるかが焦点。
+
+**M19. Route 53 フェイルオーバー(最終防衛 / 3G / 成功率10%)**
+ホットスタンバイにも失敗した後の、最後の砦。**DNSレベルでの切り替え**を3ゲームで抽選する。成功率は10%と低いものの、ここを通ればRUSHに復帰する。「DNSの伝播を待つ」という体験を、TTLカウントダウン演出として3ゲームで表現。ここを抜けると通常時(Free Tier)に転落。
+
+#### ■ エンディング
+
+**M20. re:Invent キーノートエンディング**
+**差枚 +2222枚到達、または RUSH 15セット到達**で突入する完走エンディング。ラスベガスのキーノート会場が液晶に映り、Kiro とジョージが壇上で新サービスを発表するという流れで、獲得枚数が「発表された新サービス数」として表示される。消化後は全状態がリセットされ Free Tier に戻る。到達難易度は「1日粘れば見られる」程度のカジュアル設定。
+
+---
+
+## 3. 抽選仕様
+
+すべて**そのままJSON化できる形**で記述。実装時は `src/data/` 配下にそのまま配置する。
+
+### 3.1 リール絵柄(シンボル)
+
+**ユーザー確定(2026-08-13): EC2=ベル、IAM=チェリー、S3=スイカ。玉突きでLambda=チャンス目。**
+画像アセットは `docs/IMAGE_PROMPTS.md` のプロンプトでGPT Image 2生成(`assets/symbols/*.png`)。
+
+| ID | 表示 | AWSモチーフ | 役割 | 導入 |
+|---|---|---|---|---|
+| `GHOST7` | 幽霊Kiro+紫の7 | Kiro | ボーナス図柄(BIG)/最強レア役 | MVP |
+| `SHARKBAR` | サメ+BARプレート | ジョージ | ボーナス図柄(REG)/激レア役 | MVP |
+| `BELL` | 金のベル+キューブ紋章と回路模様 | Amazon EC2 | 主要小役(ベル格) | MVP |
+| `CHERRY` | 赤いチェリー+書類/鍵穴アイコン | AWS IAM | レア役(弱/強チェリー) | MVP |
+| `MELON` | スイカ柄バケツ | Amazon S3 | レア役(スイカ格) | MVP |
+| `LAMBDA` | 金のλ+「CHANCE」文字 | AWS Lambda | チャンス目構成図柄 | MVP |
+| `REPLAY` | テーブル+拡縮矢印+「REPLAY」文字 | Amazon DynamoDB | リプレイ(オートスケールで再遊技) | MVP |
+| `BLANK` | 封筒キュー(彩度低めの地味なブランク) | Amazon SQS | ブランク(ハズレ目/保留演出フラグ) | MVP |
+| `REPLAY2` | コンパス×ルーレット+「REPLAY」文字 | Route 53 | リプレイ2(名前解決で再遊技) | Phase 5 |
+| `ALARM` | ベル+赤パルス | CloudWatch | 特殊役(アラーム役) | Phase 5 |
+
+スモールスタートのため、MVPは上8種のみ。Route 53 と CloudWatch はモード拡張フェーズで追加する(リール配列とテーブルへの追加だけで済む構造にする)。
+
+### 3.2 有効ライン
+
+**中段横一直線の1ラインのみ**。カジュアル方針のため、複数ライン・小役取りこぼしは採用しない。`CHERRY` のみ「左リール中段に停止で成立する単独役」として扱う。
+
+### 3.3 小役構成テーブル(通常時 / 3BET)
+
+```json
+{
+  "id": "normal_flags",
+  "bet": 3,
+  "flags": [
+    { "id": "REPLAY",       "name": "リプレイ(DynamoDB)",   "denom": 7.3,  "payout": 3, "rare": false },
+    { "id": "BELL",         "name": "ベル(EC2)",            "denom": 6.0,  "payout": 8, "rare": false },
+    { "id": "WEAK_CHERRY",  "name": "弱チェリー(IAM)",      "denom": 50,   "payout": 2, "rare": true  },
+    { "id": "STRONG_CHERRY","name": "強チェリー(IAM金)",    "denom": 250,  "payout": 2, "rare": true  },
+    { "id": "MELON",        "name": "スイカ(S3)",           "denom": 100,  "payout": 5, "rare": true  },
+    { "id": "CHANCE",       "name": "チャンス目(Lambda)",   "denom": 180,  "payout": 2, "rare": true  },
+    { "id": "SHARK",        "name": "サメ揃い(BAR)",        "denom": 1200, "payout": 3, "rare": true  },
+    { "id": "GHOST",        "name": "ゴースト揃い(幽霊7)",  "denom": 6000, "payout": 0, "rare": true  },
+    { "id": "LOSE",         "name": "ハズレ",               "denom": null, "payout": 0, "rare": false }
+  ]
+}
+```
+
+`denom` は「1/N」の N。`LOSE` は残り確率を自動割当(実装上、合計を1から引く)。
+
+- 弱チェリー=IAM書類が左リールに停止(「Access Granted!」)。強チェリー=金色のIAM書類で、中段まで絡むと強
+- チャンス目=λが停止線上に絡む特殊出目。「関数が呼ばれました」の即発火感を演出で表現し、「429 Too Many Requests」テロップは激アツ時の上位パターンとして使う
+
+**期待払出の検算**: `8×(1/6) + 3×(1/7.3) + 2×(1/50) + 2×(1/250) + 5×(1/100) + 2×(1/180) + 3×(1/1200) ≒ 1.85枚/G`
+→ 通常時のコイン持ち **50枚あたり約43G**(`50 ÷ (3 − 1.85)`)。実機感覚として自然な値。
+
+> このテーブルは**通常時とボーナス入賞待ち**で使う。ボーナス消化中は 3.7 の
+> 「ボーナス中の小役構成テーブル」(ベル約1/1.2 / 15枚)に差し替わる。
+> 通常時のベルは 8枚のまま変更していない。
+
+### 3.4 通常時の内部状態
+
+```json
+{
+  "id": "normal_substates",
+  "states": [
+    { "id": "COLD_START",  "name": "平常リージョン",   "czMultiplier": 1.0, "stage": "stage_cold" },
+    { "id": "WARM_POOL",   "name": "トラフィック急増", "czMultiplier": 2.0, "stage": "stage_warm" },
+    { "id": "PROVISIONED", "name": "War Room 招集",    "czMultiplier": 4.0, "stage": "stage_prov" }
+  ],
+  "upgrade": {
+    "WEAK_CHERRY":    { "WARM_POOL": 0.20, "PROVISIONED": 0.02 },
+    "MELON":          { "WARM_POOL": 0.35, "PROVISIONED": 0.05 },
+    "CHANCE":         { "WARM_POOL": 0.50, "PROVISIONED": 0.10 },
+    "STRONG_CHERRY":  { "WARM_POOL": 0.60, "PROVISIONED": 0.25 }
+  },
+  "downgradePerGame": { "PROVISIONED": 0.03, "WARM_POOL": 0.02 },
+  "ceiling": { "games": 30, "name": "Auto Recovery", "action": "FORCE_CZ" }
+}
+```
+
+### 3.5 CZ当選抽選(通常時・Cold Start基準)
+
+```json
+{
+  "id": "cz_entry",
+  "note": "確率は czMultiplier を乗算して適用",
+  "table": {
+    "WEAK_CHERRY":   { "cz": 0.03, "bonus": 0.00,  "direct_at": 0.00 },
+    "MELON":         { "cz": 0.08, "bonus": 0.00,  "direct_at": 0.00 },
+    "CHANCE":        { "cz": 0.15, "bonus": 0.01,  "direct_at": 0.00 },
+    "STRONG_CHERRY": { "cz": 0.30, "bonus": 0.05,  "direct_at": 0.00 },
+    "SHARK":         { "cz": 0.80, "bonus": 0.00,  "direct_at": 0.20 },
+    "GHOST":         { "cz": 0.00, "bonus": 1.00,  "direct_at": 0.00 }
+  }
+}
+```
+
+**総合初当り(CZ経由でボーナス到達)の概算**: レア役合計出現率 ≒ 1/33、平均CZ当選率 ≒ 8%、平均CZ突破率 ≒ 42% → **約 1/98G でボーナス、約 1/180G で AT 初当り**。カジュアル方針として十分甘い水準。
+
+### 3.6 CZ振り分けと突破率
+
+```json
+{
+  "id": "cz_types",
+  "distribution": { "CW_ALARM": 0.60, "TRUSTED_ADVISOR": 0.30, "WELL_ARCHITECTED": 0.10 },
+  "specs": [
+    { "id": "CW_ALARM",         "name": "CloudWatch アラートCZ",   "games": 5,  "successRate": 0.30,
+      "bonusDist": { "LAMBDA_REG": 0.70, "S3_BIG": 0.25, "DYNAMO_BIG": 0.05 } },
+    { "id": "TRUSTED_ADVISOR",  "name": "Trusted Advisor CZ",      "games": 7,  "successRate": 0.50,
+      "bonusDist": { "LAMBDA_REG": 0.40, "S3_BIG": 0.45, "DYNAMO_BIG": 0.15 } },
+    { "id": "WELL_ARCHITECTED", "name": "Well-Architected CZ",     "games": 10, "successRate": 0.75,
+      "bonusDist": { "LAMBDA_REG": 0.05, "S3_BIG": 0.55, "DYNAMO_BIG": 0.40 } }
+  ]
+}
+```
+
+### 3.7 ボーナス仕様
+
+**変更履歴: 2026-08-13 ユーザー決定** — BIG 50G→**15G** / REG 30G→**6G**、
+固定純増方式を撤去して **「ボーナス中はベルが約1/1.2で揃い、1回15枚」** 方式へ変更、
+さらに **入賞待ち(BONUS_READY)を新設**して「揃えろ!」の手順を挟むようにした。
+旧値は `src/data/modes.js` の `BONUS_SPECS.originalSpecs` に保持している。
+
+```json
+{
+  "id": "bonus_specs",
+  "specs": [
+    { "id": "LAMBDA_REG", "name": "Lambda REG BONUS", "type": "games",
+      "games": 6, "atRate": 0.30, "dcBonus": 0,
+      "entrySymbol": "SHARKBAR", "entryLabel": "サメBAR",
+      "onAtFail": { "nextSubState": "WARM_POOL" } },
+
+    { "id": "S3_BIG", "name": "S3 BIG BONUS", "type": "games",
+      "games": 15, "atRate": 1.00, "dcBonus": 0,
+      "entrySymbol": "GHOST7", "entryLabel": "ゴースト7",
+      "dcInitDist": { "1": 0.35, "2": 0.40, "3": 0.20, "4": 0.05 } },
+
+    { "id": "DYNAMO_BIG", "name": "DynamoDB BIG BONUS", "type": "set",
+      "setGames": 15, "continueRate": 0.70, "atRate": 1.00, "dcBonus": 2,
+      "entrySymbol": "GHOST7", "entryLabel": "ゴースト7",
+      "dcInitDist": { "3": 0.50, "4": 0.35, "5": 0.15 } }
+  ]
+}
+```
+
+#### ボーナス中の小役構成テーブル(3BET)
+
+ボーナス滞在中は 3.3 の通常時テーブルではなく、こちらを引く
+(モードハンドラの `flagTable: 'BONUS'` 宣言でテーブルが切り替わる)。
+**ベルの払出15枚はボーナス中だけ**で、通常時のベルは8枚のまま変わらない。
+
+```json
+{
+  "id": "bonus_flags",
+  "bet": 3,
+  "flags": [
+    { "id": "BELL",         "denom": 1.2,  "payout": 15, "rare": false },
+    { "id": "REPLAY",       "denom": 20,   "payout": 3,  "rare": false },
+    { "id": "WEAK_CHERRY",  "denom": 50,   "payout": 2,  "rare": true  },
+    { "id": "STRONG_CHERRY","denom": 250,  "payout": 2,  "rare": true  },
+    { "id": "MELON",        "denom": 100,  "payout": 5,  "rare": true  },
+    { "id": "CHANCE",       "denom": 180,  "payout": 2,  "rare": true  },
+    { "id": "SHARK",        "denom": 1200, "payout": 3,  "rare": true  },
+    { "id": "GHOST",        "denom": 6000, "payout": 0,  "rare": true  },
+    { "id": "LOSE",         "denom": null, "payout": 0,  "rare": false }
+  ]
+}
+```
+
+レア役は**通常時と同じ確率**で残してある。Lambda REG 中のレア役=AT当選期待度の示唆、
+という遊び方(2.2 M05)を殺さないための意図的な設計。
+
+**期待払出の検算**: `15×(1/1.2) + 3×(1/20) + 2×(1/50) + 2×(1/250) + 5×(1/100) + 2×(1/180) + 3×(1/1200) ≒ 12.76枚/G`
+→ 純増 ≒ **9.76枚/G**。S3 BIG(15G)≒ 146枚 / Lambda REG(6G)≒ 59枚 / DynamoDB BIG ≒ 146枚/セット。
+
+#### ボーナス入賞待ち(BONUS_READY)
+
+```json
+{
+  "id": "bonus_ready",
+  "flagTable": "NORMAL",
+  "bet": 3,
+  "targetSymbol": { "S3_BIG": "GHOST7", "DYNAMO_BIG": "GHOST7", "LAMBDA_REG": "SHARKBAR" },
+  "rule": "小役成立ゲームは小役優先(揃わない)。ハズレのゲームだけ対応図柄を引き込んで中段に揃える",
+  "note": "通常時のハズレ確率 ≒ 0.63 なので、平均 1/0.63 ≒ 1.6G で入賞する"
+}
+```
+
+実装上は、モードハンドラが `reelTargetFor(state, flag)` を返すと
+`game/reelctrl.js` の引き込み目標(6.4 の `TARGET_SYMBOL`)が差し替わる仕組みになっている。
+`ModeMachine` の入口ゲート(`ENTRY_GATE = { BONUS: 'BONUS_READY' }`)により、
+CZ突破・直撃・前兆明けなど**どの当選経路から来ても必ず入賞待ちを経由**する。
+
+### 3.8 Auto Scaling RUSH のコア数値(本機の心臓部)
+
+```json
+{
+  "id": "as_rush_core",
+  "setGames": 20,
+  "dcRange": { "min": 1, "max": 8 },
+  "payoutPerGame":  { "1": 1.0, "2": 1.4, "3": 1.8, "4": 2.2, "5": 2.6, "6": 3.0, "7": 3.4, "8": 3.8 },
+  "continueRate":   { "1": 0.50, "2": 0.60, "3": 0.70, "4": 0.78, "5": 0.84, "6": 0.88, "7": 0.91, "8": 0.93 },
+  "scaleOut": {
+    "WEAK_CHERRY":   0.10,
+    "MELON":         0.25,
+    "CHANCE":        0.35,
+    "STRONG_CHERRY": 0.60,
+    "SHARK":         1.00,
+    "GHOST":         1.00
+  },
+  "note": "純増と継続率を単一パラメータ DC が兼ねる。台数が増える=速くなる+落ちにくくなる。"
+}
+```
+
+**設計意図**: 純増テーブルと継続率テーブルを**同じ添字(DC)で引く**ことで、プレイヤーは「インスタンスアイコンの数」だけを見ていればゲームの状況を完全に把握できる。数値の暗記も設定推測も不要という、カジュアル方針の中核。
+
+**楽しさの軸(2026-08-13 ユーザー補足)**: 実機は長く続くと現金が増えるから楽しいが、本作は出玉が現金にならない。
+したがって **単調に長いのは面白くない**。RUSHの評価軸は「何セット続いたか」ではなく
+**DC(純増/G)がどこまで育ったか**に完全に寄せる。
+- 純増は DC1=3枚 → DC8=28枚。1段上がるだけで露骨に速くなる刻みにする
+- スケールアウトはレア役限定をやめ、**ベル(0.72)・リプレイ(0.38)でも発生**させる。
+  実測で **RUSH 6.6ゲームに1回**は台数が動く = 見せ場が常にある
+- ただし `scaleOutDcFactor` で高DCほど渋くする。DC8到達は8.3%のセッションに絞り「狙える夢」として残す
+- 強いレア役は **DC+2**(ダブルスケールアウト)。上乗せゾーンの報酬も原則 DC+1 か枚数
+- `bellBoost` で高DC帯のベルを跳ねさせ、等速消化にならない小さな波を作る
+
+**平均出玉の概算**: DC=2 スタート、スケールアウト込みの平均滞在 ≒ 4.5セット × 20G × 平均純増2.0枚 ≒ **180枚**。ここに派生ゾーン当選ぶんが上乗せされ、実効平均は **250〜300枚** 程度になる想定。
+
+### 3.9 RUSH中の派生ゾーン当選抽選
+
+```json
+{
+  "id": "rush_derived_entry",
+  "trigger": "on_rare_flag",
+  "table": {
+    "MELON":         { "CLOUDFRONT": 0.05, "KINESIS": 0.03 },
+    "CHANCE":        { "CLOUDFRONT": 0.08, "KINESIS": 0.05, "GRAVITON": 0.03 },
+    "STRONG_CHERRY": { "CLOUDFRONT": 0.15, "KINESIS": 0.10, "EC2_BURST": 0.08, "RESERVED": 0.05 },
+    "SHARK":         { "SPOT_ZONE": 0.40, "EC2_BURST": 0.30, "KINESIS": 0.20, "STEP_FUNCTIONS": 0.10 },
+    "GHOST":         { "STEP_FUNCTIONS": 0.50, "SPOT_ZONE": 0.30, "SERVERLESS_UP": 0.20 }
+  },
+  "onSetEnd": {
+    "note": "セット継続成功時、5セット連続成功で SERVERLESS_RUSH へ昇格",
+    "SERVERLESS_UP_AT_STREAK": 5
+  }
+}
+```
+
+### 3.10 派生ゾーン各仕様
+
+```json
+{
+  "id": "derived_zone_specs",
+  "specs": [
+    { "id": "SPOT_ZONE", "name": "Spot インスタンスゾーン",
+      "payoutPerGame": 8, "minGames": 15,
+      "interruptDenom": 30, "graceGames": 2,
+      "note": "毎G 1/30 で中断通知 → 2G後に強制終了。最低15G保証。平均約30G" },
+
+    { "id": "EC2_BURST", "name": "EC2 バーストモード",
+      "payoutPerGame": 5, "creditInit": 100, "creditPerGame": -4,
+      "creditRecover": { "WEAK_CHERRY": 10, "MELON": 20, "CHANCE": 25, "STRONG_CHERRY": 40, "SHARK": 100 },
+      "note": "クレジット0で終了。平均約25G、レア役次第で青天井" },
+
+    { "id": "GRAVITON", "name": "Graviton モード",
+      "payoutPerGame": 1.6, "setGames": 50, "continueRate": 0.90,
+      "note": "低純増・高継続・長セット。Spot の対極" },
+
+    { "id": "RESERVED", "name": "Reserved Instance ゾーン",
+      "contractDist": { "1year": 0.80, "3year": 0.20 },
+      "guaranteeGames": { "1year": 50, "3year": 150 },
+      "note": "契約期間中はヘルスチェックによる終了が発生しない" },
+
+    { "id": "CLOUDFRONT", "name": "CloudFront エッジ上乗せ",
+      "games": 10, "addSetPerGameDist": { "0": 0.55, "1": 0.30, "2": 0.10, "3": 0.04, "5": 0.01 },
+      "note": "平均+2セット、最大+10セット" },
+
+    { "id": "KINESIS", "name": "Kinesis 上乗せストリーム",
+      "shardDist": { "1": 0.30, "2": 0.25, "3": 0.18, "4": 0.12, "5": 0.08, "6": 0.04, "8": 0.02, "10": 0.01 },
+      "addSetPerShardDist": { "1": 0.60, "2": 0.30, "3": 0.08, "5": 0.02 },
+      "note": "シャード数ぶんの上乗せレコードが順に流れる" },
+
+    { "id": "STEP_FUNCTIONS", "name": "Step Functions チャレンジ",
+      "maxStates": 8, "playerChoice": true,
+      "taskSuccessRate": 0.70, "addSetPerTask": 1,
+      "onAllClear": "MULTI_REGION",
+      "note": "唯一のプレイヤー選択モード。全制覇で最上位へ" }
+  ]
+}
+```
+
+### 3.11 上位AT仕様
+
+```json
+{
+  "id": "upper_at_specs",
+  "specs": [
+    { "id": "SERVERLESS_RUSH", "name": "Serverless RUSH",
+      "setGames": 20, "payoutPerGame": 4.0, "continueRate": 0.80,
+      "upgradeTo": "MULTI_REGION", "upgradeFlag": "GHOST", "upgradeRate": 1.00 },
+
+    { "id": "MULTI_REGION", "name": "Multi-Region アクティブ・アクティブ",
+      "setGames": 20, "payoutPerGame": 6.0, "continueRate": 0.85,
+      "allRareAddSet": true, "addSetPerRare": 1 }
+  ]
+}
+```
+
+### 3.12 引き戻し層
+
+```json
+{
+  "id": "recovery_specs",
+  "chain": ["HOT_STANDBY", "ROUTE53_FAILOVER"],
+  "specs": [
+    { "id": "HOT_STANDBY", "name": "ホットスタンバイ (Multi-AZ)",
+      "games": 10, "successRate": 0.35, "onSuccess": "RESUME_PREVIOUS_AT",
+      "resumeDc": 2, "onFail": "ROUTE53_FAILOVER" },
+
+    { "id": "ROUTE53_FAILOVER", "name": "Route 53 フェイルオーバー",
+      "games": 3, "successRate": 0.10, "onSuccess": "RESUME_PREVIOUS_AT",
+      "resumeDc": 1, "onFail": "FREE_TIER" }
+  ],
+  "note": "引き戻し総合成功率 = 0.35 + 0.65×0.10 ≒ 41.5%"
+}
+```
+
+### 3.13 エンディング条件
+
+```json
+{
+  "id": "ending",
+  "conditions": [
+    { "type": "diffCoins", "threshold": 2222 },
+    { "type": "atSetCount", "threshold": 15 }
+  ],
+  "mode": "REINVENT_ED",
+  "games": 30,
+  "payoutPerGame": 3,
+  "afterEnding": "FREE_TIER_RESET"
+}
+```
+
+### 3.14 モード移行表(実装用サマリ)
+
+```json
+{
+  "id": "mode_transitions",
+  "transitions": [
+    { "from": "FREE_TIER",        "on": "cz_win",        "to": "CZ_*" },
+    { "from": "FREE_TIER",        "on": "ceiling_999",   "to": "CZ_WELL_ARCHITECTED" },
+    { "from": "CZ_*",             "on": "success",       "to": "BONUS_READY" },
+    { "from": "CZ_*",             "on": "fail",          "to": "FREE_TIER" },
+    { "from": "BONUS_READY",      "on": "symbol_hit",    "to": "BONUS_*" },
+    { "from": "BONUS_LAMBDA_REG", "on": "end_at_win",    "to": "AS_RUSH" },
+    { "from": "BONUS_LAMBDA_REG", "on": "end_at_lose",   "to": "FREE_TIER" },
+    { "from": "BONUS_S3_BIG",     "on": "end",           "to": "AS_RUSH" },
+    { "from": "BONUS_DYNAMO_BIG", "on": "end",           "to": "AS_RUSH" },
+    { "from": "AS_RUSH",          "on": "derived_win",   "to": "ZONE_*" },
+    { "from": "AS_RUSH",          "on": "streak_5",      "to": "SERVERLESS_RUSH" },
+    { "from": "AS_RUSH",          "on": "healthcheck_fail_dc0", "to": "HOT_STANDBY" },
+    { "from": "ZONE_*",           "on": "end",           "to": "RETURN_TO_PARENT" },
+    { "from": "SERVERLESS_RUSH",  "on": "ghost",         "to": "MULTI_REGION" },
+    { "from": "SERVERLESS_RUSH",  "on": "set_fail",      "to": "HOT_STANDBY" },
+    { "from": "MULTI_REGION",     "on": "set_fail",      "to": "HOT_STANDBY" },
+    { "from": "HOT_STANDBY",      "on": "success",       "to": "RESUME_PREVIOUS_AT" },
+    { "from": "HOT_STANDBY",      "on": "fail",          "to": "ROUTE53_FAILOVER" },
+    { "from": "ROUTE53_FAILOVER", "on": "success",       "to": "RESUME_PREVIOUS_AT" },
+    { "from": "ROUTE53_FAILOVER", "on": "fail",          "to": "FREE_TIER" },
+    { "from": "*",                "on": "ending_cond",   "to": "REINVENT_ED" },
+    { "from": "REINVENT_ED",      "on": "end",           "to": "FREE_TIER" }
+  ]
+}
+```
+
+---
+
+## 4. 1ゲームの流れ(内部シーケンス)
+
+### 4.1 シーケンス図
+
+```
+[プレイヤー]        [GameFlow SM]         [Lottery]        [StagingDirector]      [Reels]
+     │                    │                    │                   │                 │
+     │─ MAX BET ─────────>│                    │                   │                 │
+     │                    │ IDLE → BET         │                   │                 │
+     │                    │ クレジット -3       │                   │                 │
+     │                    │ emit("bet")────────────────────────────>│ (BET音)         │
+     │                    │ BET → READY        │                   │                 │
+     │                    │                    │                   │                 │
+     │─ レバーON ────────>│                    │                   │                 │
+     │                    │ ① 乱数取得         │                   │                 │
+     │                    │ ② 小役抽選 ───────>│                   │                 │
+     │                    │      <─ flag ──────│                   │                 │
+     │                    │ ③ モード別上位抽選 >│                   │                 │
+     │                    │      <─ result ────│                   │                 │
+     │                    │ ④ StagingContext 構築                  │                 │
+     │                    │ emit("leverOn", ctx) ─────────────────>│                 │
+     │                    │                    │       ⑤ シナリオ抽選 (weight)       │
+     │                    │                    │       ⑥ Timeline.play()             │
+     │                    │                    │       ⑦ レバオン演出発火 ★          │
+     │                    │ ⑧ リール加速 ──────────────────────────────────────────>│
+     │                    │ READY → SPINNING   │                   │                 │
+     │                    │                    │                   │      定速回転    │
+     │                    │                    │                   │                 │
+     │─ 停止ボタン1 ─────>│ ⑨ 停止制御 (最大4コマ滑り) ───────────────────────────>│
+     │                    │ emit("stop1") ────────────────────────>│ 第1停止演出 ★    │
+     │─ 停止ボタン2 ─────>│ (同様)              │                   │ 第2停止演出 ★    │
+     │─ 停止ボタン3 ─────>│ (同様)              │                   │ 第3停止演出 ★    │
+     │                    │ SPINNING → JUDGE   │                   │                 │
+     │                    │                    │                   │                 │
+     │                    │ ⑩ 入賞判定          │                   │                 │
+     │                    │ emit("judge", win) ───────────────────>│ 停止形演出 ★     │
+     │                    │ JUDGE → PAYOUT     │                   │                 │
+     │                    │ ⑪ 払出アニメ (1枚ずつ加算 + 音)        │                 │
+     │                    │ emit("payoutEnd") ────────────────────>│                 │
+     │                    │ PAYOUT → TRANSITION│                   │                 │
+     │                    │                    │                   │                 │
+     │                    │ ⑫ ModeSM.update()  │                   │                 │
+     │                    │    (G数消化/セット末判定/モード遷移)     │                 │
+     │                    │ emit("modeEnter", newMode) ───────────>│ モード遷移演出 ★ │
+     │                    │ TRANSITION → IDLE  │                   │                 │
+```
+
+### 4.2 演出システムの割り込みポイント(★)
+
+| # | イベント名 | タイミング | 演出システムが行うこと |
+|---|---|---|---|
+| 1 | `bet` | BET成立時 | BET音、筐体電飾の点灯 |
+| 2 | `leverOn` | レバーON直後(**抽選完了後**) | **シナリオ抽選+Timeline開始**。フリーズ/フラッシュ/液晶演出開始/キャラ登場 |
+| 3 | `stop1` `stop2` `stop3` | 各リール停止時 | ステップアップ演出の進行、カットイン、リールロック、テンパイ音 |
+| 4 | `judge` | 入賞判定後 | 停止形演出(チャンス目のフラッシュ、レア役の告知) |
+| 5 | `payoutStart` / `payoutEnd` | 払出アニメ前後 | 払出音、大量獲得時のファンファーレ |
+| 6 | `modeEnter` / `modeExit` | モード遷移時 | 突入演出、ステージチェンジ、BGM切替、エンディング |
+| 7 | `setEnd` | ATセット終了時 | ヘルスチェック演出(継続/非継続の告知) |
+| 8 | `paramChange` | DC変動・クレジット変動時 | スケールアウト演出、ゲージ更新 |
+
+**重要な設計原則**: 演出システムは**抽選結果を先に知った上で**シナリオを選ぶ。これによりガセ演出(結果がハズレでも当たり演出を出す)が自然に実現でき、`expectation`(期待度%)をシナリオ選択の重みに使うだけで、演出の熱量と実際の期待度を一致させられる。演出側からゲーム状態を変更することは**一切禁止**(一方向依存)とし、演出を差し替えてもゲームバランスが壊れないことを保証する。
+
+---
+
+## 5. 画面構成
+
+### 5.1 論理解像度とスケーリング
+
+- **論理解像度: 720 × 1080 px**(`sample.png` の 1086×1448 と縦横比がほぼ一致)
+- ビューポートに対して `min(vw/720, vh/1080)` でCSS `transform: scale()` によりフィット
+- Canvas は `devicePixelRatio` を掛けた実解像度でバックバッファを確保し、CSSサイズは論理値のままにして高DPI対応
+
+### 5.2 レイアウト(座標は論理px)
+
+```
+┌────────────────────────────────────────────┐ 0
+│  ┌──────────┐              ┌──────────┐    │
+│  │ 左電飾    │  ┌────────┐  │ 右電飾    │    │
+│  │(CSS光る)  │  │        │  │(CSS光る)  │    │
+│  │          │  │  LCD   │  │          │    │
+│  │          │  │ 演出   │  │          │    │  LCD: (140, 60) 440×300
+│  │          │  │ エリア │  │          │    │
+│  │          │  └────────┘  │          │    │
+│  │          │  ┌────────┐  │          │    │  ロゴ帯: (140, 375) 440×45
+│  │          │  │ AWSLOT │  │          │    │
+│  │          │  └────────┘  │          │    │
+│  │          │ ┌──┬──┬──┐   │          │    │
+│  │          │ │R1│R2│R3│   │          │    │  リール窓: (180, 440) 360×180
+│  │          │ └──┴──┴──┘   │          │    │  各リール120幅 / 1コマ60px / 3段
+│  └──────────┘              └──────────┘    │
+│     ┌───────────────────────────┐          │
+│  ⬤  │CREDIT │ COUNT │ PAYOUT   │    ⌐     │  HUD: (180, 630) 360×60
+│ MAX │  50   │  777  │   15     │    │      │  MAXBET: (110,645) r=32
+│ BET └───────────────────────────┘    │レバー│  レバー: (620, 655)〜(650, 770)
+│         ⬤    ⬤    ⬤                 ●     │  停止ボタン: y=730, x=250/360/470
+│        停止  停止  停止                     │
+│  ┌────────────────────────────────────┐    │
+│  │      下部パネル (AWSLOT + キャラ)    │    │  パネル: (100, 800) 520×200
+│  └────────────────────────────────────┘    │
+└────────────────────────────────────────────┘ 1080
+```
+
+### 5.3 描画レイヤー構成(下 → 上)
+
+| z | レイヤー | 実装 | 内容 |
+|---|---|---|---|
+| 0 | `cabinet-bg` | DOM/CSS | 背景(ホールのボケ背景)、紫の筐体フレーム、金属フチ |
+| 1 | `cabinet-lamp` | DOM/CSS | 左右の電飾(CSS `@keyframes` で点滅/流れ)。演出から `class` 付替で制御 |
+| 2 | **`lcd`** | **Canvas 440×300** | 液晶。内部でさらに5サブレイヤーを持つ(5.4) |
+| 3 | `panel` | DOM/CSS | AWSLOTロゴ帯、下部パネル |
+| 4 | **`reels`** | **Canvas 360×180** | 3リールの回転描画 |
+| 5 | **`reelfx`** | **Canvas 360×180** | リール上の光、ロックエフェクト、入賞ライン発光 |
+| 6 | **`hud`** | **Canvas 360×60** | CREDIT / COUNT / PAYOUT の7セグ表示 |
+| 7 | `controls` | DOM/CSS | MAX BETボタン、停止ボタン×3、レバー(クリック/タップ/キーボード対応) |
+| 8 | **`overlay`** | **Canvas 720×1080** | **全画面演出専用**。フラッシュ、カットイン、フリーズ、モード突入、エンディング |
+
+**Canvas 5枚 + DOM のハイブリッド構成**を採用する。
+
+### 5.4 LCD内部のサブレイヤー(`lcd` Canvas 内での描画順)
+
+| 順 | サブレイヤー | 内容 |
+|---|---|---|
+| 1 | `stage` | ステージ背景(モードごとに変わる。Cold Start/Warm Pool/RUSH/各ゾーン) |
+| 2 | `bgObject` | 背景オブジェクト(流れる雲、データストリーム、リージョンマップ) |
+| 3 | `char` | **Kiro / ジョージのキャラ描画** |
+| 4 | `fgEffect` | 前景エフェクト(パーティクル、コイン、稲妻) |
+| 5 | `ui` | 液晶内UI(残ゲーム数、DCアイコン列、クレジットゲージ、セット数、上乗せ表示) |
+
+### 5.5 物理配置と演出の関係
+
+液晶(z=2)とリール(z=4)は**物理的に別の領域**にあり、通常は重ならない。全画面カットインやフラッシュは `overlay`(z=8)が担当し、筐体全体を覆う。この分離により「液晶演出中もリールは普通に見える」という実機の感覚が再現される。
+
+---
+
+## 6. 技術設計
+
+### 6.1 基本方針
+
+| 項目 | 決定 |
+|---|---|
+| ビルド | **なし**。ESモジュール(`<script type="module">`)を直接ロード |
+| 外部ライブラリ | **なし**。すべて自前実装 |
+| 描画 | Canvas 2D(5枚)+ DOM/CSS(筐体・ボタン) |
+| 絵柄アセット | **GPT Image 2で生成したPNG**(`assets/symbols/*.png`、`docs/IMAGE_PROMPTS.md` 参照)。未生成時はプロシージャル描画フォールバック |
+| 音 | Web Audio API(効果音を合成生成)+ 事前生成MP3(キャラ音声) |
+| 起動 | ESモジュールのCORS制約のため `python3 -m http.server` 等の静的サーバ経由を推奨 |
+| 対象 | デスクトップChrome/Safari優先、タッチ操作も対応 |
+
+### 6.2 ファイル構成案
+
+```
+awslot/
+├── index.html
+├── style.css                       筐体・ボタン・電飾のCSS
+├── README.md
+├── docs/
+│   ├── DESIGN.md                   本設計書
+│   ├── IDEAS.md                    演出ネタカタログ(ひなた)
+│   ├── IMAGE_PROMPTS.md            絵柄画像生成プロンプト(るな)
+│   └── sample.png                  筐体参考画像
+├── assets/
+│   ├── symbols/                    リール絵柄PNG(GPT Image 2生成、10種)
+│   ├── chars/                      立ち絵PNG(カットイン用、任意)
+│   └── voices/
+│       ├── manifest.json           音声ファイル ⇔ テキストの対応表
+│       ├── kiro/                   kiro_XX.mp3
+│       └── george/                 george_XX.mp3
+├── scripts/
+│   └── generate-voices.mjs         Aivis Cloud 一括生成(Node、ローカル実行)
+└── src/
+    ├── main.js                     エントリポイント・初期化・ゲームループ起動
+    │
+    ├── engine/                     ゲーム非依存の基盤
+    │   ├── loop.js                 requestAnimationFrame ループ(固定dt)
+    │   ├── input.js                キーボード / クリック / タッチの正規化
+    │   ├── rng.js                  シード付き乱数(デバッグ再現用)
+    │   ├── eventbus.js             pub/sub。演出システムの中核
+    │   ├── timeline.js             演出タイムライン実行器
+    │   ├── layers.js               Canvasレイヤー管理・DPR対応
+    │   ├── assets.js               画像アセットローダ(PNG読込+フォールバック管理)
+    │   ├── audio.js                Web Audio 初期化・SFX合成
+    │   └── voice.js                音声ファイルのロード・再生
+    │
+    ├── game/                       ゲームロジック(描画を一切知らない)
+    │   ├── flow.js                 GameFlow ステートマシン(1ゲームの進行)
+    │   ├── modemachine.js          Mode ステートマシン(滞在モード)
+    │   ├── lottery.js              抽選エンジン(テーブル駆動)
+    │   ├── reelctrl.js             リール停止制御(引き込みロジック)
+    │   ├── payout.js               入賞判定・払出計算
+    │   ├── credit.js               クレジット・差枚管理
+    │   └── modes/                  モードごとの継続管理ロジック
+    │       ├── freetier.js
+    │       ├── cz.js
+    │       ├── bonus.js
+    │       ├── asrush.js           DC管理・ヘルスチェック
+    │       ├── zones.js            派生ゾーン共通(Spot/Burst/Graviton他)
+    │       ├── recovery.js         ホットスタンバイ / Route53
+    │       └── ending.js
+    │
+    ├── data/                       ★すべてデータ定義(JSONライクなJSモジュール)
+    │   ├── symbols.js              絵柄定義(PNGパスとフォールバック描画の対応)
+    │   ├── reelstrips.js           リール配列(21コマ×3)
+    │   ├── payouts.js              配当表
+    │   ├── flags.js                小役確率テーブル(3.3節)
+    │   ├── modes.js                モード定義(3.7〜3.13節)
+    │   ├── transitions.js          モード移行表(3.14節)
+    │   ├── sfx-presets.js          Web Audio 効果音プリセット
+    │   └── scenarios/              ★演出シナリオ定義(IDEAS.mdの合流地点)
+    │       ├── index.js            全シナリオの集約
+    │       ├── normal.js
+    │       ├── cz.js
+    │       ├── bonus.js
+    │       ├── rush.js
+    │       └── premium.js
+    │
+    ├── staging/                    演出システム
+    │   ├── director.js             シナリオ抽選・Timeline投入
+    │   ├── actions.js              演出アクションの実装レジストリ
+    │   └── anims/                  個別アニメーション実装
+    │       ├── lcdanims.js
+    │       ├── cutins.js
+    │       └── particles.js
+    │
+    └── render/                     描画
+        ├── cabinet.js              筐体・電飾の制御(DOM操作)
+        ├── reelview.js             リールCanvas描画
+        ├── lcd.js                  液晶Canvas描画(サブレイヤー合成)
+        ├── hud.js                  7セグ描画
+        ├── overlay.js              全画面演出Canvas描画
+        ├── symbols-draw.js         絵柄のオフスクリーン事前準備(PNG読込→リサイズ、フォールバック描画)
+        └── chars/                  キャラ描画
+            ├── kiro.js
+            └── george.js
+```
+
+**依存方向の原則**: `game/` は `render/` と `staging/` を**一切importしない**。逆方向のみ許可。この一方向依存により、演出を全部外してもゲームが完全に動作し、テストとデバッグが容易になる。
+
+### 6.3 ステートマシン設計(2層分離)
+
+**なぜ2層に分けるのか**: 1ゲームの進行手順(レバーON→停止→払出)は、どのモードにいても完全に同一。一方、抽選内容と継続管理はモードごとに全く異なる。これを1つのステートマシンに混ぜると、モードを1つ追加するたびに進行ロジックに分岐が増え、20モードで破綻する。
+
+#### 第1層: GameFlow ステートマシン
+
+```js
+// src/game/flow.js
+const FLOW_STATES = {
+  IDLE:       { next: "BET",        on: "insertBet"   },
+  BET:        { next: "READY",      on: "betComplete" },
+  READY:      { next: "SPINNING",   on: "leverOn"     },  // ここで全抽選が完了する
+  SPINNING:   { next: "JUDGE",      on: "allStopped"  },
+  JUDGE:      { next: "PAYOUT",     on: "judged"      },
+  PAYOUT:     { next: "TRANSITION", on: "payoutEnd"   },
+  TRANSITION: { next: "IDLE",       on: "transitionEnd" },
+};
+```
+
+各状態は `enter(ctx)` / `update(dt, ctx)` / `exit(ctx)` を持ち、遷移時に `EventBus` へイベントを発火する。
+
+#### 第2層: Mode ステートマシン
+
+```js
+// src/game/modemachine.js
+// モードは「データ定義 + 少量のロジックハンドラ」で表現する
+{
+  id: "AS_RUSH",
+  name: "Auto Scaling RUSH",
+  type: "AT",
+  stage: "stage_rush",
+  bgm: "bgm_rush",
+
+  onEnter(state, params) {
+    state.dc = params.dc ?? 1;
+    state.setGames = 20;
+    state.remaining = 20;
+    state.setCount = 0;
+    state.streak = 0;
+  },
+
+  onGame(state, flag, lotteryResult) {
+    state.remaining--;
+    if (lotteryResult.scaleOut) state.dc = Math.min(8, state.dc + 1);
+    return { payout: AS_RUSH_PAYOUT[state.dc] };
+  },
+
+  onSetEnd(state, rng) {
+    const rate = AS_RUSH_CONTINUE[state.dc];
+    if (rng.chance(rate)) { state.setCount++; state.streak++; state.remaining = 20; return "CONTINUE"; }
+    state.dc--;
+    if (state.dc <= 0) return "EXIT";
+    state.remaining = 20;
+    return "DEGRADED";   // 縮退運転で継続
+  },
+
+  next: { EXIT: "HOT_STANDBY", ENDING: "REINVENT_ED" },
+}
+```
+
+**モード追加のコスト**: 新しいモードを1つ足すのは、`src/data/modes.js` にオブジェクトを1つ追加し、必要なら `src/game/modes/` にハンドラを書くだけ。進行ロジックには一切手を入れない。「モードをたくさん作りたい」という要望に対する構造的な回答がこれ。
+
+#### モードスタック
+
+派生ゾーン(CloudFront上乗せ等)は**親モードの上に積まれる**ため、`ModeMachine` は単一の現在モードではなく**スタック**を保持する。
+
+```js
+modeStack = ["AS_RUSH", "CLOUDFRONT"];  // CloudFront終了時に AS_RUSH へ自動復帰
+```
+
+これにより `RETURN_TO_PARENT` 遷移が自然に実装でき、ゾーンの入れ子(RUSH中にゾーン、ゾーン中に上乗せ)も破綻しない。
+
+### 6.4 Canvas リール描画方式
+
+#### データ表現
+
+```js
+// src/data/reelstrips.js
+// 21コマ / リール。配列の index 0 が基準位置。MVPは8絵柄構成。
+export const REEL_STRIPS = [
+  // 左リール
+  ["BLANK","BELL","REPLAY","GHOST7","BELL","BLANK","MELON","REPLAY","BELL","CHERRY","BLANK",
+   "SHARKBAR","BELL","REPLAY","BLANK","BELL","MELON","REPLAY","LAMBDA","BELL","CHERRY"],
+  // 中リール・右リール(同様に21コマ)
+];
+```
+
+**配列制約**: 最大4コマ滑りで必ず引き込めるよう、**`BELL` と `REPLAY` は連続する5コマ窓のどこかに必ず1つ以上存在すること**。この制約はユニットテストで検証する(テスト作成は yui-debugger へ)。
+
+#### 回転と描画
+
+```js
+// リールの論理状態
+{
+  position: 12.37,     // 0〜21 の float。中段に表示されるコマの位置
+  speed: 0,            // コマ/秒。定速時は 21コマ/0.8秒 ≒ 26.25
+  state: "SPINNING",   // ACCEL / SPINNING / STOPPING / STOPPED
+}
+```
+
+- **1コマ = 60px**、リール窓は3段表示(180px)。**上下に1コマずつ余分に描画**して5コマ分をクリッピング内に描く
+- 描画位置: `y = -((position % 1) * 60) - 60` を起点に、5コマぶんループして `drawImage`
+- **絵柄はPNGアセット**(`assets/symbols/*.png`、1024×1024)を起動時に読み込み、`symbols-draw.js` でオフスクリーンCanvasに 120×60px へリサイズキャッシュ。毎フレームは `drawImage` のみで完結。**PNG未生成の絵柄はプロシージャル描画でフォールバック**し、画像が揃う前でも開発・プレイ可能にする
+- **モーションブラー**: `speed` が閾値超のとき、同じ絵柄を `globalAlpha = 0.35` で上下に ±20px オフセットして3回描画。これだけで実機的な残像感が出る。速度に応じてオフセット量を線形補間
+
+#### 停止制御(引き込み)
+
+```js
+// src/game/reelctrl.js
+function decideStopPosition(reelIndex, pressedPos, flag) {
+  const strip = REEL_STRIPS[reelIndex];
+  const target = TARGET_SYMBOL[flag][reelIndex];   // 成立役に対応する狙う絵柄
+  const basePos = Math.ceil(pressedPos);           // 押した瞬間の直近コマ
+
+  // 0〜4コマの滑りで target を中段に持ってこられる位置を探す
+  for (let slip = 0; slip <= 4; slip++) {
+    const pos = (basePos + slip) % strip.length;
+    if (strip[pos] === target) return { pos, slip };
+  }
+  // 引き込めない場合はハズレ目を作る(ブランク優先)
+  return { pos: findBlankPosition(strip, basePos), slip: 0 };
+}
+```
+
+**カジュアル方針として、小役の取りこぼしは発生させない**。`TARGET_SYMBOL` の設計とリール配列制約により、成立した小役は必ず引き込める。`CHANCE`(チャンス目)は「必ずλが絡む特定の出目を作る」ことで、目押しなしでも出目の意味が伝わるようにする。
+
+停止アニメーションは、目標位置まで **250ms の easeOutBack**(わずかにオーバーシュートして戻る)で減速し、実機の「ガコン」という止まり方を再現する。
+
+### 6.5 演出システム(タイムライン + イベント駆動)
+
+本設計で最も重要な部分。**IDEAS.md の演出ネタを、コードを書かずにデータ追加だけで投入できる**構造にする。スモールスタート方針の技術的裏付けはここ: MVPではシナリオ数個だけ登録し、以降は `src/data/scenarios/*.js` への追記だけで演出が増えていく。
+
+#### シナリオのデータスキーマ
+
+```js
+// src/data/scenarios/cz.js
+export default [
+  {
+    id: "cz_cw_alarm_entry",
+    name: "CloudWatchアラートCZ突入",
+
+    // ── 発動条件 ───────────────────────────
+    when: {
+      event: "leverOn",                     // どのイベントで抽選対象になるか
+      mode:  ["FREE_TIER"],                 // 滞在モード条件(省略で全モード)
+      flag:  ["CHANCE", "STRONG_CHERRY"],   // 成立役条件(省略で全役)
+      result:{ cz: true },                  // 抽選結果条件(省略で不問)
+      expectationRange: [40, 100],          // 期待度レンジ
+    },
+
+    // ── 抽選重み(モードごとに変えられる)──────
+    weight: { FREE_TIER: 100, default: 10 },
+
+    // ── 演出本体 ──────────────────────────
+    duration: 4200,
+    cues: [
+      { at: 0,               layer: "sfx",     action: "synth",   params: { preset: "alarm_beep" } },
+      { at: 0,               layer: "lcd",     action: "anim",    params: { anim: "cw_graph_appear" } },
+      { at: 300,             layer: "lamp",    action: "pattern", params: { pattern: "red_pulse" } },
+      { at: 600,             layer: "char",    action: "show",    params: { char: "kiro", pose: "surprised" } },
+      { at: 900,             layer: "voice",   action: "play",    params: { key: "kiro_alarm_01" } },
+
+      { waitFor: "stop1",                layer: "lcd",  action: "anim", params: { anim: "cw_graph_rise", step: 1 } },
+      { waitFor: "stop2",                layer: "lcd",  action: "anim", params: { anim: "cw_graph_rise", step: 2 } },
+      { waitFor: "stop3", after: 200,    layer: "overlay", action: "flash", params: { color: "#ff3b30", ms: 180 } },
+      { waitFor: "stop3", after: 400,    layer: "lcd",  action: "anim",
+        params: { anim: "cw_alarm_result", result: "$result.cz" } },   // ← 遅延バインド
+      { waitFor: "stop3", after: 900,    layer: "voice", action: "play",
+        params: { key: "$result.cz ? 'kiro_cz_win' : 'kiro_cz_lose'" } },
+    ],
+  },
+];
+```
+
+**ポイント3つ**:
+
+1. **`waitFor`** — 演出は複数のリール停止をまたぐため、時間ベースのキュー(`at`)と**イベント待ちキュー**(`waitFor` + `after`)の両方を持つ。これが実機の「第2停止でカットイン」を素直に表現する
+2. **`$` 参照による遅延バインド** — `"$result.cz"` のように書くと、実行時のコンテキストから値が解決される。「同じ演出シナリオで、結果によって最後だけ変わる」が1定義で書ける
+3. **`when` + `weight` の分離** — `when` が「出せるかどうか」、`weight` が「どのくらいの頻度で出すか」。ガセ演出は `expectationRange: [0, 30]` の低期待度シナリオを高期待度時にも小さい重みで登録することで自然に実現する
+
+#### ディレクター
+
+```js
+// src/staging/director.js
+class StagingDirector {
+  constructor(bus, timeline, scenarios) { /* ... */ }
+
+  onEvent(eventName, ctx) {
+    const candidates = this.scenarios.filter(s => matches(s.when, eventName, ctx));
+    if (candidates.length === 0) return;
+    const picked = weightedPick(candidates, ctx.mode, this.rng);
+    this.timeline.play(picked, ctx);
+  }
+}
+```
+
+#### アクションレジストリ
+
+```js
+// src/staging/actions.js
+export const ACTIONS = {
+  "lcd.anim":      (params, ctx) => lcdAnims.play(params.anim, resolve(params, ctx)),
+  "lcd.text":      (params, ctx) => lcdAnims.showText(resolve(params, ctx)),
+  "char.show":     (params, ctx) => chars.show(params.char, params.pose),
+  "char.hide":     (params, ctx) => chars.hide(params.char),
+  "char.motion":   (params, ctx) => chars.motion(params.char, params.motion),
+  "overlay.flash": (params, ctx) => overlay.flash(params.color, params.ms),
+  "overlay.cutin": (params, ctx) => cutins.play(params.id),
+  "overlay.freeze":(params, ctx) => flow.freeze(params.ms),
+  "lamp.pattern":  (params, ctx) => cabinet.setLampPattern(params.pattern),
+  "reelfx.lock":   (params, ctx) => reelctrl.lock(params.reels, params.ms),
+  "sfx.synth":     (params, ctx) => audio.playPreset(params.preset),
+  "voice.play":    (params, ctx) => voice.play(resolve(params, ctx).key),
+  "bgm.change":    (params, ctx) => audio.changeBgm(params.bgm),
+};
+```
+
+**IDEAS.mdとの合流方法**: IDEAS.md の演出ネタは、上記スキーマの `cues` 配列として `src/data/scenarios/*.js` に追加するだけで組み込める。新しい**アクション種別**が必要になった場合のみ `ACTIONS` に1行足す。演出の増加がゲームロジックに一切影響しないことが保証される。
+
+### 6.6 Web Audio 効果音の方針
+
+**外部音源ファイルを使わず、すべて合成生成**する(キャラ音声を除く)。
+
+```js
+// src/data/sfx-presets.js
+export const SFX_PRESETS = {
+  lever_on: {
+    voices: [
+      { type: "noise",  dur: 0.06, env: { a: 0.001, d: 0.05, s: 0, r: 0.01 }, filter: { type: "highpass", freq: 2000 }, gain: 0.4 },
+      { type: "square", freqFrom: 880, freqTo: 220, dur: 0.12, env: { a: 0.001, d: 0.10, s: 0, r: 0.02 }, gain: 0.25 },
+    ],
+  },
+  reel_stop: {
+    voices: [
+      { type: "noise",  dur: 0.04, env: { a: 0.001, d: 0.03, s: 0, r: 0.01 }, filter: { type: "bandpass", freq: 1200, q: 6 }, gain: 0.5 },
+      { type: "sine",   freqFrom: 160, freqTo: 80, dur: 0.08, env: { a: 0.001, d: 0.07, s: 0, r: 0.01 }, gain: 0.3 },
+    ],
+  },
+  bell_win:   { voices: [ /* 三角波の和音 C6-E6-G6 + フィードバックディレイ */ ] },
+  rare_flag:  { voices: [ /* 矩形波の上昇アルペジオ 4音 */ ] },
+  payout_tick:{ voices: [ /* 短い矩形波。払出1枚ごとに音程を +2半音ずつ上げる */ ] },
+  alarm_beep: { voices: [ /* 矩形波 1000Hz の断続。CloudWatchアラーム風 */ ] },
+  scale_out:  { voices: [ /* 上昇スイープ + ノイズバースト */ ] },
+  shark_bite: { voices: [ /* 低音のサブベース + ノイズの噛みつき音 */ ] },
+};
+```
+
+- `AudioContext` は**シングルトン**。ブラウザの自動再生ポリシー対策として、**初回のユーザー操作(MAX BETクリック)で `ctx.resume()`** を呼ぶ
+- 各プリセットは `OscillatorNode` / `AudioBufferSourceNode`(ノイズ)+ `GainNode`(ADSR)+ `BiquadFilterNode` の組み合わせを、**発音のたびに生成して自動破棄**する
+- マスターに `GainNode` を1つ置き、音量調整とミュートを一元管理する
+- **BGMもWeb Audioの簡易シーケンサで生成**(モードごとにコード進行とアルペジオパターンをデータ定義)。ただしMVP対象外、Phase 4 の後半に回す
+
+**設計判断**: 効果音の合成生成を選んだ理由は、(1)バイナリアセットを持たずリポジトリが軽い、(2)音程・長さをパラメータで動的に変えられる(払出音が枚数で上がっていく等)、(3)外部ライブラリ不要という前提に合致する、の3点。
+
+### 6.7 音声ファイル連携方式
+
+#### 採用方式: 事前生成MP3の同梱(第一候補どおり)
+
+```
+[ローカル/Node]                              [ブラウザ]
+scripts/generate-voices.mjs
+  ├─ .env から AIVIS_CLOUD_API_KEY 読込
+  ├─ PHRASES 定義(固定ファイル名 + テキスト)
+  ├─ Aivis Cloud API へ逐次POST(3秒間引き・3回リトライ・既存スキップ)
+  └─> assets/voices/{char}/{key}.mp3
+      assets/voices/manifest.json  ──────>  voice.js が起動時にfetch
+                                            └─> AudioBuffer にデコードしてキャッシュ
+                                                └─> voice.play("kiro_cz_win")
+```
+
+既存の `~/Work/claude-code-agent-dashboard/PET/scripts/generate-click-voices.mjs` をほぼそのまま流用できる。変更点:
+
+- `OUT_DIR` を `awslot/assets/voices/{char}/` に変更
+- `model_uuid` を Kiro用・ジョージ用の2種類に分岐
+- 生成完了後に **`manifest.json` を自動出力**する処理を追加
+
+#### 重要: ファイル名の付け方(既存スクリプトの教訓)
+
+> **PHRASES は必ず「フレーズごとに固定のファイル名(`file`)」を持たせること。配列インデックスからファイル名を決めると、フレーズの追加・削除で後続の番号がズレ、既存MP3が別テキストとして再利用される事故が起きる。**
+
+```js
+const PHRASES = [
+  { char: "kiro",   key: "kiro_cz_win_01",    file: "kiro_01.mp3", text: "アラーム、鳴りましたよ!" },
+  { char: "kiro",   key: "kiro_cz_lose_01",   file: "kiro_02.mp3", text: "…OK に戻っちゃいました" },
+  { char: "george", key: "george_scaleout_01",file: "george_01.mp3", text: "スケールアウトだァ!" },
+  { char: "george", key: "george_spot_end_01",file: "george_02.mp3", text: "中断通知だ。悪く思うな" },
+];
+```
+
+`manifest.json` はこの `key → file` の対応表そのもの。ブラウザ側は `key` でしか音声を参照しないため、ファイル名の付け替えがコードに波及しない。セリフの原案は IDEAS.md の「6. キャラのセリフネタ」から採る。
+
+#### 却下した代替案
+
+| 案 | 却下理由 |
+|---|---|
+| ブラウザから直接 Aivis Cloud を叩く | **APIキーがフロントエンドに露出する**。不可 |
+| ローカルプロキシサーバを立てる | 「ビルド不要SPA」の前提が崩れ、常駐プロセスが必要になる。遊ぶたびにサーバ起動は体験を損なう |
+| Web Speech API(ブラウザ標準TTS) | キャラクターボイスにならない。**ただしフォールバックとしては有用**なので、音声ファイル未生成時の暫定として実装しておく |
+
+#### 再生設計
+
+- `AudioContext` 経由で `AudioBufferSourceNode` として再生(効果音と同じマスターGainに接続し、音量を一元管理)
+- **同時発話の抑制**: キャラ音声は同時に1つまで。新しい音声が来たら前のを `stop()` して差し替え(実機の「セリフが被らない」感覚)
+- **プリロード**: 起動時に全MP3をfetch&デコードすると重いため、**モード突入時にそのモードで使う音声だけ先読み**する遅延ロード方式を採る
+
+### 6.8 キャラ絵の作り方
+
+**液晶内のキャラアニメ: Canvas 2D パス描画(プロシージャル)/ カットイン: 立ち絵PNG**
+
+液晶内で常時動くキャラは、外部画像ではなく**描画関数として実装**する。
+
+```js
+// src/render/chars/kiro.js
+export function drawKiro(ctx, state) {
+  const { x, y, scale, pose, t } = state;
+  // 裾の波打ちを sin 波でプロシージャル生成(フレームごとに変化)
+  const wave = (i) => Math.sin(t * 3 + i * 1.2) * 4;
+
+  ctx.save();
+  ctx.translate(x, y + Math.sin(t * 1.5) * 6);   // ふわふわ浮遊
+  ctx.scale(scale, scale);
+
+  // 体(ドーム + 波打つ裾)
+  ctx.beginPath();
+  ctx.arc(0, 0, 40, Math.PI, 0);
+  for (let i = 0; i <= 6; i++) {
+    ctx.quadraticCurveTo(40 - i*13.3, 45 + wave(i), 40 - (i+1)*13.3, 40 + wave(i+1));
+  }
+  ctx.closePath();
+  ctx.fillStyle = "#ffffff";
+  ctx.fill();
+
+  drawFace(ctx, POSES[pose]);   // 表情はパラメータで差し替え
+  ctx.restore();
+}
+
+const POSES = {
+  normal:    { eyeH: 12, eyeW: 8,  mouth: "none",  tilt: 0 },
+  surprised: { eyeH: 18, eyeW: 14, mouth: "o",     tilt: -0.1 },
+  happy:     { eyeH: 4,  eyeW: 12, mouth: "smile", tilt: 0.05 },
+  panic:     { eyeH: 20, eyeW: 6,  mouth: "wavy",  tilt: 0.2 },
+  premium:   { eyeH: 12, eyeW: 8,  mouth: "smile", tilt: 0, aura: "rainbow" },
+};
+```
+
+ジョージ(サメ)も同様に、体・背びれ・尾びれ・歯列をパスで構成し、**尾びれの角度と口の開閉をパラメータ化**する。「口を開けて噛みつく」モーションが上乗せ演出の核になるため、`mouthOpen: 0.0〜1.0` を必ず持たせる。
+
+**プロシージャル描画を選んだ理由**:
+
+1. **表情・角度・揺れをパラメータで連続的に変えられる**。画像の差し替えでは「口を30%開ける」ができない
+2. **ファイル数・アセットサイズが増えない**。ビルド不要の前提と相性が良い
+3. **演出システムから `char.motion` で直接パラメータを叩ける**。演出データ側で「ジョージの口を開けながら画面を横切る」が定義できる
+
+**立ち絵PNGの使いどころ**: 全画面カットイン(強予告・プレミア)では、IMAGE_PROMPTS.md おまけセクションの立ち絵(喜び/悔しがり/激アツ 各3表情)を `assets/chars/` に置いて `overlay.cutin` で使う。動きより「絵の強さ」が欲しい場面はPNG、常時アニメはプロシージャル、と使い分ける。
+
+**注意点**: パス描画は毎フレームのコストが `drawImage` より高いため、**キャラは液晶Canvas(440×300)内にしか描かない**制約を設ける。全画面でプロシージャルキャラを使う場合は、その場でオフスクリーンCanvasに1回描いてキャッシュし、`drawImage` で拡大表示する。
+
+### 6.9 デバッグ機能(開発効率のため必須)
+
+実装初期から入れておくべきもの。後付けは必ず苦しくなる。
+
+- **シード固定モード**: `rng.js` にシード指定を実装し、URLパラメータ `?seed=12345` で再現可能に
+- **強制モード遷移**: `?mode=AS_RUSH&dc=5` で任意のモードから開始
+- **強制フラグ**: キーボード `1`〜`9` で任意の小役を強制成立
+- **高速回転**: `?turbo=1` でリール回転・演出を10倍速(バランス確認用)
+- **統計パネル**: 総ゲーム数、初当り回数、AT初当り確率、平均獲得枚数、機械割をリアルタイム表示
+- **自動連続試行**: `?auto=10000` で1万ゲーム自動消化し、統計を出力(バランス調整に必須)
+
+---
+
+## 7. 実装フェーズ分割
+
+スモールスタート方針: **Phase 1 完了で「回して当たって出玉が増える」ゲームとして遊べる**。以降のフェーズは全部「後から足す」もので、各項目がそのままGitHub Issue 1枚になる粒度。
+
+### Phase 0: プロジェクト骨格(Issue 2枚)
+
+| # | Issue | 完了条件 |
+|---|---|---|
+| 0-1 | プロジェクト初期構成とレイヤー基盤 | `index.html` / `style.css` / `src/main.js` / `engine/loop.js` / `engine/layers.js`。5枚のCanvasとDOM筐体が正しい座標に配置され、DPR対応で描画される |
+| 0-2 | 筐体ビジュアルの実装(静止) | `sample.png` に準じた紫の筐体、左右電飾、AWSLOTロゴ帯、MAX BETボタン、停止ボタン×3、レバーがCSSで描かれる。クリック可能(動作は未実装) |
+
+### Phase 1: MVP — 回して当たって出玉が増える(Issue 4枚)
+
+| # | Issue | 完了条件 |
+|---|---|---|
+| 1-1 | 絵柄アセット読込とリール回転 | `engine/assets.js` + `symbols-draw.js` でPNG絵柄を読込(未生成分はフォールバック描画)。`reelview.js` で3リールが定速回転し、モーションブラーがかかる |
+| 1-2 | 入力とリール停止制御 | レバーON(クリック/スペース)で回転開始、停止ボタン(クリック/A・S・Dキー)で順に停止。最大4コマ滑りの引き込みが動作 |
+| 1-3 | 小役抽選と入賞判定・払出 | `data/flags.js` の確率テーブルで抽選、成立役を引き込み、中段1ラインで入賞判定、払出をクレジットに加算 |
+| 1-4 | HUD(7セグ表示) | CREDIT / COUNT / PAYOUT が7セグ風に描画され、BET・払出で正しく増減する。払出は1枚ずつのアニメーション |
+
+> **Phase 1 完了時点で「回して当たって出玉が増える」が成立**。ここまでがMVP。
+
+### Phase 2: モード基盤とAT(Issue 5枚)
+
+| # | Issue | 完了条件 |
+|---|---|---|
+| 2-1 | GameFlow ステートマシン整理 | 1ゲームの進行が明示的なステートマシンに整理され、`EventBus` に全イベントが発火される |
+| 2-2 | Mode ステートマシンとモードスタック | `modemachine.js` 実装。モード定義がデータから読み込まれ、スタックで入れ子管理される |
+| 2-3 | 通常時とCZ層の実装 | Free Tier の内部状態3段階、天井999G、CZ 3種の当選・消化・突破判定が動作 |
+| 2-4 | ボーナス層の実装 | 入賞待ち(揃えろ!)を経由して Lambda REG / S3 BIG / DynamoDB BIG の3種が消化でき、ボーナス中の小役テーブル(ベル15枚)・AT当選抽選・DC初期値決定が動作 |
+| 2-5 | Auto Scaling RUSH の実装 | DC管理、純増、セット20G、ヘルスチェック、スケールアウト、縮退運転、DC枯渇での終了が動作 |
+
+### Phase 3: 演出システム基盤(Issue 4枚)
+
+| # | Issue | 完了条件 |
+|---|---|---|
+| 3-1 | Timeline 実行器 | `at` / `waitFor` / `after` の3種キューが正しいタイミングで発火し、`$` 参照の遅延バインドが解決される |
+| 3-2 | StagingDirector とアクションレジストリ | シナリオの `when` 判定と `weight` 抽選が動作。`ACTIONS` の全アクションが実装される |
+| 3-3 | キャラ描画(Kiro / ジョージ) | 2キャラがCanvasパスで描画され、ポーズ切替・浮遊/遊泳アニメ・口の開閉が動作 |
+| 3-4 | LCD演出とオーバーレイ演出の基本セット | ステージ背景、液晶内UI(DCアイコン列・残G数・セット数)、全画面フラッシュ、カットイン、フリーズが動作。**演出シナリオはまず5〜10個だけ登録**(スモールスタート) |
+
+> ここで IDEAS.md の演出素材を合流させる。以降、演出追加は `src/data/scenarios/` へのデータ追加のみで完結する。
+
+### Phase 4: Web Audio 効果音(Issue 2枚)
+
+| # | Issue | 完了条件 |
+|---|---|---|
+| 4-1 | SFX合成エンジンとプリセット | `audio.js` + `sfx-presets.js`。レバーON・リール停止・入賞・レア役・払出の5種以上が鳴る。初回操作で `AudioContext.resume()` |
+| 4-2 | BGM簡易シーケンサ | モードごとのBGMがWeb Audioで生成され、モード遷移でクロスフェード切替される |
+
+### Phase 5: モード拡張(Issue 4枚)
+
+| # | Issue | 完了条件 |
+|---|---|---|
+| 5-1 | 派生ゾーン第1弾(Spot / EC2バースト / Graviton) | 3ゾーンが突入・消化・終了し、親モードへ復帰する |
+| 5-2 | 上乗せ特化ゾーン(CloudFront / Kinesis / Reserved) | 3ゾーンが動作し、上乗せが親モードのセット数に反映される |
+| 5-3 | Step Functions チャレンジ | プレイヤー選択UIを含む擬似ゲームが動作し、全制覇でMulti-Regionへ遷移する |
+| 5-4 | 上位AT・引き戻し層・エンディング + 図柄追加 | Serverless RUSH / Multi-Region / ホットスタンバイ / Route 53 / re:Invent ED が動作し、全モードが接続される。`REPLAY2`(Route 53)と `ALARM`(CloudWatch)図柄をリールに追加 |
+
+### Phase 6: キャラ音声(Issue 2枚)
+
+| # | Issue | 完了条件 |
+|---|---|---|
+| 6-1 | 音声生成スクリプトとマニフェスト | `scripts/generate-voices.mjs` が Aivis Cloud でMP3を一括生成し、`manifest.json` を出力する。固定ファイル名方式を厳守 |
+| 6-2 | ブラウザ側の音声再生 | `voice.js` がマニフェストを読み、`key` 指定で再生。モード突入時の遅延プリロード、同時発話抑制が動作 |
+
+### Phase 7: 仕上げ(Issue 3枚)
+
+| # | Issue | 完了条件 |
+|---|---|---|
+| 7-1 | デバッグ機能一式 | シード固定・強制モード・強制フラグ・turbo・統計パネル・自動連続試行が動作 |
+| 7-2 | バランス調整 | 1万ゲーム自動試行で、機械割・初当り確率・平均獲得枚数が設計値の許容範囲に収まる |
+| 7-3 | 演出の大量投入と最終調整 | IDEAS.md の演出ネタが全モードに行き渡り、無演出の場面がなくなる |
+
+**総Issue数: 22枚**。Phase 1 までで6枚、ここまで完成すれば「遊べるもの」になる。
+
+---
+
+## 注意事項・リスク
+
+1. **ESモジュールのCORS制約**: `file://` で `index.html` を直接開くとESモジュールが読めない。`python3 -m http.server` 等の静的サーバ経由が必須。READMEに明記する
+2. **AudioContext の自動再生ポリシー**: ユーザー操作前に音を鳴らそうとすると全ブラウザでブロックされる。**必ず初回クリックで `resume()`** を呼ぶ実装にする。実装漏れが起きやすい箇所
+3. **リール配列の制約検証**: `BELL` と `REPLAY` が5コマ窓に必ず存在するという制約は、目視では確認しきれない。**ユニットテストでの検証を必須**とする
+4. **演出とゲームロジックの依存方向**: `game/` が `staging/` や `render/` をimportし始めると、この設計の利点がすべて失われる。レビュー時の最重要チェック項目
+5. **バランス調整は必ず自動試行で**: 手動で回して調整するのは非現実的。Phase 7-1 のデバッグ機能を**Phase 5 の前倒しで実装する**ことも検討に値する
+6. **Aivis Cloud のレートリミット**: 既存スクリプトの3秒間引き・3回リトライ・15秒バックオフは実績値。**変更せずそのまま踏襲**する
+7. **APIキーの取り扱い**: `AIVIS_CLOUD_API_KEY` は必ず `.env`(`.gitignore` 対象)に置き、生成済みMP3のみをコミットする。生成スクリプトにキーをベタ書きしない
+8. **キャラのプロシージャル描画コスト**: 毎フレームのパス描画は `drawImage` より重いため、液晶エリア内に限定する。全画面で使う場合は必ずオフスクリーンキャッシュを挟む
+9. **モードスタックの深さ**: 理論上「RUSH → ゾーン → 上乗せ特化」の3段まで積まれる。無限に積まれないよう**深さ上限3のガード**を入れる
+10. **数値はすべてラフ値**: 本設計書の確率・純増・継続率はチューニング前提の初期値。Phase 7-2 で実測に基づいて必ず見直す
+11. **絵柄PNGのサイズ**: 生成PNGは1024×1024と大きいため、起動時に120×60程度へリサイズしてオフスクリーンキャッシュする。原寸のまま毎フレーム `drawImage` しない
+
+---
+
+## 設計判断の理由
+
+### なぜ「DC(Desired Capacity)」を純増と継続率の共通パラメータにしたのか
+
+検討した代替案: (A)ゲーム数上乗せ型(純増固定、上乗せでG数が増える)、(B)差枚管理型、(C)純増と継続率を独立パラメータにする。
+
+(A)は最も一般的だがAWSらしさが出ない。(B)は数字が地味で爽快感に欠ける。(C)は自由度が高い反面、プレイヤーが2つの数字を追う必要があり、カジュアル方針に反する。
+
+**DC 1本に集約する案**を採用したのは、「インスタンスを増やせば速くなるし落ちにくくなる」というAWSの現実がそのままゲームの気持ちよさになり、かつ**画面上のアイコンの数だけ見ていれば状況が完全に分かる**ため。「カジュアル」「演出とモードの楽しさ重視」という要望に最も適合する。
+
+### なぜステートマシンを2層に分けたのか
+
+「モードをたくさん作りたい」という要望に対する構造的な回答。1層で作ると、モードが20個になった時点で1ゲームの進行ロジックが分岐だらけになり、モード追加のたびに既存モードが壊れるリスクを負う。2層分離により、**モード追加はデータ1オブジェクトの追加**で済み、20個でも50個でも同じコストで増やせる。
+
+### なぜ演出をデータ定義にしたのか
+
+スモールスタート方針の技術的裏付け。シナリオをデータにすることで、IDEAS.md の演出ネタが `src/data/scenarios/` へのファイル追加として合流でき、MVPでは数個、以降は追記だけで際限なく増やせる。また、演出の追加・削除がゲームバランスに影響しないことが構造的に保証される。
+
+### なぜCanvas 5枚 + DOM のハイブリッドにしたのか
+
+検討した代替案: (A)全部1枚のCanvas、(B)全部DOM/CSS。
+
+(A)は静的な筐体を毎フレーム再描画することになり無駄が多く、電飾のようなCSSアニメで済むものまで手書きになる。(B)はリールの回転とモーションブラー、パーティクルの表現が困難。
+
+領域ごとに最適な技術を割り当てるハイブリッドが、実装コストとパフォーマンスの両面で最良。特に**静的領域(筐体・電飾)をDOMに逃がす**ことで、毎フレームの描画対象を液晶・リール・HUDだけに絞れる。
+
+### なぜ音声を事前生成MP3にしたのか
+
+ブラウザからのTTS直叩きはAPIキー露出の問題があり受け入れられない。ローカルプロキシは「ビルド不要SPA」という前提と、遊ぶたびにサーバ起動が必要になる体験の悪さから却下。事前生成方式は**既存の実装資産がそのまま使える**利点もある。
+
+---
+
+## 推奨タスク分担
+
+| 工程 | 担当エージェント | 内容 |
+|---|---|---|
+| 本設計のレビュー | **tsubaki-reviewer** | 特に「数値バランスの妥当性」と「モード間の接続に抜けがないか」の観点で |
+| Issue化 | **kai-taskmaster** | 7章の22枚をGitHub Issueとして起票。Phase順に依存関係を設定 |
+| Phase 0〜6 実装 | **luna-coder** | フェーズ順に実装 |
+| リール配列の制約テスト | **yui-debugger** | 5コマ窓制約のユニットテスト作成 |
+| バランス調整の自動試行 | **yui-debugger** | 1万ゲーム試行スクリプトと統計出力 |
+| 各Phase完了時の動作確認 | **shion-checker** | Playwrightで実際に回して、画面とログを確認 |
+
+**並列化の提案**: Phase 3(演出システム基盤)は Phase 2(モード実装)と依存が薄いため、`EventBus` のイベント仕様さえ先に確定させれば並行実装が可能。工期短縮のため、Phase 2-1 完了直後に Phase 3-1 を並走させることを推奨。
+
+---
+
+## 次のステップ
+
+- [ ] ユーザーによる設計レビュー(本ドキュメント + IDEAS.md)
+- [ ] 絵柄PNGの生成(ユーザー、`docs/IMAGE_PROMPTS.md` 使用)
+- [ ] tsubaki-reviewer による設計レビュー(任意)
+- [ ] kai-taskmaster による22 Issue の起票
+- [ ] Phase 0 から実装開始

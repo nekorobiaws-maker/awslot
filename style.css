@@ -1,0 +1,957 @@
+/*
+ * AWSLOT 筐体・ボタン・電飾のCSS。DESIGN.md 5.1 / 5.2 / 5.3
+ * 論理解像度 720×1080 を基準に絶対配置し、engine/layers.js が scale() でフィットさせる。
+ */
+
+:root {
+  --purple-deep: #180627;
+  --purple: #3a0f63;
+  --purple-lit: #6b21b0;
+  --magenta: #ff3ea5;
+  --cyan: #35d6ff;
+  --gold: #ffc93c;
+  --metal-hi: #d9d3e8;
+  --metal: #8d85a6;
+  --metal-lo: #3b3450;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #0a0710;
+  font-family: "Helvetica Neue", "Hiragino Sans", "Noto Sans JP", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ホールのボケ背景 */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(circle at 12% 18%, rgba(255, 90, 180, 0.30), transparent 42%),
+    radial-gradient(circle at 88% 22%, rgba(60, 190, 255, 0.26), transparent 44%),
+    radial-gradient(circle at 24% 82%, rgba(255, 180, 60, 0.20), transparent 40%),
+    radial-gradient(circle at 78% 88%, rgba(150, 60, 255, 0.26), transparent 46%),
+    linear-gradient(160deg, #150a22 0%, #090512 60%, #120a1e 100%);
+  filter: blur(2px);
+  z-index: 0;
+}
+
+#viewport {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+}
+
+#cabinet {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 720px;
+  height: 1080px;
+  transform-origin: top left;
+  will-change: transform;
+  /* 画面揺れ演出(render/overlay.js が書き換える) */
+  --shake-x: 0px;
+  --shake-y: 0px;
+}
+
+/* ── z=0 筐体アート(assets/ui/cabinet.png) ─────
+ * render/cabinet.js が画像を読めたときだけ #cabinet に .art-cabinet が付き、
+ * このブロック以降の指定が有効になる。画像が無い環境では
+ * 下の .cabinet-frame(CSSグラデーション筐体)がそのまま使われる。 */
+.cabinet-art {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 720px;
+  height: 1080px;
+  z-index: 0;
+  display: none;
+  pointer-events: none;
+}
+#cabinet.art-cabinet .cabinet-art {
+  display: block;
+  animation: art-fade-in 0.25s ease-out both;
+}
+@keyframes art-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* 画像に置き換わったら、CSSで描いていた筐体・ベゼル・ロゴ帯は消す */
+#cabinet.art-cabinet .cabinet-frame,
+#cabinet.art-cabinet .bezel,
+#cabinet.art-cabinet .logo-band,
+#cabinet.art-cabinet .stop-label { display: none; }
+
+/* ── z=0 筐体フレーム ───────────────────────── */
+.cabinet-frame {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: 26px;
+  background:
+    linear-gradient(180deg, #4a1580 0%, #2c0a4e 22%, #1d0736 55%, #2a0a46 78%, #10041f 100%);
+  box-shadow:
+    0 0 0 6px rgba(190, 170, 255, 0.18),
+    0 0 60px rgba(150, 60, 255, 0.45),
+    inset 0 0 120px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+}
+
+.cabinet-frame .frame-top {
+  position: absolute;
+  left: 90px; top: 18px; width: 540px; height: 32px;
+  background: linear-gradient(180deg, var(--metal-hi), var(--metal) 45%, var(--metal-lo));
+  clip-path: polygon(6% 0, 94% 0, 100% 100%, 0 100%);
+  opacity: 0.85;
+}
+
+.cabinet-frame .frame-mid {
+  position: absolute;
+  left: 60px; top: 400px; width: 600px; height: 340px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.07), rgba(0,0,0,0.35));
+  border-radius: 18px;
+}
+
+.cabinet-frame .frame-bottom {
+  position: absolute;
+  left: 0; bottom: 0; width: 100%; height: 90px;
+  background: linear-gradient(180deg, rgba(0,0,0,0.1), rgba(0,0,0,0.75));
+}
+
+/* ── z=1 左右電飾 ─────────────────────────── */
+.lamp {
+  position: absolute;
+  top: 40px;
+  width: 96px;
+  height: 740px;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 10px 8px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(20,6,36,0.9), rgba(45,10,80,0.9));
+  box-shadow: inset 0 0 24px rgba(0,0,0,0.7), 0 0 18px rgba(120,40,200,0.4);
+  overflow: hidden;
+}
+.lamp-left { left: 16px; }
+.lamp-right { right: 16px; }
+
+.lamp span {
+  display: block;
+  height: 58px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, var(--magenta), #8a1060);
+  box-shadow: 0 0 14px rgba(255, 62, 165, 0.9), inset 0 0 10px rgba(255,255,255,0.4);
+  opacity: 0.55;
+  clip-path: polygon(18% 0, 100% 0, 82% 100%, 0 100%);
+}
+.lamp-right span { clip-path: polygon(0 0, 82% 0, 100% 100%, 18% 100%); }
+
+.lamp span:nth-child(even) {
+  background: linear-gradient(180deg, var(--cyan), #0a4a80);
+  box-shadow: 0 0 14px rgba(53, 214, 255, 0.9), inset 0 0 10px rgba(255,255,255,0.4);
+}
+
+.lamp[data-pattern="idle"] span { animation: lamp-breath 2.6s ease-in-out infinite; }
+.lamp[data-pattern="spin"] span { animation: lamp-flow 0.9s linear infinite; }
+.lamp[data-pattern="rare"] span {
+  animation: lamp-flow 0.4s linear infinite;
+  background: linear-gradient(180deg, #ff5252, #7a0e0e) !important;
+  box-shadow: 0 0 18px rgba(255, 70, 70, 1) !important;
+}
+.lamp[data-pattern="bonus"] span {
+  animation: lamp-flow 0.28s linear infinite;
+  background: linear-gradient(180deg, var(--gold), #a06000) !important;
+  box-shadow: 0 0 20px rgba(255, 201, 60, 1) !important;
+}
+.lamp[data-pattern="rush"] span {
+  animation: lamp-flow 0.5s linear infinite;
+  background: linear-gradient(180deg, #6dffd0, #0a7a68) !important;
+  box-shadow: 0 0 18px rgba(109, 255, 208, 0.95) !important;
+}
+
+.lamp span:nth-child(1) { animation-delay: 0s; }
+.lamp span:nth-child(2) { animation-delay: 0.08s; }
+.lamp span:nth-child(3) { animation-delay: 0.16s; }
+.lamp span:nth-child(4) { animation-delay: 0.24s; }
+.lamp span:nth-child(5) { animation-delay: 0.32s; }
+.lamp span:nth-child(6) { animation-delay: 0.40s; }
+.lamp span:nth-child(7) { animation-delay: 0.48s; }
+.lamp span:nth-child(8) { animation-delay: 0.56s; }
+.lamp span:nth-child(9) { animation-delay: 0.64s; }
+.lamp span:nth-child(10) { animation-delay: 0.72s; }
+
+@keyframes lamp-breath {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 0.85; }
+}
+@keyframes lamp-flow {
+  0% { opacity: 0.25; transform: translateX(0); }
+  40% { opacity: 1; }
+  100% { opacity: 0.25; transform: translateX(0); }
+}
+
+/* ── Canvasレイヤー共通(位置は engine/layers.js が設定) ── */
+.layer {
+  position: absolute;
+  display: block;
+}
+#overlay { pointer-events: none; }
+
+/* ── ベゼル(液晶・リール・HUDの金属フチ) ───────── */
+.bezel {
+  position: absolute;
+  z-index: 1;
+  border-radius: 12px;
+  background: linear-gradient(160deg, var(--metal-hi), var(--metal) 40%, var(--metal-lo));
+  box-shadow: 0 6px 18px rgba(0,0,0,0.6), inset 0 1px 2px rgba(255,255,255,0.5);
+}
+.lcd-bezel  { left: 128px; top: 48px;  width: 464px; height: 324px; }
+.reel-bezel { left: 166px; top: 426px; width: 388px; height: 208px; }
+.hud-bezel  { left: 168px; top: 622px; width: 384px; height: 76px; border-radius: 8px; }
+
+/* ── z=3 ロゴ帯 ───────────────────────────── */
+.logo-band {
+  position: absolute;
+  left: 140px; top: 375px; width: 440px; height: 45px;
+  z-index: 3;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #7a24c8, #3d0a70 60%, #240544);
+  box-shadow: 0 0 22px rgba(190, 90, 255, 0.7), inset 0 0 14px rgba(0,0,0,0.6);
+  border: 2px solid rgba(255, 210, 120, 0.55);
+}
+.logo-text {
+  font-family: "Arial Black", "Helvetica Neue", sans-serif;
+  font-size: 30px;
+  letter-spacing: 0.16em;
+  color: #fff;
+  text-shadow:
+    0 0 8px rgba(255, 120, 255, 0.9),
+    0 0 20px rgba(150, 80, 255, 0.9),
+    0 2px 0 #4a0f80;
+}
+
+/* ── z=7 操作系 ───────────────────────────── */
+.controls { position: absolute; inset: 0; z-index: 7; }
+.controls button {
+  position: absolute;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  background: none;
+  font-family: inherit;
+  touch-action: manipulation;
+}
+
+/* MAX BET: 中心(110, 645) r=32 */
+.btn-maxbet {
+  left: 78px; top: 613px; width: 64px; height: 64px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #f0f0f5, #9a94ad 55%, #46405c);
+  box-shadow: 0 5px 0 #241f36, 0 8px 16px rgba(0,0,0,0.6), inset 0 0 10px rgba(255,255,255,0.4);
+  color: #221c33;
+  transition: transform 0.06s ease, box-shadow 0.06s ease;
+}
+.btn-maxbet .cap {
+  font-size: 13px; font-weight: 900; line-height: 1.05; letter-spacing: 0.02em;
+}
+.btn-maxbet.is-active {
+  background: radial-gradient(circle at 35% 30%, #fff6d0, #ffc93c 55%, #a06a00);
+  box-shadow: 0 5px 0 #6a4400, 0 8px 20px rgba(255,190,60,0.6), inset 0 0 12px rgba(255,255,255,0.6);
+}
+.btn-maxbet:hover { filter: brightness(1.15); }
+.btn-maxbet:focus-visible { outline: 3px solid #ffe066; outline-offset: 3px; }
+.btn-maxbet:active { transform: translateY(4px); box-shadow: 0 1px 0 #241f36, 0 3px 8px rgba(0,0,0,0.6); }
+
+/* 停止ボタン: y=730, x=250/360/470(中心)
+   実機同様、待機中も赤く点灯させて「押せる部品」だと分かるようにする */
+.btn-stop {
+  top: 702px; width: 56px; height: 56px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(circle at 35% 30%, #ff8f8f, #e02020 52%, #7a0c0c);
+  box-shadow:
+    0 5px 0 #4a0606,
+    0 8px 16px rgba(0,0,0,0.6),
+    0 0 14px rgba(255, 60, 60, 0.45),
+    inset 0 2px 6px rgba(255,255,255,0.45),
+    inset 0 -4px 8px rgba(0,0,0,0.45);
+  border: 2px solid rgba(255, 220, 220, 0.55);
+  opacity: 0.72;
+  transition: transform 0.06s ease, box-shadow 0.12s ease, opacity 0.12s ease;
+}
+/* ボタン面にキー表記(A/S/D)は出さない。矢印キー主体の操作系になったので、
+   面に書くと矢印キーと二重表示になって迷わせるため(凡例はHキーで確認できる) */
+.stop-0 { left: 222px; }
+.stop-1 { left: 332px; }
+.stop-2 { left: 442px; }
+
+/* 押せる状態: 明るく発光し、ゆっくり脈打つ */
+.btn-stop.is-active {
+  opacity: 1;
+  background: radial-gradient(circle at 35% 30%, #fff0f0, #ff3535 52%, #a01010);
+  box-shadow:
+    0 5px 0 #5a0808,
+    0 0 26px rgba(255, 70, 70, 0.95),
+    inset 0 2px 6px rgba(255,255,255,0.6),
+    inset 0 -4px 8px rgba(0,0,0,0.35);
+  animation: stop-pulse 1.1s ease-in-out infinite;
+}
+@keyframes stop-pulse {
+  0%, 100% { box-shadow: 0 5px 0 #5a0808, 0 0 20px rgba(255,70,70,0.75), inset 0 2px 6px rgba(255,255,255,0.6), inset 0 -4px 8px rgba(0,0,0,0.35); }
+  50%      { box-shadow: 0 5px 0 #5a0808, 0 0 34px rgba(255,90,90,1),    inset 0 2px 6px rgba(255,255,255,0.7), inset 0 -4px 8px rgba(0,0,0,0.3); }
+}
+
+.btn-stop:hover { opacity: 1; filter: brightness(1.18); }
+.btn-stop:focus-visible { outline: 3px solid #ffe066; outline-offset: 3px; }
+.btn-stop:active {
+  transform: translateY(4px);
+  box-shadow: 0 1px 0 #4a0606, 0 3px 8px rgba(0,0,0,0.6), inset 0 0 14px rgba(0,0,0,0.4);
+}
+
+/* 停止ボタン群のラベル */
+.stop-label {
+  position: absolute;
+  left: 200px; top: 764px; width: 320px;
+  text-align: center;
+  font-size: 11px; font-weight: 900; letter-spacing: 0.5em;
+  color: rgba(255, 200, 200, 0.75);
+  text-shadow: 0 0 8px rgba(255, 80, 80, 0.6);
+  pointer-events: none;
+}
+
+/* レバー: (620, 655)〜(650, 770) */
+.lever {
+  left: 604px; top: 640px; width: 62px; height: 150px;
+  transform-origin: 50% 100%;
+  transition: transform 0.08s ease;
+}
+/* 左レバーは cabinet2.png のときだけ出す。
+   旧筐体(cabinet.png)とCSSフォールバックは元からレバーが左にあるため不要。 */
+.lever-left { display: none; }
+
+.lever .lever-rod {
+  position: absolute;
+  left: 26px; top: 26px; width: 10px; height: 112px;
+  border-radius: 5px;
+  background: linear-gradient(90deg, #6d6683, #e6e1f2 40%, #6d6683);
+  box-shadow: 0 0 8px rgba(0,0,0,0.6);
+}
+.lever .lever-ball {
+  position: absolute;
+  left: 12px; top: 2px; width: 38px; height: 38px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 28%, #ff9a9a, #d31a1a 55%, #6d0606);
+  box-shadow: 0 0 18px rgba(255, 50, 50, 0.7), inset 0 0 10px rgba(0,0,0,0.4);
+}
+.lever.is-active .lever-ball {
+  box-shadow: 0 0 26px rgba(255, 80, 80, 1), inset 0 0 10px rgba(0,0,0,0.4);
+  animation: lever-glow 1.4s ease-in-out infinite;
+}
+@keyframes lever-glow {
+  0%, 100% { box-shadow: 0 0 20px rgba(255,80,80,0.8), inset 0 0 10px rgba(0,0,0,0.4); }
+  50%      { box-shadow: 0 0 34px rgba(255,110,110,1), inset 0 0 10px rgba(0,0,0,0.3); }
+}
+.lever:hover .lever-ball { filter: brightness(1.2); }
+.lever:focus-visible { outline: 3px solid #ffe066; outline-offset: 2px; border-radius: 12px; }
+.lever.is-pulled { transform: rotate(16deg) translateY(4px); }
+
+/* ── z=3 下部パネル: (100, 800) 520×200 ───────── */
+.panel {
+  position: absolute;
+  left: 100px; top: 800px; width: 520px; height: 200px;
+  z-index: 3;
+  border-radius: 14px;
+  border: 3px solid rgba(255, 210, 120, 0.45);
+  background:
+    radial-gradient(circle at 78% 50%, rgba(255,255,255,0.16), transparent 45%),
+    linear-gradient(160deg, #6a1fb0, #3a0d68 55%, #1c0538);
+  box-shadow: 0 0 30px rgba(150,60,255,0.55), inset 0 0 40px rgba(0,0,0,0.5);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 8px;
+  overflow: hidden;
+}
+.panel::after {
+  /* Kiro(幽霊)のシルエット。Phase 3 でCanvas描画に置き換える */
+  content: "";
+  position: absolute;
+  right: 34px; bottom: 18px; width: 108px; height: 120px;
+  background: radial-gradient(circle at 50% 34%, rgba(255,255,255,0.95) 44%, transparent 46%),
+              linear-gradient(180deg, rgba(255,255,255,0.9) 60%, transparent 100%);
+  border-radius: 54px 54px 20px 20px;
+  opacity: 0.85;
+}
+.panel-logo {
+  font-family: "Arial Black", "Helvetica Neue", sans-serif;
+  font-size: 46px;
+  letter-spacing: 0.12em;
+  color: #fff;
+  text-shadow: 0 0 10px rgba(255,120,255,0.9), 0 0 26px rgba(150,80,255,0.9), 0 3px 0 #3a0a68;
+}
+.panel-sub {
+  font-size: 13px; font-weight: 700; letter-spacing: 0.08em;
+  color: rgba(255, 220, 150, 0.9);
+}
+.panel-telop {
+  min-height: 20px;
+  max-width: 420px;
+  font-size: 13px; font-weight: 700;
+  color: #fff;
+  text-align: center;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+}
+
+/* ══════════════════════════════════════════════════════════
+ * 筐体アート適用時のレイアウト上書き(#cabinet.art-cabinet)
+ *
+ * cabinet.png には レバー・赤ボタン3個・銀ボタン が「絵として」
+ * 描き込まれている。DOM のボタンはその絵にぴったり重なる
+ * 「透明なヒットエリア + 点灯/ホバー時だけ光るオーバーレイ」にする。
+ * 座標は cabinet.png(1024×1536)を実測して論理720×1080へ換算した値。
+ *   レバー      中心(162, 759)  ヒット 118,724 88×70
+ *   停止ボタン  中心(292/359/426, 774)  ヒット 各 50×50
+ *   MAX BET     中心(561, 762)  ヒット 516,733 90×58
+ * キーボード操作(Enter/Space/A/S/D)は data-action 経由なので影響なし。
+ * ══════════════════════════════════════════════════════════ */
+
+/* ── 左右電飾: 筐体アートの暗いスリットに重ねる ── */
+#cabinet.art-cabinet .lamp {
+  top: 114px;
+  width: 41px;
+  height: 582px;
+  padding: 5px 2px;
+  border-radius: 9px;
+  background: none;
+  box-shadow: none;
+  /* 筐体アートの金属面に光が乗っているように見せる */
+  mix-blend-mode: screen;
+}
+#cabinet.art-cabinet .lamp-left { left: 33px; }
+#cabinet.art-cabinet .lamp-right { left: auto; right: 33px; }
+#cabinet.art-cabinet .lamp span { height: 48px; }
+
+/* ── 共通: 絵の上に乗せる発光オーバーレイ ── */
+#cabinet.art-cabinet .btn-maxbet,
+#cabinet.art-cabinet .btn-stop,
+#cabinet.art-cabinet .lever {
+  background: none;
+  border: none;
+  box-shadow: none;
+  opacity: 1;
+  animation: none;
+}
+#cabinet.art-cabinet .btn-maxbet::after,
+#cabinet.art-cabinet .btn-stop::after,
+#cabinet.art-cabinet .lever::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.14s ease;
+  mix-blend-mode: screen;
+}
+#cabinet.art-cabinet .btn-maxbet:hover::after,
+#cabinet.art-cabinet .btn-stop:hover::after,
+#cabinet.art-cabinet .lever:hover::after { opacity: 0.65; }
+#cabinet.art-cabinet .btn-maxbet:focus-visible,
+#cabinet.art-cabinet .btn-stop:focus-visible,
+#cabinet.art-cabinet .lever:focus-visible {
+  outline: 3px solid #ffe066;
+  outline-offset: 2px;
+  border-radius: 12px;
+}
+
+@keyframes art-btn-glow {
+  0%, 100% { opacity: 0.62; }
+  50%      { opacity: 1; }
+}
+
+/* ── MAX BET(右の銀ボタン) ── */
+#cabinet.art-cabinet .btn-maxbet {
+  left: 516px;
+  top: 733px;
+  width: 90px;
+  height: 58px;
+  border-radius: 50%;
+  color: #241d10;
+  transform: none;
+  /* ヒットエリアの中心(561,762)より銀キャップの中心(558,755)が少し上なので、
+     下パディングで文字だけキャップの上へ寄せる */
+  padding-bottom: 14px;
+}
+#cabinet.art-cabinet .btn-maxbet .cap {
+  font-size: 11px;
+  line-height: 1.0;
+  text-shadow: 0 1px 1px rgba(255, 255, 255, 0.65);
+}
+#cabinet.art-cabinet .btn-maxbet::after {
+  background: radial-gradient(ellipse at 50% 50%, rgba(255, 232, 150, 0.85), rgba(255, 190, 60, 0) 66%);
+}
+#cabinet.art-cabinet .btn-maxbet.is-active::after {
+  opacity: 1;
+  animation: art-btn-glow 1.5s ease-in-out infinite;
+}
+#cabinet.art-cabinet .btn-maxbet:active { transform: translateY(2px); }
+
+/* ── 停止ボタン(中央の赤ボタン3個) ── */
+#cabinet.art-cabinet .btn-stop {
+  top: 749px;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+}
+#cabinet.art-cabinet .stop-0 { left: 267px; }
+#cabinet.art-cabinet .stop-1 { left: 334px; }
+#cabinet.art-cabinet .stop-2 { left: 401px; }
+#cabinet.art-cabinet .btn-stop::after {
+  inset: -7px;
+  background: radial-gradient(circle, rgba(255, 120, 120, 0.9), rgba(255, 40, 40, 0) 64%);
+}
+#cabinet.art-cabinet .btn-stop.is-active::after {
+  opacity: 1;
+  animation: art-btn-glow 1.1s ease-in-out infinite;
+}
+#cabinet.art-cabinet .btn-stop:active { transform: translateY(2px); }
+
+/* ── スタートレバー(左のジョイスティック) ── */
+#cabinet.art-cabinet .lever {
+  left: 118px;
+  top: 724px;
+  width: 88px;
+  height: 70px;
+  border-radius: 44px / 35px;
+  transform-origin: 50% 88%;
+}
+/* 絵に描かれているのでCSSのレバー部品は使わない */
+#cabinet.art-cabinet .lever .lever-rod,
+#cabinet.art-cabinet .lever .lever-ball { display: none; }
+#cabinet.art-cabinet .lever::after {
+  inset: -6px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at 50% 42%, rgba(255, 150, 150, 0.8), rgba(255, 60, 60, 0) 62%);
+}
+#cabinet.art-cabinet .lever.is-active::after {
+  opacity: 1;
+  animation: art-btn-glow 1.5s ease-in-out infinite;
+}
+/* 透明なヒットエリアなので、レバーを引いた手応えは発光のフラッシュで返す */
+#cabinet.art-cabinet .lever.is-pulled { transform: none; }
+#cabinet.art-cabinet .lever.is-pulled::after {
+  animation: art-lever-pull 0.26s ease-out;
+  opacity: 1;
+}
+@keyframes art-lever-pull {
+  0%   { opacity: 1; transform: scale(1.25); }
+  100% { opacity: 0.6; transform: scale(1); }
+}
+
+/* ── 下部パネル(BIG BONUS) ──
+ * 絵そのものは cabinet.js が #cabinet-art へ描く。
+ * ここはテロップの器と、ボーナス中の発光オーバーレイだけを担当する。 */
+#cabinet.art-cabinet .panel {
+  left: 100px;
+  top: 818px;
+  width: 520px;
+  height: 191px;
+  border: none;
+  border-radius: 20px;
+  background: none;
+  box-shadow: none;
+  justify-content: flex-end;
+  padding-bottom: 12px;
+  overflow: visible;
+  transition: box-shadow 0.3s ease;
+}
+#cabinet.art-cabinet .panel::after { display: none; }
+#cabinet.art-cabinet .panel-logo,
+#cabinet.art-cabinet .panel-sub { display: none; }
+/* パネル絵そのものを明るく見せる光。screen合成なので下の絵に光が乗る */
+#cabinet.art-cabinet .panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 20px;
+  opacity: 0;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  transition: opacity 0.3s ease;
+  background: radial-gradient(ellipse at 50% 45%, rgba(255, 214, 120, 0.55), rgba(255, 160, 40, 0) 72%);
+}
+#cabinet.art-cabinet[data-lamp="bonus"] .panel::before { opacity: 1; }
+#cabinet.art-cabinet[data-lamp="rush"] .panel::before {
+  opacity: 0.85;
+  background: radial-gradient(ellipse at 50% 45%, rgba(120, 255, 216, 0.5), rgba(30, 200, 170, 0) 72%);
+}
+#cabinet.art-cabinet[data-lamp="rare"] .panel::before {
+  opacity: 0.7;
+  background: radial-gradient(ellipse at 50% 45%, rgba(255, 110, 110, 0.5), rgba(220, 40, 40, 0) 72%);
+}
+#cabinet.art-cabinet .panel-telop {
+  max-width: 460px;
+  padding: 3px 12px;
+  border-radius: 10px;
+  background: rgba(10, 4, 20, 0.62);
+}
+
+/* 電飾パターン(render/cabinet.js が #cabinet[data-lamp] を書く)に連動して発光 */
+#cabinet.art-cabinet[data-lamp="bonus"] .panel {
+  box-shadow: 0 0 46px 12px rgba(255, 201, 60, 0.8);
+  animation: art-panel-flash 0.55s ease-in-out infinite alternate;
+}
+#cabinet.art-cabinet[data-lamp="rush"] .panel {
+  box-shadow: 0 0 40px 10px rgba(109, 255, 208, 0.7);
+  animation: art-panel-flash 0.9s ease-in-out infinite alternate;
+}
+#cabinet.art-cabinet[data-lamp="rare"] .panel {
+  box-shadow: 0 0 34px 8px rgba(255, 90, 90, 0.7);
+}
+@keyframes art-panel-flash {
+  from { filter: brightness(1); }
+  to   { filter: brightness(1.35); }
+}
+
+/* ══════════════════════════════════════════════════════════
+ * cabinet2.png 用の座標上書き(#cabinet.art-cabinet2)
+ *
+ * 新しい筐体絵は 1086×1448。render/cabinet.js が
+ *   横: 0.76倍の等倍(元絵 x=541 が論理 x=360)
+ *   縦: CABINET2_BANDS のバンド伸縮
+ * で論理720×1080へ載せている。ここの座標はその写像の実測値。
+ *   MAX BET  中心(213, 700)  ヒット 168,681 90×42   ※絵に文字があるのでcapは隠す
+ *   停止ボタン 中心(282/359/436, 775) ヒット 各 50×50
+ *   レバー    中心(699, 661)  ヒット 677,639 43×45   ※旧絵と逆で右側
+ *   下部パネル 67,801 585×175(幽霊パネルの絵に重なる発光とテロップの器)
+ * キーボード操作(Enter/Space/矢印)は data-action 経由なので影響なし。
+ * ══════════════════════════════════════════════════════════ */
+
+/* 側面のLED帯(液晶横〜リール横)に電飾を重ねる */
+#cabinet.art-cabinet2 .lamp {
+  top: 84px;
+  width: 23px;
+  height: 595px;
+  padding: 4px 2px;
+  border-radius: 8px;
+}
+#cabinet.art-cabinet2 .lamp-left { left: 58px; }
+#cabinet.art-cabinet2 .lamp-right { left: auto; right: 54px; }
+#cabinet.art-cabinet2 .lamp span { height: 40px; }
+
+/* MAX BET(操作デッキの左寄り。楕円キャップ) */
+#cabinet.art-cabinet2 .btn-maxbet {
+  left: 168px;
+  top: 681px;
+  width: 90px;
+  height: 42px;
+  padding-bottom: 0;
+}
+/* 絵に「MAX BET」が印字済みなので文字は重ねない */
+#cabinet.art-cabinet2 .btn-maxbet .cap { display: none; }
+
+/* 停止ボタン(中央下段の赤ボタン3個) */
+#cabinet.art-cabinet2 .btn-stop { top: 750px; }
+#cabinet.art-cabinet2 .stop-0 { left: 257px; }
+#cabinet.art-cabinet2 .stop-1 { left: 334px; }
+#cabinet.art-cabinet2 .stop-2 { left: 411px; }
+
+/* スタートレバー(右側の黒球)。右端ギリギリなので幅は43pxに収める。
+   実機の流儀に合わせて操作はレバー(左)が正で、こちらは
+   「絵にレバーが描かれているのに押せないと不自然」なので残した補助ヒットエリア。 */
+#cabinet.art-cabinet2 .lever {
+  left: 677px;
+  top: 639px;
+  width: 43px;
+  height: 45px;
+  border-radius: 50%;
+  transform-origin: 50% 80%;
+}
+
+/* スタートレバー(左)。操作デッキ左端に描かれた黒球ノブに重ねる。
+   元絵 (200,983)-(268,1057) → 横0.76倍 + 操作デッキ帯0.760倍で写像した位置。 */
+#cabinet.art-cabinet2 .lever-left {
+  display: block;
+  left: 101px;
+  top: 742px;
+  width: 52px;
+  height: 57px;
+  border-radius: 50%;
+  transform-origin: 50% 15%;
+}
+/* 絵の球をそのまま見せるので、CSSで描いていた球と棒は出さない */
+#cabinet.art-cabinet2 .lever-left .lever-ball { display: none; }
+/* ホバー/押下で光るオーバーレイ(右レバーと同じ流儀) */
+#cabinet.art-cabinet2 .lever-left::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 40%, rgba(255, 240, 190, 0.85), rgba(255, 180, 80, 0) 68%);
+  opacity: 0;
+  transition: opacity 0.14s ease;
+  pointer-events: none;
+}
+#cabinet.art-cabinet2 .lever-left:hover::after { opacity: 0.6; }
+#cabinet.art-cabinet2 .lever-left.is-active::after { opacity: 0.4; }
+#cabinet.art-cabinet2 .lever-left.is-pulled::after { opacity: 0.95; }
+/* 引いた瞬間は下へ沈む(左レバーは手前下へ引く動き) */
+#cabinet.art-cabinet2 .lever-left.is-pulled { transform: translateY(5px) scale(0.96); }
+#cabinet.art-cabinet2 .lever-left:focus-visible {
+  outline: 3px solid #ffe066;
+  outline-offset: 3px;
+  border-radius: 50%;
+}
+
+/* 下部パネル(幽霊パネル)。絵は #cabinet-art 側で描かれている */
+#cabinet.art-cabinet2 .panel {
+  left: 67px;
+  top: 801px;
+  width: 585px;
+  height: 175px;
+  border-radius: 16px;
+}
+#cabinet.art-cabinet2 .panel::before { border-radius: 16px; }
+#cabinet.art-cabinet2 .panel-telop { max-width: 520px; }
+
+/* ══════════════════════════════════════════════════════════
+ * z=10 リザルトパネル(50回転終了時)
+ *
+ * 演出オーバーレイ(z=8)より上に出して、テロップや演出テキストと
+ * 重ならないようにする。中身は render/resultpanel.js が流し込む。
+ * ══════════════════════════════════════════════════════════ */
+.result-panel {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 30px;
+  background: radial-gradient(ellipse at 50% 38%, rgba(60, 10, 100, 0.72), rgba(4, 1, 10, 0.94) 72%);
+  backdrop-filter: blur(2px);
+}
+.result-panel[hidden] { display: none; }
+.result-panel.is-open { animation: result-fade 0.35s ease-out both; }
+@keyframes result-fade {
+  from { opacity: 0; transform: scale(0.98); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.result-card {
+  width: 100%;
+  max-width: 560px;
+  max-height: 100%;
+  overflow: auto;
+  padding: 22px 28px 26px;
+  border-radius: 22px;
+  border: 3px solid rgba(255, 210, 120, 0.65);
+  background: linear-gradient(165deg, #4a1080 0%, #2a0850 45%, #14032a 100%);
+  box-shadow: 0 0 46px rgba(160, 70, 255, 0.6), inset 0 0 60px rgba(0, 0, 0, 0.55);
+  text-align: center;
+  color: #fff;
+}
+
+.result-heading {
+  margin: 0;
+  font-family: "Arial Black", "Helvetica Neue", sans-serif;
+  font-size: 34px;
+  letter-spacing: 0.22em;
+  color: #ffd166;
+  text-shadow: 0 0 14px rgba(255, 190, 60, 0.85), 0 3px 0 #5a2a00;
+}
+.result-session {
+  margin: 2px 0 12px;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.18em;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.result-score-label {
+  margin: 0;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.16em;
+  color: rgba(255, 255, 255, 0.65);
+}
+.result-score {
+  margin: 2px 0 0;
+  font-family: "Arial Black", "Helvetica Neue", sans-serif;
+  font-size: 62px;
+  line-height: 1.05;
+  letter-spacing: 0.02em;
+  color: #fff;
+  text-shadow: 0 0 22px rgba(255, 220, 120, 0.9), 0 4px 0 rgba(0, 0, 0, 0.45);
+}
+.result-score[data-sign="plus"] { color: #ffe58a; }
+.result-score[data-sign="minus"] { color: #9fb2d8; text-shadow: 0 0 18px rgba(120, 150, 220, 0.7); }
+.result-rank {
+  margin: 4px 0 14px;
+  font-size: 14px; font-weight: 900; letter-spacing: 0.1em;
+}
+
+.result-detail {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 14px;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.34);
+  font-size: 12px;
+  text-align: left;
+}
+.result-detail dt { color: rgba(255, 255, 255, 0.68); }
+.result-detail dd { margin: 0; text-align: right; font-weight: 700; color: #ffe9b0; }
+
+.result-form {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.result-name-label {
+  font-size: 12px; font-weight: 700;
+  color: rgba(255, 255, 255, 0.7);
+}
+.result-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 2px solid rgba(255, 210, 120, 0.5);
+  background: rgba(10, 4, 22, 0.85);
+  color: #fff;
+  font-size: 14px;
+  font-family: inherit;
+}
+.result-name::placeholder { color: rgba(255, 255, 255, 0.35); }
+.result-name:focus-visible {
+  outline: 3px solid #ffe066;
+  outline-offset: 1px;
+}
+.result-hof {
+  flex: 0 0 auto;
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 12px; font-weight: 900;
+  font-family: inherit;
+  cursor: pointer;
+}
+.result-hof:hover { background: rgba(255, 255, 255, 0.16); }
+.result-hof:focus-visible { outline: 3px solid #ffe066; outline-offset: 2px; }
+
+.result-note {
+  min-height: 16px;
+  margin: 0 0 10px;
+  font-size: 11px; font-weight: 700;
+  color: #7bf7d0;
+}
+
+.result-again {
+  display: block;
+  width: 78%;
+  margin: 0 auto;
+  padding: 14px 0;
+  border-radius: 16px;
+  border: 3px solid rgba(255, 240, 190, 0.85);
+  background: radial-gradient(circle at 50% 28%, #fff3c4, #ffbe3c 46%, #d07800 100%);
+  color: #40200a;
+  font-size: 22px; font-weight: 900; letter-spacing: 0.08em;
+  font-family: inherit;
+  cursor: pointer;
+  box-shadow: 0 6px 0 #7a3f00, 0 10px 26px rgba(255, 170, 40, 0.55);
+  animation: result-again-pulse 1.6s ease-in-out infinite;
+}
+.result-again:hover { filter: brightness(1.08); }
+.result-again:active { transform: translateY(4px); box-shadow: 0 2px 0 #7a3f00; }
+.result-again:focus-visible { outline: 4px solid #7bf7d0; outline-offset: 3px; }
+@keyframes result-again-pulse {
+  0%, 100% { box-shadow: 0 6px 0 #7a3f00, 0 10px 22px rgba(255, 170, 40, 0.45); }
+  50%      { box-shadow: 0 6px 0 #7a3f00, 0 10px 34px rgba(255, 200, 80, 0.85); }
+}
+.result-hint {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* ── デバッグ凡例 ─────────────────────────── */
+.debug-bar {
+  position: absolute;
+  /* 凡例2行 + 状態1行ぶんの高さを確保して筐体下端(1080px)に収める */
+  left: 60px; top: 996px; width: 600px; height: 76px;
+  z-index: 9;
+  /* 状態表示は必ず折り返して自分の行に置く(凡例と詰まって読めなくなるのを防ぐ) */
+  display: flex; flex-wrap: wrap; align-items: flex-start; gap: 2px 10px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: #b9c2e0;
+  font-size: 10px;
+  line-height: 1.5;
+  overflow: hidden;
+}
+.debug-title {
+  flex: 0 0 auto;
+  font-weight: 900; letter-spacing: 0.1em;
+  color: #ff6ec7;
+}
+.debug-keys { flex: 1 1 auto; min-width: 0; }
+/* 1行ぶんの凡例は途中で折り返さない(3行に散らばると読みにくいため) */
+.debug-keys > div { white-space: nowrap; }
+.debug-keys b { color: #ffe066; font-weight: 700; }
+.debug-state {
+  flex: 1 0 100%;
+  margin-top: 2px;
+  padding-top: 3px;
+  border-top: 1px solid rgba(255,255,255,0.10);
+  color: #7bf7d0;
+  font-family: "SFMono-Regular", Menlo, monospace;
+  text-align: left;
+  white-space: nowrap;
+}
+
+/* ══════════════════════════════════════════════════════════
+ * 画面をすっきりさせるための非表示指定
+ *
+ * どちらも「同じ情報が別の場所にある」ので画面からは伏せる。
+ *   - 下部パネルのテロップ … 文言は液晶のテロップ帯へ一元化済み
+ *   - デバッグ凡例         … ?debug=1 のときだけ出す(Hキーでも出せる)
+ * ══════════════════════════════════════════════════════════ */
+
+/* 下部パネルのテロップ欄。
+   role="status" aria-live のライブリージョンとしては生かしておきたいので、
+   display:none ではなく視覚的にだけ隠す(読み上げには残る)。
+   筐体アート適用時の上書き(#cabinet.art-cabinet 等)より強い指定にしてある。 */
+#cabinet .panel-telop,
+#cabinet.art-cabinet .panel-telop,
+#cabinet.art-cabinet2 .panel-telop {
+  position: absolute;
+  width: 1px; height: 1px;
+  min-height: 0;
+  margin: -1px; padding: 0;
+  border: 0;
+  background: none;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* デバッグ凡例は既定で出さない。
+   ?debug=1 のとき render/cabinet.js が <body> に .debug を付ける。
+   Hキーの表示切替はインライン style を書くのでこの指定より優先される。 */
+.debug-bar { display: none; }
+body.debug .debug-bar { display: flex; }

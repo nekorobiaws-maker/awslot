@@ -1,0 +1,8 @@
+{
+  "note": "音声未生成のときのプレースホルダ。scripts/generate-voices.mjs を実行すると実データで上書きされる(手で編集しないこと)。空の voices を返すことで、起動時に manifest.json の 404 がコンソールへ出るのを防いでいる。",
+  "generatedAt": null,
+  "basePath": "assets/voices/",
+  "pathRule": "{basePath}{char}/{file}",
+  "groups": {},
+  "voices": {}
+}

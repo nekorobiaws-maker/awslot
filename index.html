@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AWSLOT — オースロット</title>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<div id="viewport">
+  <!-- 論理解像度 720×1080。CSS transform: scale() でビューポートにフィットする -->
+  <div id="cabinet">
+
+    <!-- z=0: 筐体フレーム。
+         assets/ui/cabinet.png が読めた場合は #cabinet-art に筐体アートを描き、
+         .cabinet-frame(CSSグラデーション)は非表示になる。
+         画像が無い環境では従来どおり .cabinet-frame が見える。 -->
+    <canvas id="cabinet-art" class="cabinet-art" aria-hidden="true"></canvas>
+    <div class="cabinet-frame" aria-hidden="true">
+      <div class="frame-top"></div>
+      <div class="frame-mid"></div>
+      <div class="frame-bottom"></div>
+    </div>
+
+    <!-- z=1: 左右電飾 -->
+    <div class="lamp lamp-left" data-pattern="idle" aria-hidden="true">
+      <span></span><span></span><span></span><span></span><span></span>
+      <span></span><span></span><span></span><span></span><span></span>
+    </div>
+    <div class="lamp lamp-right" data-pattern="idle" aria-hidden="true">
+      <span></span><span></span><span></span><span></span><span></span>
+      <span></span><span></span><span></span><span></span><span></span>
+    </div>
+
+    <!-- z=2: 液晶 -->
+    <div class="bezel lcd-bezel" aria-hidden="true"></div>
+    <canvas id="lcd" class="layer" role="img" aria-label="液晶画面。モードと残りゲーム数を表示"></canvas>
+
+    <!-- z=3: ロゴ帯 -->
+    <div class="logo-band" aria-hidden="true"><span class="logo-text">AWSLOT</span></div>
+
+    <!-- z=4,5: リール -->
+    <div class="bezel reel-bezel" aria-hidden="true"></div>
+    <canvas id="reels" class="layer" role="img" aria-label="リール表示"></canvas>
+    <canvas id="reelfx" class="layer" aria-hidden="true"></canvas>
+
+    <!-- z=6: HUD -->
+    <div class="bezel hud-bezel" aria-hidden="true"></div>
+    <canvas id="hud" class="layer" role="img" aria-label="クレジット、ゲーム数、払出枚数の表示"></canvas>
+
+    <!-- z=7: 操作系 -->
+    <div class="controls">
+      <button type="button" class="btn-maxbet" data-action="BET"
+              aria-label="マックスベット。3枚投入します。キーボードのエンターキーでも操作できます">
+        <span class="cap">MAX<br>BET</span>
+      </button>
+
+      <!-- ボタン面のキー表記(A/S/D)は出さない。操作は矢印キーが主で、
+           A/S/D も併用できるが、面に書くと矢印キーと二重になって迷うため。
+           キー一覧はデバッグ凡例(Hキー)で確認できる。 -->
+      <button type="button" class="btn-stop stop-0" data-action="STOP0"
+              aria-label="左リール停止。キーボードの左矢印キーでも操作できます"></button>
+      <button type="button" class="btn-stop stop-1" data-action="STOP1"
+              aria-label="中リール停止。キーボードの下矢印キーでも操作できます"></button>
+      <button type="button" class="btn-stop stop-2" data-action="STOP2"
+              aria-label="右リール停止。キーボードの右矢印キーでも操作できます"></button>
+      <div class="stop-label" aria-hidden="true">S T O P</div>
+
+      <button type="button" class="lever" data-action="LEVER"
+              aria-label="スタートレバー。キーボードのスペースキーでも操作できます">
+        <span class="lever-rod"></span>
+        <span class="lever-ball"></span>
+      </button>
+    </div>
+
+    <!-- z=3: 下部パネル -->
+    <div class="panel">
+      <div class="panel-logo">AWSLOT</div>
+      <div class="panel-sub">オースロット</div>
+      <div id="panel-telop" class="panel-telop" role="status" aria-live="polite"></div>
+    </div>
+
+    <!-- z=8: 全画面演出 -->
+    <canvas id="overlay" class="layer" aria-hidden="true"></canvas>
+
+    <!-- z=10: リザルト(50回転終了時)。
+         render/resultpanel.js が RESULT モード滞在中だけ hidden を外す。
+         「もう一度やる」は data-action="RESTART" なので、engine/input.js の
+         ポインタ処理がそのまま拾う(Rキー・↑キーと同じ経路)。 -->
+    <div id="result-panel" class="result-panel" role="dialog" aria-modal="true"
+         aria-labelledby="result-heading" hidden>
+      <div class="result-card">
+        <p id="result-heading" class="result-heading">RESULT</p>
+        <p class="result-session" id="result-session">50 SPIN SCORE ATTACK</p>
+
+        <p class="result-score-label">SCORE(差枚)</p>
+        <p class="result-score" id="result-score" role="status" aria-live="polite">0</p>
+        <p class="result-rank" id="result-rank"></p>
+
+        <dl class="result-detail" id="result-detail"></dl>
+
+        <div class="result-form">
+          <label class="result-name-label" for="result-name">なまえ</label>
+          <input id="result-name" class="result-name" type="text" maxlength="12"
+                 placeholder="なまえを入力" autocomplete="off"
+                 aria-label="スコアに登録する名前を入力">
+          <button type="button" class="result-hof" id="result-hof"
+                  aria-label="殿堂入りに登録する。この機能は準備中です">殿堂入り</button>
+        </div>
+        <p class="result-note" id="result-note" role="status" aria-live="polite"></p>
+
+        <button type="button" class="result-again" data-action="RESTART"
+                aria-label="もう一度やる。新しい50回転を始めます。キーボードのRキーでも操作できます">
+          もう一度やる
+        </button>
+        <p class="result-hint">R キー / ↑ キーでも始められます</p>
+      </div>
+    </div>
+
+    <!-- デバッグ凡例 -->
+    <div id="debug-bar" class="debug-bar">
+      <span class="debug-title">DEBUG</span>
+      <span class="debug-keys" id="debug-keys"></span>
+      <span class="debug-state" id="debug-state"></span>
+    </div>
+  </div>
+</div>
+
+<noscript>
+  <p style="color:#fff;text-align:center;padding:2rem;">AWSLOT の実行には JavaScript が必要です。</p>
+</noscript>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>

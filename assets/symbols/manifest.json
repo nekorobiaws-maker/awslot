@@ -1,0 +1,16 @@
+{
+  "note": "配置済みの絵柄PNGをここに列挙する。列挙されたファイルだけを読み込むため、未配置の絵柄で404が発生しない。",
+  "howto": "PNGを assets/symbols/ に置いたら、そのファイル名を files 配列に追記してリロードすること。",
+  "files": [
+    "GHOST7.png",
+    "SHARKBAR.png",
+    "BELL.png",
+    "CHERRY.png",
+    "MELON.png",
+    "LAMBDA.png",
+    "REPLAY.png",
+    "ALARM.png",
+    "BLANK.png",
+    "REPLAY2.png"
+  ]
+}
