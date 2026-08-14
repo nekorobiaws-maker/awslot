@@ -16,7 +16,7 @@ export class AssetStore {
   /** @param {string} basePath 例: './assets/' */
   constructor(basePath = './assets/') {
     this.basePath = basePath;
-    /** @type {Map<string, ImageBitmap|HTMLImageElement>} */
+    /** @type {Map<string, ImageBitmap|HTMLImageElement|HTMLCanvasElement>} */
     this.images = new Map();
     /** 読み込めなかったID(フォールバック対象) */
     this.missing = [];
@@ -24,6 +24,16 @@ export class AssetStore {
     /** manifest が読めたか(読めない場合は全てフォールバック) */
     this.manifestFound = false;
   }
+
+  /*
+   * NOTE(2026-08-14 デッドコード削除):
+   * ここには「合成アセット」(PNGを持たず、コードで1枚の絵を作るID)を登録する
+   * registerSynth() と、それを load() の最後に実行する _runSynths() があった。
+   * 7 / BAR を絵柄PNG(GHOST7.png / SHARKBAR.png)へ戻した時点で登録する側が
+   * 1か所も無くなり、**呼ばれないコードだけが残っていた**ので削除した。
+   * 同じ仕組みが再び要るときは git 履歴から戻せる(load() の末尾で
+   * 生成 → this.images へ差し込み → missing から取り除く、という流れ)。
+   */
 
   /**
    * @param {{id:string, path:string}[]} entries id と basePath からの相対パス
@@ -160,6 +170,65 @@ export const UI_ASSETS = [
 export const symbolAssets = new AssetStore('./assets/');
 
 export const uiAssets = new AssetStore('./assets/');
+
+/* ────────────────────────────────────────────────────────────
+ * キャラ画像(assets/chars/*.png)
+ *
+ * 2026-08-14: ユーザー支給のサメ素材 shark.png(5列×4行=20ポーズの
+ * スプライトシート)を読み込む。キャラ描画(render/chars/george.js)は
+ * このシートから必要なポーズだけを切り出して使う。
+ *
+ * UI画像と同じ「存在リスト方式」。ここに書かれたファイルだけ読みにいくので
+ * 未配置ファイルへの fetch(=コンソールの404)が発生しない。
+ * ──────────────────────────────────────────────────────────── */
+
+/** @type {{id:string, file:string}[]} 配置済みのキャラ画像(存在リスト) */
+export const CHAR_ASSETS = [
+  { id: 'shark', file: 'shark.png' },
+  // 2026-08-14: プレミアカメオの「ルナ」(1254×1254 / 5列×4行=20ポーズ)。
+  // こちらはグリーンバックのままの素材なので、切り出し側(render/chars/lunachan.js)で
+  // クロマキーしてから使う。
+  { id: 'luna', file: 'luna.png' },
+  // 2026-08-14 U30: ヒーローRUSH の主役「ヒーロー」(1536×1024 / 5列×3行=15ポーズ)。
+  // ルナと同じグリーンバック素材。セル境界が等間隔でないので、
+  // 切り出し側(render/chars/herochan.js)が実測の境界表を持っている。
+  { id: 'hero', file: 'hero.png' },
+];
+
+export const charAssets = new AssetStore('./assets/');
+
+/** @type {Promise<AssetStore>|null} */
+let charLoadPromise = null;
+
+/**
+ * キャラ画像の読み込みを一度だけ開始する。何度呼んでも同じ Promise を返す。
+ * 未ロードのあいだ get('shark') は null を返すので、呼び手は
+ * 「まだ来ていないフレームは簡易描画」でそのまま動かせる。
+ * @returns {Promise<AssetStore>}
+ */
+export function loadCharAssets() {
+  if (!charLoadPromise) {
+    charLoadPromise = charAssets
+      .load(
+        CHAR_ASSETS.map(({ id, file }) => ({ id, path: `chars/${file}` })),
+        { manifestPath: null, quiet: true },
+      )
+      .then((store) => {
+        if (store.missing.length > 0) {
+          console.info(
+            `[assets] キャラ画像 ${store.missing.length}件が読めなかったので簡易描画にフォールバックします: ` +
+            store.missing.join(', '),
+          );
+        }
+        return store;
+      })
+      .catch((err) => {
+        console.warn('[assets] キャラ画像の読み込みに失敗しました(簡易描画を継続します)', err);
+        return charAssets;
+      });
+  }
+  return charLoadPromise;
+}
 
 /** @type {Promise<AssetStore>|null} */
 let uiLoadPromise = null;

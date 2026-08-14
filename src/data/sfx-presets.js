@@ -302,6 +302,35 @@ export const SFX_PRESETS = {
     ],
   },
 
+  /**
+   * クイズ番組の不正解ブザー「ブッ・ブー」(2026-08-14 追加 U13)。
+   *
+   * 「AWSあるある分岐予兆」(data/scenarios/yokoku-aruaru.js)専用。
+   * リール停止でハズレが確定したとき、アンチパターンのセリフに重ねて鳴らす。
+   *
+   * 既存の error_buzz を流用しなかった理由:
+   *   error_buzz は「障害が起きた」の警報で、同じ長さの2連打を低く鳴らすため
+   *   事故の色が強い。ここで欲しいのは司会者が押す不正解ブザーなので、
+   *   短い「ブッ」→ 長く垂れ下がる「ブー」の **非対称な2連** にして、
+   *   2発目の終わりだけピッチを落とし、笑いに寄せた余韻を作っている。
+   *
+   * 音の作り: F3(174.6Hz)の矩形波 + 1オクターブ下のノコギリ波で
+   * ブザーの濁りを出し、ローパスで角を落とす。頭に短いノイズを置いて
+   * 「ボタンを叩いた」感を足す。
+   */
+  buzzer_wrong: {
+    voices: [
+      // 1発目「ブッ」
+      { type: 'square', freq: 174.6, dur: 0.11, env: { a: 0.003, d: 0.02, s: 0.9, r: 0.03 }, gain: 0.17, filter: { type: 'lowpass', freq: 1100 } },
+      { type: 'sawtooth', freq: 87.3, dur: 0.11, env: { a: 0.003, d: 0.02, s: 0.9, r: 0.03 }, gain: 0.13, filter: { type: 'lowpass', freq: 800 } },
+      // 2発目「ブー」。語尾だけ半音ぶん垂れる
+      { type: 'square', freqFrom: 174.6, freqTo: 146.8, dur: 0.42, delay: 0.17, env: { a: 0.003, d: 0.06, s: 0.85, r: 0.10 }, gain: 0.17, filter: { type: 'lowpass', freq: 1100 } },
+      { type: 'sawtooth', freqFrom: 87.3, freqTo: 73.4, dur: 0.42, delay: 0.17, env: { a: 0.003, d: 0.06, s: 0.85, r: 0.10 }, gain: 0.13, filter: { type: 'lowpass', freq: 800 } },
+      // ブザーを叩いた瞬間の当たり音
+      { type: 'noise', dur: 0.05, env: { a: 0.001, d: 0.04, s: 0, r: 0.01 }, filter: { type: 'bandpass', freq: 900, q: 2 }, gain: 0.10 },
+    ],
+  },
+
   /** CZ成功 */
   cz_win: {
     voices: [
@@ -614,6 +643,22 @@ export const SFX_PRESETS = {
     ],
   },
 
+  /**
+   * エッジから吹き抜ける風(2026-08-14 追加)。
+   * 「風が子役を運んでくる」演出(lcdanims-extra.js の edge_wind_carry)専用。
+   *
+   * 既存で一番近いのは cutin_whoosh だが、あれは「一撃で通り過ぎる」音で
+   * 風が吹き続ける画に合わない(尾が短く、絵柄が着地する前に鳴り終わる)。
+   * ここは 0.9 秒かけて左右にパンしながら抜けていく、長めの風にしてある。
+   */
+  wind_gust: {
+    voices: [
+      { type: 'noise', dur: 0.90, env: { a: 0.18, d: 0.24, s: 0.55, r: 0.28 }, filter: { type: 'bandpass', freq: 420, freqTo: 2600, q: 1.1 }, gain: 0.26, pan: 0.6 },
+      { type: 'noise', dur: 0.86, delay: 0.10, env: { a: 0.20, d: 0.24, s: 0.5, r: 0.26 }, filter: { type: 'bandpass', freq: 900, freqTo: 3600, q: 1.6 }, gain: 0.18, pan: -0.6 },
+      { type: 'sine', freqFrom: 210, freqTo: 96, dur: 0.80, env: { a: 0.14, d: 0.26, s: 0.4, r: 0.24 }, gain: 0.12 },
+    ],
+  },
+
   /** ゾーン終了 → 母体ATへ復帰。ふっと戻ってくる */
   zone_return: {
     voices: [
@@ -648,6 +693,9 @@ export const SFX_ALIASES = {
   tenpai_win: 'tenpai_strong',
   spot_terminate: 'error_buzz',
   fail: 'error_buzz',
+  // U13「AWSあるある分岐予兆」のハズレ音。呼び名の揺れを吸収する
+  bubu: 'buzzer_wrong',
+  wrong: 'buzzer_wrong',
   set_continue: 'upgrade_chime',
   level_up: 'upgrade_chime',
   // エンディングのファンファーレは専用音を作らず既存を共用する
@@ -975,6 +1023,15 @@ export const MODE_BGM = {
   CZ: 'bgm_cz',
   BONUS: 'bgm_bonus',
   AS_RUSH: 'bgm_rush',
+  /*
+   * U11 の RUSH 3種。専用曲は作らず性格の近い曲を割り当てる。
+   *   CloudFront … 払い出しが飛び続けるのでボーナス寄りの高揚
+   *   Aurora     … 純増が育つ RUSH なので RUSH 曲
+   *   ヒーロー   … プレミアなのでエンディング曲を借りて「特別な5G」にする
+   */
+  CF_RUSH: 'bgm_bonus',
+  AURORA_RUSH: 'bgm_rush',
+  HERO_RUSH: 'bgm_ending',
   // 派生ゾーン(RUSHの上に積まれる)
   SPOT_ZONE: 'bgm_cz',          // 中断通知の緊張感
   EC2_BURST: 'bgm_rush',

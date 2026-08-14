@@ -1,6 +1,10 @@
-# AWSLOT 画像生成プロンプト集
+# JAWSLOT -ジョースロット- 画像生成プロンプト集
 
-AWS題材パチスロ「AWSLOT」の絵柄・演出画像を **GPT Image 2** で生成するためのプロンプト集。
+> **表示名は「JAWSLOT -ジョースロット-」**(U45 / 2026-08-15)。
+> コード上の識別子(`window.AWSLOT`)・ディレクトリ名・内部名は **AWSLOT のまま**。
+> 改名するのはプレイヤーに見える文言だけ。
+
+AWS題材パチスロ「JAWSLOT -ジョースロット-」の絵柄・演出画像を **GPT Image 2** で生成するためのプロンプト集。
 参考: `docs/sample.png`(紫ベースの筐体、光沢のあるスロット絵柄タッチ、白い幽霊=丸いフォルム+黒い楕円の目2つ)
 図柄と格の対応は `docs/IDEAS.md` の「1. リール絵柄案」に準拠。
 
@@ -144,7 +148,7 @@ Row 2, left to right (the shark character described above, in three different ex
 
 ### B-2. 下パネルロゴ(単独1枚)
 
-sample.png下部のロゴパネルをイメージ。こちらはグリッドではなく単独1枚のプロンプト。**AWSのロゴ・矢印マークは描かない**。「AWSLOT」「BIG BONUS」はゲームオリジナル名として文字表示OK。
+sample.png下部のロゴパネルをイメージ。こちらはグリッドではなく単独1枚のプロンプト。**AWSのロゴ・矢印マークは描かない**。「JAWSLOT」「BIG BONUS」はゲームオリジナル名として文字表示OK(U45 の改名後。旧名 AWSLOT で生成すると現行の筐体アートと食い違う)。
 
 - 推奨サイズ: **1536×1024(横長)**
 
@@ -153,7 +157,7 @@ Japanese pachislot (pachinko slot machine) signage panel illustration, in the au
 
 A cute round ghost character in Japanese pachislot mascot style: soft pure-white blob-like body shaped like a rounded teardrop or fluffy cloud, cute chibi-like roundness, no visible mouth, two simple black oval eyes evenly spaced on the upper-front of the face, a gently wavy scalloped bottom edge with three small rounded points, flat light-purple cel-shaded accent on the body surface (no glossy or metallic highlight), calm and friendly expression, bold clean black outline, flat 2D anime/manga mascot illustration matching a Japanese pachislot game ghost character.
 
-Large glowing neon-purple flat-colored pop-art text reading "AWSLOT" across the upper area, below it bold fiery orange-gold flat-colored text reading "BIG BONUS" with a comic-style sparkle burst effect and small flat gold coin shapes scattered behind it, the ghost character floating on the right side with arms raised in celebration, a small mini-sized version of the same ghost floating near the bottom-left corner for depth.
+Large glowing neon-purple flat-colored pop-art text reading "JAWSLOT" across the upper area, below it bold fiery orange-gold flat-colored text reading "BIG BONUS" with a comic-style sparkle burst effect and small flat gold coin shapes scattered behind it, the ghost character floating on the right side with arms raised in celebration, a small mini-sized version of the same ghost floating near the bottom-left corner for depth.
 ```
 
 保存先ファイル名の目安: `assets/panel/awslot_big_bonus.png`
@@ -190,7 +194,7 @@ Japanese pachislot (pachinko slot machine) cabinet hardware artwork, in the auth
 | C-2 | MAX BETボタン(点灯) | `assets/ui/maxbet_on.png` |
 | C-2 | 停止ボタン(点灯) | `assets/ui/stop_on.png` |
 | C-2 | レバー(倒した状態) | `assets/ui/lever_pulled.png` |
-| C-3 | AWSLOTロゴ帯(単独) | `assets/ui/logo_band.png` |
+| C-3 | JAWSLOTロゴ帯(単独) | `assets/ui/logo_band.png` |
 | C-3 | 下部パネル背景(単独) | `assets/ui/bottom_panel.png` |
 | C-4 | リール窓の金フチ枠 | `assets/ui/reel_frame.png` |
 | C-4 | リール帯背景(円筒面) | `assets/ui/reel_strip_bg.png` |
@@ -274,18 +278,18 @@ Row 2, left to right (lit / active state):
 
 横長素材は1枚ずつ単独プロンプトで生成する(グリッド化しない)。
 
-#### C-3-1. AWSLOTロゴ帯
+#### C-3-1. JAWSLOTロゴ帯
 
 - 推奨サイズ: **1536×1024(横長)** で生成し、実際に使う帯は横440×縦45(比率約9.8:1)とかなり細長いため、**生成後にバナー部分だけを上下トリミングして切り出す**(GPT Image 2にはこの極端な横長比率を直接指定できないため)
-- キャラは登場させない。文字は「AWSLOT」のみ(AWS公式ロゴ・ブランド意匠は描かせない)
+- キャラは登場させない。文字は「JAWSLOT」のみ(AWS公式ロゴ・ブランド意匠は描かせない)
 
 ```
 Japanese pachislot (pachinko slot machine) cabinet hardware artwork, in the authentic style of a real Japanese arcade slot machine cabinet, rendered as flat illustrated 2D game art (not a photo, not a 3D render). Bold, clean black outlines, anime/manga cel-shading with flat, vivid, highly saturated colors as the base. Unlike character/symbol icons, cabinet hardware parts may include tasteful backlit LED glow, soft light bloom, and brushed-metal trim highlights typical of a real slot cabinet chassis — but no photorealistic camera rendering, no realistic room reflections, no 3D render look. Vibrant deep-purple body color with gold metal trim accents, magenta and cyan LED accent glow where noted, dramatic but tasteful rim lighting. Transparent background, no watermark, no grid lines, no cell borders, no dividing lines, no descriptive caption text beyond what is explicitly specified below.
 
-A single horizontal rounded-rectangle signage plaque, wide banner shape, centered in the frame with generous transparent padding above and below so it can be tightly cropped later. Deep purple gradient background with a bold gold metal trim border all around, soft magenta glow bleeding out from behind the plaque edges. Centered inside the plaque, bold flat pop-art 3D-style text reading "AWSLOT" in glowing neon-purple and white letters with a magenta outer glow, no other text, no characters, no additional decoration.
+A single horizontal rounded-rectangle signage plaque, wide banner shape, centered in the frame with generous transparent padding above and below so it can be tightly cropped later. Deep purple gradient background with a bold gold metal trim border all around, soft magenta glow bleeding out from behind the plaque edges. Centered inside the plaque, bold flat pop-art 3D-style text reading "JAWSLOT" in glowing neon-purple and white letters with a magenta outer glow, no other text, no characters, no additional decoration.
 ```
 
-#### C-3-2. 下部パネル背景(AWSLOT BIG BONUS+幽霊とサメ)
+#### C-3-2. 下部パネル背景(JAWSLOT BIG BONUS+幽霊とサメ)
 
 - 推奨サイズ: **1536×1024(横長)** で生成し、実際のパネルは横520×縦200(比率約2.6:1)なので、**生成後に上下をトリミングして目的の比率に近づける**
 - キャラ固定文(幽霊・サメ)を使用。B-2(下パネルロゴ、幽霊のみ)とは別素材として、**幽霊とサメの両方が登場するバージョン**を作る。B-2は既存のまま残してよい(用途が異なる場合の代替案として使える)
@@ -297,7 +301,7 @@ A cute round ghost character in Japanese pachislot mascot style: soft pure-white
 
 A comical mascot shark character in Japanese pachislot mascot style: chibi-like cute proportions close to a two-head-tall body ratio, vivid orange body with a pale cream-colored belly and underside, a big friendly grin showing white triangular teeth, round white eyes with small black pupils, a small triangular dorsal fin on top of the head, short stubby side fins, flat cel-shaded coloring with bold clean black outline (no glossy or metallic shine), flat 2D anime/manga mascot illustration matching a Japanese pachislot game shark character.
 
-A single wide rounded-rectangle signage panel, centered in the frame with generous transparent padding above and below so it can be cropped to a shorter wide banner later. Deep purple gradient background with a bold gold metal trim border all around, radiant light-ray burst pattern radiating from the center. Bold flat pop-art text reading "AWSLOT" near the top in glowing neon-purple letters, below it bold fiery orange-gold flat text reading "BIG BONUS" with a comic-style sparkle burst effect and small flat gold coin shapes scattered around. The ghost character floating and celebrating on the left side, the shark character striking a triumphant pose on the right side, both characters looking toward the center, small mini-sized sparkle particles scattered between them for depth.
+A single wide rounded-rectangle signage panel, centered in the frame with generous transparent padding above and below so it can be cropped to a shorter wide banner later. Deep purple gradient background with a bold gold metal trim border all around, radiant light-ray burst pattern radiating from the center. Bold flat pop-art text reading "JAWSLOT" near the top in glowing neon-purple letters, below it bold fiery orange-gold flat text reading "BIG BONUS" with a comic-style sparkle burst effect and small flat gold coin shapes scattered around. The ghost character floating and celebrating on the left side, the shark character striking a triumphant pose on the right side, both characters looking toward the center, small mini-sized sparkle particles scattered between them for depth.
 ```
 
 ---

@@ -1,7 +1,8 @@
 /**
  * M20. re:Invent キーノートエンディング。DESIGN.md 2.2 / 3.13
  *
- * 差枚 +2222 到達、または AT 15セット到達で突入する完走エンディング。
+ * 差枚(ENDING.conditions の diffCoins)到達、または ATセット数到達で突入する完走エンディング。
+ * 閾値は data/modes.js の ENDING が正(U50 で差枚 2222 → 1500)。
  * 突入判定そのものは差枚を持つ GameFlow 側で行い、
  * ここは「30G消化して Free Tier へ全リセット」だけを担当する。
  *

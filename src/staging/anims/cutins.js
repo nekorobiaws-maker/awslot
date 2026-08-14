@@ -6,9 +6,8 @@
  * 1回描いてから拡大表示する。
  */
 
-import { drawKiro } from '../../render/chars/kiro.js';
 import { getLayerRect } from '../../engine/layers.js';
-import { drawGeorge } from '../../render/chars/george.js';
+import { drawShark, sharkArtReady } from '../../render/chars/george.js';
 import { CUTINS_EXTRA } from './cutins-extra.js';
 
 const FONT_HEAVY = '"Arial Black", "Helvetica Neue", "Hiragino Sans", sans-serif';
@@ -44,18 +43,54 @@ function lcdTextSpot(y, size = 40) {
 }
 
 
+/**
+ * 大型キャラを液晶の中へ収めるための配置ヘルパ(2026-08-14 しおん指摘 S12)。
+ *
+ * ジョージ(サメ)の大型カットインが液晶からはみ出し、
+ * リール窓の上半分とゾーンのルール説明まで覆っていた。
+ * 文字と同じく **キャラも液晶の絵**として扱い、
+ * オフスクリーンキャンバス(srcW×srcH)が液晶の指定割合に収まる倍率と中心を返す。
+ *
+ * @param {number} srcW キャッシュ済みキャンバスの幅
+ * @param {number} srcH 同・高さ
+ * @param {object} [opts]
+ * @param {number} [opts.hRatio] 液晶の高さに対して使ってよい割合
+ * @param {number} [opts.wRatio] 液晶の幅に対して使ってよい割合
+ * @param {number} [opts.cyRatio] 液晶内の縦位置(0=上端 1=下端)
+ * @returns {{x:number, y:number, scale:number, left:number, right:number}}
+ */
+function lcdCharSpot(srcW, srcH, { hRatio = 0.5, wRatio = 0.66, cyRatio = 0.32 } = {}) {
+  const r = getLayerRect('lcd');
+  const scale = Math.min(1, (r.h * hRatio) / srcH, (r.w * wRatio) / srcW);
+  return {
+    x: r.x + r.w / 2,
+    y: r.y + r.h * cyRatio,
+    scale,
+    // 画面外から飛び込む演出用に、液晶の左右端も返す
+    left: r.x,
+    right: r.x + r.w,
+  };
+}
+
 const clamp01 = (x) => Math.max(0, Math.min(1, x));
 const easeOutCubic = (x) => 1 - (1 - x) ** 3;
 const easeOutBack = (x) => 1 + 2.70158 * (x - 1) ** 3 + 1.70158 * (x - 1) ** 2;
 
-/** キャラを1回だけオフスクリーンに描いてキャッシュする */
+/**
+ * キャラを1回だけオフスクリーンに描いてキャッシュする。
+ *
+ * 2026-08-14: キャラがサメ画像になったので、**画像が届く前に描いた白紙を
+ * 掴み続けない**ようキーへ読み込み状態を混ぜる(sharkArtReady)。
+ * 素材が届いた瞬間に別キーへ切り替わり、絵の入ったキャンバスが作り直される。
+ */
 class CharCache {
   constructor() {
     this.cache = new Map();
   }
 
   /** @returns {HTMLCanvasElement} */
-  get(key, w, h, drawFn) {
+  get(rawKey, w, h, drawFn) {
+    const key = `${rawKey}@${sharkArtReady() ? 1 : 0}`;
     if (this.cache.has(key)) return this.cache.get(key);
     const c = document.createElement('canvas');
     c.width = w;
@@ -108,8 +143,9 @@ export const CUTINS = {
       const biteP = clamp01((p - 0.18) / 0.42);
       const mouth = biteP < 0.6 ? biteP / 0.6 : Math.max(0, 1 - (biteP - 0.6) / 0.4);
       const gx = -260 + easeOutCubic(biteP) * (w / 2 + 210);
+      // 大口を開けて飛びかかるポーズ(スプライトの「水しぶきジャンプ」)
       const sharkCanvas = charCache.get('george_cutin', 340, 260, (cx) => {
-        drawGeorge(cx, { x: 0, y: 0, scale: 1.5, t: 0, dir: 1, mouthOpen: 1, tailAngle: 0.3, brow: -0.3 });
+        drawShark(cx, { x: 0, y: 0, scale: 1.5, t: 0, dir: 1, pose: 'jump', anim: 'none' });
       });
       ctx.save();
       ctx.globalAlpha = Math.min(1, biteP * 4);
@@ -141,7 +177,11 @@ export const CUTINS = {
     },
   },
 
-  /** 幽霊+7のドン(ボーナス当選・別パターン) */
+  /**
+   * サメ+7のドン(ボーナス当選・別パターン)。
+   * ID はシナリオ側が参照しているので ghost_seven_don のまま。
+   * 中身は 2026-08-14 に「炎の拳サメ + 7」へ差し替え済み(お化けは描かない)。
+   */
   ghost_seven_don: {
     ms: 1800,
     draw(ctx, p, params, w, h) {
@@ -169,16 +209,19 @@ export const CUTINS = {
       ctx.fillText('7', 0, 0);
       ctx.restore();
 
-      // Kiro が左からふわっと
+      // サメが左から飛び込む。7 に合わせて「炎の拳」= 一番レアなポーズを使う
       const kiroP = clamp01((p - 0.15) / 0.4);
       const kx = -140 + easeOutCubic(kiroP) * (w * 0.36 + 140);
-      const kiroCanvas = charCache.get('kiro_cutin', 300, 300, (cx) => {
-        drawKiro(cx, { x: 0, y: 0, scale: 1.7, pose: 'happy', t: 0 });
+      const kiroCanvas = charCache.get('kiro_cutin', 320, 320, (cx) => {
+        drawShark(cx, { x: 0, y: 0, scale: 1.7, pose: 'fire', anim: 'none', t: 0, dir: 1 });
       });
       ctx.save();
       ctx.globalAlpha = Math.min(1, kiroP * 3);
       ctx.translate(kx, cy + Math.sin(p * 8) * 10);
-      ctx.drawImage(kiroCanvas, -150, -150);
+      // 到着後にぷるぷる+明滅(激アツの余韻)
+      const buzz = kiroP >= 1 ? Math.sin(p * 46) : 0;
+      ctx.rotate(buzz * 0.03);
+      ctx.drawImage(kiroCanvas, -160, -160);
       ctx.restore();
 
       if (p > 0.5) {
@@ -316,7 +359,10 @@ export const CUTINS = {
     },
   },
 
-  /** レア役の軽いカットイン(ミニ幽霊ちょい出し)。IDEAS.md 2-14 */
+  /**
+   * レア役の軽いカットイン(ミニサメのちょい出し)。IDEAS.md 2-14
+   * ID は互換のため mini_ghost_peek のまま(絵は「ひょっこり覗きサメ」)。
+   */
   mini_ghost_peek: {
     ms: 1200,
     draw(ctx, p, params, w, h) {
@@ -327,12 +373,16 @@ export const CUTINS = {
       const x = baseX + side * -34 * peek;
       const y = 520 + Math.sin(p * 12) * 8;
 
-      const cache = charCache.get('kiro_mini_peek', 120, 120, (cx) => {
-        drawKiro(cx, { x: 0, y: 0, scale: 0.5, pose: 'surprised', t: 0 });
+      // 「ひょっこり覗き」ポーズ。下から顔だけ出すのでそのまま使える
+      const cache = charCache.get(`kiro_mini_peek_${side}`, 140, 140, (cx) => {
+        drawShark(cx, { x: 0, y: 0, scale: 0.62, pose: 'peek', anim: 'none', t: 0, dir: side < 0 ? 1 : -1 });
       });
       ctx.save();
       ctx.globalAlpha = peek * 0.95;
-      ctx.drawImage(cache, x - 60, y - 60);
+      // ぴょこぴょこ跳ねながら覗く
+      ctx.translate(x, y - Math.abs(Math.sin(p * Math.PI * 3)) * 8);
+      ctx.rotate(Math.sin(p * Math.PI * 4) * 0.07);
+      ctx.drawImage(cache, -70, -70);
       ctx.restore();
     },
   },
@@ -344,16 +394,20 @@ export const CUTINS = {
       const cy = h * 0.38;
       drawSpeedLines(ctx, w, h, cy, p, '224,112,28');
 
-      // ジョージが左から大口で突進
+      // ジョージが左から慌てて飛び込んでくる(中断通知を運んでくる役)。
+      // 「驚き・焦り(!!)」ポーズ + 到着後のぷるぷるで、悪い知らせだと一目で分かる
       const gp = clamp01(p / 0.5);
-      const gx = -240 + easeOutCubic(gp) * (w * 0.55 + 240);
       const cache = charCache.get('george_spot', 360, 280, (cx) => {
-        drawGeorge(cx, { x: 0, y: 0, scale: 1.7, t: 0, dir: 1, mouthOpen: 1, tailAngle: -0.4, brow: -0.5 });
+        drawShark(cx, { x: 0, y: 0, scale: 1.7, t: 0, dir: 1, pose: 'panic', anim: 'none' });
       });
+      // 液晶の上寄りに配置して、リール窓と下部のルール説明を塞がないようにする
+      const spot = lcdCharSpot(360, 280, { hRatio: 0.52, wRatio: 0.7, cyRatio: 0.34 });
+      const gx = spot.left - 180 + easeOutCubic(gp) * (spot.x - spot.left + 180);
+      const shiver = gp >= 1 ? Math.sin(p * 52) * 4 : 0;
       ctx.save();
       ctx.globalAlpha = Math.min(1, gp * 4);
-      ctx.translate(gx, cy + 10);
-      const s = 1 + (1 - gp) * 0.3;
+      ctx.translate(gx + shiver, spot.y + Math.sin(p * 41) * 2);
+      const s = spot.scale * (1 + (1 - gp) * 0.3);
       ctx.scale(s, s);
       ctx.drawImage(cache, -180, -140);
       ctx.restore();
@@ -529,19 +583,21 @@ export const CUTINS = {
       }
       ctx.restore();
 
-      // 壇上の2人
+      // 壇上の2匹(お祝いポーズ + 喜びポーズ)。交互に跳ねて漫才っぽく見せる
       const cp = clamp01((p - 0.15) / 0.3);
       if (cp > 0) {
-        const kiro = charCache.get('kiro_ed', 320, 320, (cx) => {
-          drawKiro(cx, { x: 0, y: 0, scale: 1.8, pose: 'premium', t: 0 });
+        const kiro = charCache.get('kiro_ed', 340, 340, (cx) => {
+          drawShark(cx, { x: 0, y: 0, scale: 1.8, pose: 'party', anim: 'none', t: 0, dir: 1 });
         });
-        const george = charCache.get('george_ed', 360, 280, (cx) => {
-          drawGeorge(cx, { x: 0, y: 0, scale: 1.5, t: 0, dir: -1, mouthOpen: 0.5, tailAngle: 0.2, brow: 0.2 });
+        const george = charCache.get('george_ed', 360, 300, (cx) => {
+          drawShark(cx, { x: 0, y: 0, scale: 1.6, pose: 'cheer', anim: 'none', t: 0, dir: -1 });
         });
         ctx.save();
         ctx.globalAlpha = cp;
-        ctx.drawImage(kiro, w * 0.3 - 160, h * 0.34 - 160 + Math.sin(p * 6) * 8);
-        ctx.drawImage(george, w * 0.68 - 180, h * 0.36 - 140);
+        const hopA = Math.abs(Math.sin(p * 7)) * 14;
+        const hopB = Math.abs(Math.cos(p * 7)) * 14;
+        ctx.drawImage(kiro, w * 0.3 - 170, h * 0.34 - 170 - hopA);
+        ctx.drawImage(george, w * 0.68 - 180, h * 0.36 - 150 - hopB);
         ctx.restore();
       }
 

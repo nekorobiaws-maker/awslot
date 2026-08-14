@@ -17,6 +17,9 @@
 import {
   notifyStageEvent, windDownStageAnims, setStageBandDeferred, isStickyText, categoryOf,
 } from './anims/lcdanims.js';
+// 暗転(overlay.blackout)は時間経過でしか消えないため、仕切り直しの経路から明示的に落とす。
+// 依存方向は staging → render で、既に staging/anims/cutins.js が render/chars を参照している。
+import { clearAllBlackouts } from '../render/overlay.js';
 
 /** シナリオが購読するイベント */
 export const STAGING_EVENTS = [
@@ -28,6 +31,10 @@ export const STAGING_EVENTS = [
   'modeEnter', 'modeExit',
   'setEnd',
   'paramChange',
+  // スコアアタックの終了(リザルト直前のワンクッション。data/scenarios/session.js)
+  'sessionEnd',
+  // レバーONフリーズ(game/flow.js の FLOW.FREEZE。data/scenarios/freeze.js)
+  'freeze',
 ];
 
 /** Timeline の waitFor に転送するイベント */
@@ -76,6 +83,119 @@ export const STAGE_CLASSES = {
 
 /** 1ゲーム(レバーON〜次のレバーON)で液晶演出を伴うシナリオを何本まで通すか */
 export const MAX_LCD_SCENARIOS_PER_GAME = 2;
+
+/**
+ * 予告シナリオ全体の発火率を一括で調整する係数(2026-08-14 ユーザー指摘 U5)。
+ *
+ * もとの指摘は「予兆がほぼ毎回出て特別感がない」。
+ * 予告(yokoku-*.js)は8ファイル・数十本に散らばっていて、
+ * 1本ずつ chance を下げると次に足す人が必ず取りこぼす。
+ * そこで **発火判定の1か所** に係数を掛けて、全体の賑やかしを一律で動かす。
+ *
+ * 【結果告知は絶対に間引かない】
+ * 掛けるのは classifyScenario が 'result' / 'exclusive' 以外のものだけ。
+ * 突入告知・確定告知・フリーズは、間引くと「今どうなったのか分からない」に直結する。
+ * ここは演出の濃さの問題ではなく情報の問題なので、係数の対象外にしている。
+ *
+ * ── 2026-08-15 U51: 0.6 → 1.6(通常時の予兆を **約1/4ゲーム** へ)────────
+ * 0.6 だと通常時のレバーONに対して予告が出るのは 14.3%(1/7.0G)しかなく、
+ * 「何も起きないゲームが続く」状態だった。ユーザー指示の目標は
+ * **合計で約25%(1/4ゲーム)**。
+ * 発火判定の1か所を動かすだけなので、ガセ / 本物の比率は **変わらない**
+ * (掛かるのは全部同じ係数。結果告知だけが対象外なのは上のとおり)。
+ * chance × 係数が 1 を超えるシナリオは実質「引けば必ず出る」になるが、
+ * 元の chance が小さいものほど伸び代が大きいので、
+ * 数の多い弱予告に偏るのではなく全体が均等に厚くなる(下の実測の内訳で確認済み)。
+ *
+ * 実測(ブラウザと同じ配線でヘッドレス再生し、通常時のレバーONのうち
+ *       result / exclusive 以外の演出が1本以上出たゲームの割合):
+ *   0.60 … 14.29% = 1/7.00 G
+ *   1.12 … 20.14% = 1/4.97 G
+ *   1.60 … 25.45% = 1/3.93 G(200セッション)/ 24.18% = 1/4.14 G(別シード150)  ← 現行
+ * 最頻のネタでも通常時の約1%(1/100G)で、特定の1本に偏ってはいない。
+ */
+export const YOKOKU_CHANCE_SCALE = 1.6;
+
+/**
+ * 特定の予告を「選ばれやすく」する重み倍率(2026-08-15 ユーザー指示 U52d)。
+ *
+ * ■ なぜ director 側にあるのか
+ *   weight は候補が競合したときの取り合い比率で、通常時のレバーONには
+ *   数十本の候補が並ぶ。個々のシナリオの weight を書き換える手もあるが、
+ *   「この2ネタだけ厚めに出す」という **演出全体の交通整理の話** なので、
+ *   YOKOKU_CHANCE_SCALE と同じくここに総量ノブとして置く。
+ *   シナリオ定義(data/scenarios/**)には手を入れない。
+ *
+ * ■ 対象
+ *   yw_wind_*      … 風がレア役の絵柄を運んでくる(ユーザーが気に入っている画)
+ *   yw_coldstart_* … Lambda コールドスタートの「無音の間」(同上)
+ *   ybr_gen_*      … Bedrock の生成結果(U46b の目玉。下記)
+ *
+ * ■ 効き方
+ *   _weightedPick の重みに掛かるだけなので、
+ *   **発火条件(when)も当落も一切変えない**。運ばれてくる絵柄が
+ *   成立役と1対1で対応している構造(yokoku-wind.js の U24)もそのまま。
+ *
+ * 実測(レア役が成立した通常時ゲームのうち、その演出が出た割合):
+ *   倍率なし … 風 1.2%  / コールドスタート 0.9%
+ *   ×26     … 風 13.0% / コールドスタート 14.0%
+ *   ×55     … 風 19.8% / コールドスタート 21.0%(別シードで 18.1% / 16.5%)
+ *
+ * ■ ×55 から ×20 へ下げた理由(2026-08-15 検証指摘 F2)
+ *   ×55 の2ネタが gimmick プールの重みを独占し、**同じプールの他が全部埋もれた**。
+ *   レア役プールの取り分の実測:
+ *     弱チェ … yw_wind_rare_cherry 29.7% に対し ybr_gen_cherry_iam 0.51%
+ *     サメ   … yw_wind_rare_shark  27.7% に対し ybr_gen_shark_school 0.29%
+ *   ブラウザ実測でも 1,200ゲーム回して ybr_* は0回 = U46b の目玉が誰にも見えない。
+ *   「気に入っている画をよく見せる」ノブは残しつつ、**独占はさせない**水準へ。
+ *   倍率どうしの相対関係(運搬 : ガセ ≒ 1:1)は同じ比で保っている。
+ * @type {[RegExp, number][]}
+ */
+export const SCENARIO_WEIGHT_BOOST = [
+  /*
+   * ガセ(風だけが通り過ぎる)は控えめに上げる。
+   * 運搬と同じ倍率にすると、母数の大きいハズレゲームで
+   * **1本だけが飛び抜けて出る**(×55 時代の実測で全予告の3倍・通常時の3.1%)。
+   * 分布が偏ってネタの引き出しが痩せるので、運搬 : ガセ が
+   * だいたい 1 : 1 で見える帯に置いた(運搬を下げたので同じ比で下げてある)。
+   * **上の行より先に評価されること**(weightBoostFor は最初に当たった行を採用する)。
+   */
+  [/^yw_wind_gase$/, 4],
+  [/^yw_wind_/, 20],
+  [/^yw_coldstart_/, 20],
+  /*
+   * Bedrock の生成結果(U46b)。成立系4本は「引いた役がそのまま文章になる」
+   * この台の看板ネタなので、レア役プールで見える取り分まで引き上げる。
+   * ハズレ系(文字化け / 空出力)は母数の大きいハズレゲームで出るぶん、
+   * 同じ倍率にすると1本だけが目立ちすぎるので低め(ガセと同じ考え方)。
+   * **上の ybr_gen_ 行より先に評価されること**。
+   */
+  [/^ybr_gen_lose_/, 8],
+  [/^ybr_gen_/, 25],
+];
+
+/** 倍率の解決結果キャッシュ(シナリオ定義は不変なので使い回せる) */
+const BOOST_CACHE = new Map();
+
+/**
+ * そのシナリオIDに掛ける重み倍率(該当しなければ 1)。
+ * @param {string} id
+ * @returns {number}
+ */
+export function weightBoostFor(id) {
+  const key = String(id ?? '');
+  const hit = BOOST_CACHE.get(key);
+  if (hit != null) return hit;
+  let boost = 1;
+  for (const [re, mul] of SCENARIO_WEIGHT_BOOST) {
+    if (re.test(key)) { boost = mul; break; }
+  }
+  BOOST_CACHE.set(key, boost);
+  return boost;
+}
+
+/** 発火率の間引き対象外(結果告知の類は必ず出す) */
+const CHANCE_SCALE_EXEMPT = new Set(['result', 'exclusive']);
 
 /** ゲームの区切り(ここで1ゲームぶんの予算を戻す)。
  *  モード遷移は画面ごと切り替わる仕切り直しなので、入場演出が予算切れで消えないよう同じ扱いにする */
@@ -197,6 +317,13 @@ export class StagingDirector {
     for (const ev of STAGING_EVENTS) {
       this._unsubs.push(this.bus.on(ev, (payload) => this.onEvent(ev, payload)));
     }
+    /**
+     * 画面の仕切り直し。100回転を引き直した瞬間に暗転が残っていると、
+     * 新しいセッションの最初の数秒が真っ暗のまま始まってしまう。
+     * (フリーズ中にセッションが終わる → リザルト → リスタート、の順で起こりうる)
+     * シナリオ抽選とは無関係なので STAGING_EVENTS には足さず、ここだけで購読する。
+     */
+    this._unsubs.push(this.bus.on('sessionStart', () => clearAllBlackouts()));
     return this;
   }
 
@@ -210,6 +337,8 @@ export class StagingDirector {
       this._slots.exclusive = null;
       setStageBandDeferred(false);
     }
+    // 暗転も同じ理由で落とす。演出を外したのに画面が真っ暗、が一番たちが悪い
+    clearAllBlackouts();
   }
 
   /** シナリオが終わったときの後始末(全面占有の解除) */
@@ -242,7 +371,8 @@ export class StagingDirector {
 
     // weight は「候補が競合したときの取り合い比率」なので、単独候補だと必ず出てしまう。
     // ガセ予告のように「たまにしか出ない」ものは chance で発火自体を間引く。
-    if (picked.chance != null && !this.rng.chance(picked.chance)) return;
+    // U5 対応: 結果告知以外には YOKOKU_CHANCE_SCALE を掛けて全体の賑やかしを薄める。
+    if (picked.chance != null && !this.rng.chance(this._scaledChance(picked))) return;
 
     // 交通整理。同時に出しすぎないよう、ここで落とすか削るかを決める
     const decision = this._admit(picked);
@@ -256,6 +386,20 @@ export class StagingDirector {
     this.lastPlayed = picked.id;
     if (this.debug) console.log('[director]', eventName, '→', picked.id, decision.reason ?? '', ctx);
     this._commit(picked, ctx, decision);
+  }
+
+  /**
+   * シナリオの chance に U5 の間引き係数を適用した実効発火率。
+   * 結果告知(result / exclusive)だけは素の値をそのまま使う。
+   * @param {object} scenario
+   * @returns {number}
+   */
+  _scaledChance(scenario) {
+    const base = scenario.chance;
+    if (CHANCE_SCALE_EXEMPT.has(classifyScenario(scenario))) return base;
+    // シナリオ側が scaleChance:false を書けば個別に除外できる(乱発しないこと)
+    if (scenario.scaleChance === false) return base;
+    return base * YOKOKU_CHANCE_SCALE;
   }
 
   /** 1ゲームぶんの演出予算を戻す */
@@ -304,18 +448,44 @@ export class StagingDirector {
     // 音・ランプ・キャラだけの軽い演出は画面を占有しないので素通し
     if (cls === 'ambient') return { play: true, cueFilter: null, slot: null };
 
-    // 同カテゴリのカットインは1ゲームに1回まで
+    /**
+     * 同カテゴリのカットインは1ゲームに1回まで。
+     *
+     * ただし **全面占有(exclusive)は除外する**(2026-08-14 検証指摘)。
+     * ここを免除していなかったため、レバーONフリーズ(data/scenarios/freeze.js)が
+     * 丸ごと破棄されうる構造になっていた:
+     *   game/flow.js の leverOn() は bus.emit('leverOn') → bus.emit('freeze') の順なので、
+     *   同じゲームの leverOn 予告が先にカットイン枠を記帳する。
+     *   そこへ同じカットイン(fz_lever_freeze は 'id:shark_bite_bar')を含む
+     *   フリーズが来ると cutin-dup で落ち、
+     *   **暗転もテキストもカットインも無いまま8秒リールが止まる** ことになる。
+     * data/freeze.js の「フリーズは裏切ってはいけない」を演出調停が壊さないよう、
+     * 下の予算チェック(heavy && cls !== 'exclusive')と同じ扱いに揃える。
+     * ※ 現状 leverOn 契機で shark_bite_bar を出すシナリオは0本なので実害は出ていないが、
+     *   1本足した瞬間に再発するため構造ごと塞ぐ(検査は scripts/sim.mjs の検証28)。
+     */
     const cutins = cutinKeysOf(scenario);
-    if (cutins.some((k) => this._gameCutinKeys.has(k))) {
+    if (cls !== 'exclusive' && cutins.some((k) => this._gameCutinKeys.has(k))) {
       return { play: false, reason: 'cutin-dup' };
     }
 
     const heavy = (scenario.cues ?? []).some(isHeavyVisualCue);
 
-    // 1ゲームの液晶演出が上限に達したら、以降は静かに捨てる。
-    // ただし結果告知だけは文言を通す(見逃すと今の状況が分からなくなるため)。
-    // 全面占有演出はゲームをまたいで進む主役なので本数制限の対象外。
-    if (heavy && cls !== 'exclusive' && this._gameLcdCount >= MAX_LCD_SCENARIOS_PER_GAME) {
+    /**
+     * 1ゲームの液晶演出が上限に達したら、以降は静かに捨てる。
+     * ただし結果告知だけは文言を通す(見逃すと今の状況が分からなくなるため)。
+     * 全面占有演出はゲームをまたいで進む主役なので本数制限の対象外。
+     *
+     * budgetExempt: true(2026-08-15 検証指摘 F14)
+     *   「CZ を1回遊ぶあいだに1度しか飛ばない完成の画」だけに付ける逃がし弁。
+     *   例: Shield の全波緩和。最終ゲームは道中の波が2本先に予算を使い切るので、
+     *   一番の見せ場である完成の画が構造的に必ず budget で落ちていた。
+     *   **1ゲームに何度も飛びうるイベントには絶対に付けないこと**
+     *   (付けた瞬間に本数制限が意味を失う)。予算の消費自体はするので、
+     *   これを通した後は他の演出が落ちる = 総量は増えない。
+     */
+    if (heavy && cls !== 'exclusive' && !scenario.budgetExempt
+        && this._gameLcdCount >= MAX_LCD_SCENARIOS_PER_GAME) {
       if (cls === 'result') {
         // 文言だけなら画面は荒れないので通す。ただし告知枠は正しく取る
         // (取らないと予算切れの告知がいくつも帯に積まれてしまう)。
@@ -454,12 +624,12 @@ export class StagingDirector {
     return true;
   }
 
-  /** weight による重み付き抽選 */
+  /** weight による重み付き抽選(U52d の倍率はここで掛ける) */
   _weightedPick(candidates, mode) {
     const table = {};
     candidates.forEach((s, i) => {
       const w = s.weight ?? {};
-      const weight = w[mode] ?? w.default ?? 10;
+      const weight = (w[mode] ?? w.default ?? 10) * weightBoostFor(s.id);
       if (weight > 0) table[String(i)] = weight;
     });
     const key = this.rng.weighted(table);

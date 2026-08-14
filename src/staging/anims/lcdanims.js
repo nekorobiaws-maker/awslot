@@ -16,7 +16,7 @@
  * 詳細は下の「演出テキスト帯」ブロックを参照。
  */
 
-import { LCD_ANIMS_EXTRA } from './lcdanims-extra.js';
+import { LCD_ANIMS_EXTRA, beginPlateFrame } from './lcdanims-extra.js';
 
 const FONT = '"Helvetica Neue", "Hiragino Sans", "Noto Sans JP", sans-serif';
 const FONT_HEAVY = '"Arial Black", "Helvetica Neue", "Hiragino Sans", sans-serif';
@@ -135,6 +135,15 @@ export const LCD_ANIMS = {
       }
     },
   },
+
+  /*
+   * NOTE(2026-08-14 検証 minor): ここにあった `scale_in_drop`(DCが減る画)は削除した。
+   * U11 で AS_RUSH が「EC2の台数 = 残りゲーム数」へ作り替わり、
+   * **台数が減る = ゲーム消化** になったため「縮退のお知らせ」を出す契機が消え、
+   * どのシナリオからも呼ばれない死にアニメになっていた。
+   * 減少を見せたくなったときは asrush の paramChange を受けて作り直すこと
+   * (旧実装は git 履歴の 1bf2238 以前を参照)。
+   */
 
   /** ヘルスチェック(セット末): 継続=緑 / 敗北=赤 */
   health_check: {
@@ -761,6 +770,15 @@ export const TEXT_APPEAR_MS = 170;
 export const TEXT_QUEUE_MAX = 3;
 
 /**
+ * モードが変わったときに、前のモードの告知をあと何ms出してよいか(V31-03)。
+ *
+ * 0 にすると画面が切り替わった瞬間に文字が消えて「見間違いかな」となるので、
+ * 消えていく途中だと分かるだけの余韻を残す。長くすると新しい盤面の数字に
+ * 前の告知が重なる時間が伸びるので、TEXT_FADE_MS と同じくらいが上限。
+ */
+export const MODE_CHANGE_GRACE_MS = 260;
+
+/**
  * 自動 sticky 判定に使う語。
  * 「見逃すと今の状況が分からなくなる告知」だけを入れること。
  * 語を足したくなったらこの配列(と下の STICKY_PATTERNS)だけを直す。
@@ -857,6 +875,18 @@ function hasWord(loose, word) {
  */
 export const TEXT_CATEGORIES = [
   {
+    /**
+     * セット継続。**ボーナス告知より先に置く**(2026-08-14 検証で判明)。
+     * 「ボーナス継続!! — SET 3 へ」は『ボーナス』も『継続』も含むので、
+     * bonus を先に置くと継続告知まで『ボーナス告知』に吸われ、
+     * 継続の二重表示(液晶のジャッジ演出 + 下部テロップ)が素通りしていた。
+     * 後ろの語(継続)のほうが出来事を細かく指すので、細かい方を先に判定する。
+     */
+    id: 'set_continue',
+    label: 'セット継続',
+    groups: [['継続', 'CONTINUE']],
+  },
+  {
     id: 'bonus',
     label: 'ボーナス告知',
     // 「BONUS 確定」「BONUS 生成完了」「GHOST BONUS」を1つに束ねる。
@@ -869,9 +899,34 @@ export const TEXT_CATEGORIES = [
     groups: [['RUSH', 'ラッシュ']],
   },
   {
-    id: 'set_continue',
-    label: 'セット継続',
-    groups: [['継続', 'CONTINUE']],
+    /**
+     * スケールアウト(台数が増える)/ スケールイン(2026-08-14 検証 major)。
+     * U31 で上乗せ告知を lcd.text から液晶アニメ(scale_out_slam)へ移したため、
+     * 液晶は日本語の「スケールアウト!!」、モード側テロップは
+     * 「SCALE OUT!! EC2 +3 台 → 8 台稼働(= 残り 8 G)」と **一字も重ならない**。
+     * 正規化でも前方一致でも当たらないので、カテゴリで束ねて二重表示を止める。
+     */
+    id: 'scale_out',
+    label: 'スケールアウト(台数)',
+    groups: [['スケールアウト', 'SCALE OUT', 'スケールイン', 'SCALE IN']],
+  },
+  {
+    /** スケールアップ(器が育つ)。上と同じ理由(液晶=日本語 / テロップ=英語)*/
+    id: 'scale_up',
+    label: 'スケールアップ(ACU)',
+    groups: [['スケールアップ', 'SCALE UP']],
+  },
+  {
+    /**
+     * RUSH終了 → 引き戻し層(2026-08-14 U17)。
+     * ポップアップ「RUSH 終了 — 引き戻しへ」と、モード側のテロップ
+     * (「ディストリビューション終了… ホットスタンバイへ」など4種で文言が違う)は
+     * 同じ出来事を指しているのに一字も重ならないので、正規化では一致しない。
+     * カテゴリで束ねて、ポップアップが出ている間はテロップを黙らせる。
+     */
+    id: 'standby',
+    label: '引き戻し層へ',
+    groups: [['ホットスタンバイ', 'HOT STANDBY', '引き戻し']],
   },
 ];
 
@@ -1035,12 +1090,47 @@ export function registerTextHost(host) {
   return () => TEXT_HOSTS.delete(host);
 }
 
+/* ══ 大文字告知の「言い切り」記録(2026-08-15 検証 V31-04)══════════════
+ *
+ * 【問題】アニメが消えた後にテロップが同じことを言い直す
+ *   上乗せ告知はアニメ(scale_out_slam / scale_up_slam)が大文字で
+ *   「スケールアウト!!」を描き、下部テロップには
+ *   「SCALE OUT!! EC2 +3 台 → 8 台稼働(= 残り 8 G)」が出る。
+ *   ANIM_HEADLINES + TEXT_CATEGORIES の判定はアニメが **再生中の間だけ** 効くので、
+ *   アニメの尺(1.9秒)が切れた瞬間からテロップが出てきて、
+ *   「同じ出来事を、別の数え方で、2回」言うことになっていた
+ *   (大文字は台数、テロップは台数と残Gの両方 = 数字が食い違って見える)。
+ *
+ * 【方針】言い切ったことは、そのゲームのうちは繰り返さない
+ *   アニメが大文字を出したら **次のレバーONまで** その文言を覚えておき、
+ *   同じことを言うテロップは伏せ続ける。テロップは持続情報なので、
+ *   ゲームが変われば(= 状況が新しくなれば)また出てよい。
+ *   覚えるのは文言だけで、当落の情報は一切持たない。
+ * @type {Set<string>}
+ */
+const SPOKEN_HEADLINES = new Set();
+
+/**
+ * アニメが大文字で言い切った文言を記録する(LcdAnims.play から呼ぶ)。
+ * @param {string} text
+ */
+export function noteSpokenHeadline(text) {
+  if (text) SPOKEN_HEADLINES.add(String(text));
+}
+
+/** 記録した文言を忘れる(次のゲームが始まったときとテスト用) */
+export function clearSpokenHeadlines() {
+  SPOKEN_HEADLINES.clear();
+}
+
 /**
  * 生きているテキスト帯へゲーム進行イベントを伝える。
- * 現状 'leverOn' だけが意味を持ち、sticky 告知の解除に使う。
+ * 現状 'leverOn' だけが意味を持ち、sticky 告知の解除と
+ * 大文字告知の記録(V31-04)の破棄に使う。
  * @param {string} eventName
  */
 export function notifyStageEvent(eventName) {
+  if (eventName === 'leverOn') clearSpokenHeadlines();
   for (const host of TEXT_HOSTS) host.onStageEvent(eventName);
 }
 
@@ -1055,6 +1145,118 @@ export function getVisibleTexts() {
   const out = [];
   for (const host of TEXT_HOSTS) out.push(...host.getVisibleTexts());
   return [...new Set(out)];
+}
+
+/**
+ * 液晶に出ている文言を **メイン行とサブ行の組** で返す。
+ *
+ * 2026-08-14 ユーザー指摘 U17(「SQSが捌けていない」等の二重表示):
+ * これまでの重複判定はポップアップの **メイン行しか見ていなかった** ため、
+ *   ポップアップ: text『BACKLOG: 2』 sub『SQS のキューが捌けていない』
+ *   テロップ    : 『SQS のキューが捌けていない』
+ * のように **サブ行とテロップが完全に同じ** ケースを取りこぼしていた。
+ * サブ行は「持続情報の要約」を書きがちなので、テロップとぶつかりやすい。
+ * @returns {{text:string, sub:string}[]}
+ */
+export function getVisibleTextLines() {
+  const out = [];
+  for (const host of TEXT_HOSTS) out.push(...(host.getVisibleTextLines?.() ?? []));
+  return out;
+}
+
+/**
+ * 「いま出ているポップアップが、この文言と同じことを言っているか」。
+ * 2026-08-14 ユーザー指摘 U8(ポップアップと下部テロップの二重表示)。
+ *
+ * 役割分担は **瞬間の演出=ポップアップ / 持続的な状態情報=テロップ**。
+ * 同じことを同時に2か所へ書かないよう、テロップ側(render/lcd.js の _drawTelop)が
+ * 描く直前にここへ問い合わせ、被っている間はテロップを引っ込める。
+ * ポップアップは尺が来れば必ず消えるので、そのあとテロップが状態表示として残る。
+ *
+ * 判定は3段:
+ *   1. 正規化して完全一致          「BONUS 確定」=「BONUS確定!!」
+ *   2. 一方がもう一方の先頭に一致  「SCALE IN」⊂「SCALE IN — DC 4 → 2 台で縮退運転」
+ *   3. 同じカテゴリ(TEXT_CATEGORIES) 「キャパシティ確保 — 継続!!」と「ボーナス継続!! — SET 3 へ」
+ * 2 は「短い見出し + テロップで詳細」という当機の書き方に効く。
+ *
+ * 見る文言は lcd.text に積まれたものだけではなく、
+ * **アニメが canvas に直接描く大文字(ANIM_HEADLINES)も含む**。
+ * U31/U41 で告知を lcd.text からアニメへ移したときに、ここが抜けて
+ * 二重表示が復活したことがある(2026-08-14 検証 major)。
+ *
+ * ■ 前方一致の条件を厳しくした(2026-08-14 検証指摘)
+ *   旧: 4文字以上が前方一致すれば重複とみなす
+ *   → 「RUSH 終了」の頭4文字だけで「RUSH 中の別情報」まで巻き添えにできてしまい、
+ *      **関係ない状態情報が黙る**(伏せてはいけないテロップが消える)事故が起こりうる。
+ *   新: 短い側が TELOP_PREFIX_MIN(6文字)以上 **かつ** 長い側の
+ *      TELOP_PREFIX_RATIO(40%)以上を占めていることを要求する。
+ *      「見出し + 詳細」は普通この条件を満たす(例: SCALEIN ⊂ SCALEINDC42台… は
+ *       7/16 = 44% なので、この条件で伏せられる)。
+ *      ※ ここの数値は下の TELOP_PREFIX_RATIO と必ず一致させること。
+ *        以前このコメントだけ 50% のまま取り残されていた(2026-08-14 検証 minor)。
+ *
+ * ■ サブ行も見る(U17)
+ *   ポップアップのサブ行とテロップが同じ文のケースを取りこぼしていたため、
+ *   サブ行は **完全一致と同カテゴリ** だけを重複とみなす(前方一致は使わない。
+ *   サブ行は説明文なので前方一致まで許すと巻き込みが大きい)。
+ *
+ * @param {string} text
+ * @returns {boolean}
+ */
+export const TELOP_PREFIX_MIN = 6;
+/**
+ * 前方一致で重複とみなすのに必要な「短い側 / 長い側」の比率。
+ *
+ * 0.4 は「見出し + 詳細」という当機の書き方から決めた値(以下は形の例):
+ *   伏せる  「SCALE IN」⊂「SCALE IN — DC 4 → 2 台で縮退運転」  … 7/16 = 0.44
+ *           (見出しが丸ごと繰り返されるので、ポップアップが出ている間は
+ *            テロップを引っ込める。ポップアップが消えれば詳細つきのテロップが残る)
+ *   伏せない「CZ突入」⊂「CZ突入まで残り 3G の別情報」            … 4文字は前方一致の対象外
+ * 4文字止まりの見出しで巻き添えにしていたのが旧実装の問題(誤伏せ)だった。
+ *
+ * ※ 2026-08-14 検証: 上の2例は **いま実在する文言ではない**(比率の感覚をつかむための
+ *   形の例として残している)。「SCALE IN …」は AS RUSH の単純化で廃止、
+ *   「SCALE UP!! …」は U41 で lcd.text から液晶アニメへ移した。
+ *   **アニメが描く大文字は前方一致では拾えない**ので、そちらは
+ *   ANIM_HEADLINES + TEXT_CATEGORIES(scale_out / scale_up)で束ねている。
+ */
+export const TELOP_PREFIX_RATIO = 0.4;
+
+/** 前方一致による重複判定(上のコメントの条件) */
+function prefixCovers(a, b) {
+  if (!a || !b) return false;
+  const short = a.length <= b.length ? a : b;
+  const long = a.length <= b.length ? b : a;
+  if (short.length < TELOP_PREFIX_MIN) return false;
+  if (short.length / long.length < TELOP_PREFIX_RATIO) return false;
+  return long.startsWith(short);
+}
+
+export function stageTextCovers(text) {
+  const nt = normalizeText(text);
+  if (!nt) return false;
+  /*
+   * V31-04: このゲームでアニメが大文字で言い切ったことは、
+   * アニメが消えたあとでもテロップに書かない(次のレバーONで忘れる)。
+   */
+  for (const spoken of SPOKEN_HEADLINES) {
+    if (normalizeText(spoken) === nt) return true;
+    if (isDuplicateText(spoken, text)) return true;
+  }
+  for (const { text: main, sub } of getVisibleTextLines()) {
+    const nv = normalizeText(main);
+    if (nv) {
+      if (nv === nt) return true;
+      if (prefixCovers(nv, nt)) return true;
+      if (isDuplicateText(main, text)) return true;
+    }
+    const ns = normalizeText(sub);
+    if (ns) {
+      if (ns === nt) return true;
+      if (isDuplicateText(sub, text)) return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -1074,6 +1276,68 @@ export function setStageBandDeferred(on) {
   for (const host of TEXT_HOSTS) host.setDeferred(on);
 }
 
+/* ══ ステージ背景の切替を遅らせるアニメ(2026-08-14 ユーザー指摘 U42)═══
+ *
+ * 【問題】クイズ演出の当落バレ
+ *   正解版のクイズ(data/scenarios/quiz.js の qz_quiz_entry_cz)は
+ *   **CZ の modeEnter** で始まる = 出題した瞬間にはもうモードが CZ になっている。
+ *   render/lcd.js は modeId でステージ背景を選ぶので、
+ *   ルーレットが回り出す前に背景が CZ の赤紫へ変わってしまい、
+ *   「この出題は正解する」が回答前に分かってしまっていた。
+ *
+ * 【方針】ゲーム側は一切触らない
+ *   モード遷移そのものは正しい(当選しているのだから CZ に居るのが正)。
+ *   直すのは **見せる順番** だけ。ここに登録したアニメが「まだ結果を出していない」
+ *   間は、render/lcd.js が **1つ前のステージ背景を描き続ける**。
+ *   結果を出した瞬間(クイズなら phase:'reveal')に本来の背景へ切り替わる。
+ *   不正解版はモードが変わらないので、そもそも通常背景のまま何も起きない。
+ *
+ * 値は「そのパラメータで再生中はまだ伏せている」を返す述語。
+ * アニメが尺切れで消えれば hold は自然に解けるので、固まったままにはならない。
+ */
+export const STAGE_HOLD_ANIMS = {
+  aws_quiz_roulette: (params) => params?.phase !== 'reveal',
+};
+
+/* ══ アニメが自分で描く大文字の申告(2026-08-14 検証 major)═══════════
+ *
+ * 【問題】U31/U41 で上乗せ告知を lcd.text から液晶アニメへ移したところ、
+ *   U8(同じ情報をポップアップとテロップに二重表示しない)の抑止が外れた。
+ *   二重表示の判定(stageTextCovers)は **lcd.text に積まれた文言しか見ない** ので、
+ *   アニメが canvas に直接描いた「スケールアウト!!」は存在しないことになり、
+ *   下部パネルのテロップ「SCALE OUT!! EC2 +3 台 → 8 台稼働(= 残り 8 G)」が
+ *   そのまま出て、液晶と同じことを2か所で言っていた。
+ *
+ * 【方針】描画側から毎フレーム申告させない
+ *   registerAmbientText を draw から呼ぶ手もあるが、
+ *   ・アニメが見えない位置(alpha 0)でも申告してしまう
+ *   ・描画とdedupの順序で数フレームのレースが出る
+ *   ので、**「このアニメが再生中なら、この大文字を出している」を宣言で持つ**。
+ *   再生中かどうかは LcdAnims が知っているので取りこぼしもレースも起きない。
+ *
+ * 値は params から見出し文字列を返す関数(出していないときは空文字)。
+ * 日英が混じって正規化では一致しないため、束ねるのは TEXT_CATEGORIES の
+ * scale_out / scale_up / set_continue カテゴリが担当する。
+ * **新しく大文字スラムを描くアニメを足したら、ここにも1行足すこと。**
+ */
+export const ANIM_HEADLINES = {
+  /** U31: AS RUSH の上乗せ(テロップは「SCALE OUT!! EC2 +n 台 → …」) */
+  scale_out_slam: () => 'スケールアウト!!',
+  /** U41: Aurora RUSH の上乗せ(テロップは「SCALE UP!! ACU 4 → 5 …」) */
+  scale_up_slam: () => 'スケールアップ!!',
+  /** U34: ボーナスのセット継続ジャッジ(テロップは「ボーナス継続!! — SET n へ」) */
+  capacity_judge: (params) => (params?.ok ? 'キャパシティ確保 — 継続!!' : ''),
+};
+
+/**
+ * いまステージ背景の切替を保留すべきか(どれかの受け口が保留中なら true)。
+ * @returns {boolean}
+ */
+export function isStageHeld() {
+  for (const host of TEXT_HOSTS) if (host.holdsStage?.()) return true;
+  return false;
+}
+
 /* ══ テキストの自動レイアウト ═══════════════════════════════
  *
  * 予告の文言は長さがまちまちで、液晶(440px)から溢れるものがある。
@@ -1083,15 +1347,110 @@ export function setStageBandDeferred(on) {
  * lcdanims-extra.js の固定キャプションからも使えるように export してある。
  */
 
-/** これ以上は小さくしない下限[px] */
-export const TEXT_MIN_FONT_PX = 12;
+/**
+ * これ以上は小さくしない下限[px]。
+ *
+ * 2026-08-14 ユーザー指摘 U39「演出の文字が小さい」対応で 12 → 14。
+ * 液晶は 440px の論理幅を実画面では 0.9 倍前後で表示するので、
+ * 12px は実測 11px 相当まで沈んで**読ませる気のない大きさ**になっていた。
+ * 下限を上げたぶん長い文言は2行へ折れるが、wrapText が自動で折るので
+ * シナリオ側の文言を書き換える必要はない。
+ */
+export const TEXT_MIN_FONT_PX = 14;
 
 /** テキスト帯の左右の余白[px](下敷きプレートの内側) */
 export const TEXT_SIDE_PAD = 28;
 
-/** メイン行/サブ行の基準サイズ[px] */
+/**
+ * メイン行/サブ行の基準サイズ[px]。
+ * サブ行は U39 で 14 → 16(説明文なのに一番小さい、が読みにくさの主因だった)。
+ */
 export const TEXT_MAIN_FONT_PX = 28;
-export const TEXT_SUB_FONT_PX = 14;
+export const TEXT_SUB_FONT_PX = 16;
+
+/**
+ * 液晶アニメ(LCD_ANIMS / LCD_ANIMS_EXTRA)が描く文字の下限[px](U39)。
+ *
+ * ■ なぜアニメ側に一括の下限が要るか
+ *   個々のアニメは「情報量の多いパネル」を作るために 8〜10px の極小フォントを
+ *   直書きしている(Bedrock生成パネルのヘッダ・ステータス行・stop_reason など)。
+ *   実画面では 7〜9px 相当で、**読めないのに場所だけ取る**状態だった。
+ *   アニメは 30 本以上・2ファイルに散っているので、1本ずつ直すと必ず取りこぼす。
+ *
+ * ■ 効かせ方
+ *   draw() の間だけ ctx.font のセッターを差し替えて、指定サイズをこの値で
+ *   下から丸める(installMinFontSize)。**幅の計算は measureText 経由**なので、
+ *   「文字を並べて幅ぶん進める」書き方のアニメ(monoText の戻り値を足していく等)は
+ *   自動で新しい幅に追従する。
+ *
+ * ■ 上げすぎないこと / この値の決め方
+ *   14 まで上げると密なパネル(クイズの選択肢・DeepRacer のラップ表示)で
+ *   固定座標のラベル同士がぶつかる。
+ *   12 で試したところ、**Bedrock生成パネルのヘッダが実際に接触した**
+ *   (左の『Amazon Bedrock』と右寄せの『InvokeModelWithResponseStream』が
+ *    重なって「Amazon BedrocInvokeModel…」と読めた。2026-08-14 検証 V31-01)。
+ *   申し送りどおり **11** へ下げてある。実画面で約10px、小さいが読める下限。
+ *   ここを動かすときは必ず「左右に固定座標のラベルが並ぶパネル」
+ *   (Bedrock / FIS / CodeDeploy)を目視で確認すること。
+ */
+export const LCD_ANIM_MIN_FONT_PX = 11;
+
+/** CSSフォント指定から px サイズを取り出す(font 短縮記法の唯一の長さ) */
+const FONT_SIZE_RE = /(\d+(?:\.\d+)?)px/;
+
+/** フォント指定のサイズを下限で丸める。'700 9px mono' → '700 12px mono' */
+export function bumpFontSize(spec, minPx = LCD_ANIM_MIN_FONT_PX) {
+  const s = String(spec ?? '');
+  return s.replace(FONT_SIZE_RE, (whole, num) => {
+    const size = Number(num);
+    return Number.isFinite(size) && size < minPx ? `${minPx}px` : whole;
+  });
+}
+
+/** プロトタイプ鎖から font のアクセサ定義を探す(テスト用スタブ ctx でも落ちないように) */
+function findFontAccessor(obj) {
+  for (let o = obj; o; o = Object.getPrototypeOf(o)) {
+    const d = Object.getOwnPropertyDescriptor(o, 'font');
+    if (d) return d;
+  }
+  return null;
+}
+
+/** font フックを張り終えた ctx(2度定義しないための印) */
+const FONT_HOOKED = new WeakSet();
+
+/**
+ * 丸めを効かせる下限[px]。0 のあいだフックは素通しで、指定はそのまま通る。
+ * フック自体を毎フレーム付け外しすると ctx のプロパティ構造が揺れて
+ * (V8 の dictionary 化)描画全体が遅くなるため、**張るのは1回だけ**にして
+ * 効き目のオン/オフはこの値で切り替える。
+ */
+let fontMinActive = 0;
+
+/**
+ * ctx.font の指定サイズを下限で丸めるようにする。戻り値を呼ぶと丸めを止める。
+ * 単純なデータプロパティの ctx(テストのスタブ)には何もしない。
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {number} minPx
+ * @returns {() => void} 解除関数
+ */
+export function installMinFontSize(ctx, minPx = LCD_ANIM_MIN_FONT_PX) {
+  const noop = () => {};
+  if (!ctx || !(minPx > 0)) return noop;
+  if (!FONT_HOOKED.has(ctx)) {
+    const desc = findFontAccessor(ctx);
+    if (typeof desc?.set !== 'function' || typeof desc?.get !== 'function') return noop;
+    Object.defineProperty(ctx, 'font', {
+      configurable: true,
+      enumerable: false,
+      get() { return desc.get.call(this); },
+      set(v) { desc.set.call(this, fontMinActive > 0 ? bumpFontSize(v, fontMinActive) : v); },
+    });
+    FONT_HOOKED.add(ctx);
+  }
+  fontMinActive = minPx;
+  return () => { fontMinActive = 0; };
+}
 
 /**
  * 折り返してよい位置。ここで切ると読点や中黒の後ろで自然に折れる。
@@ -1220,8 +1579,15 @@ export const TEXT_TONES = {
   normal: {
     color: null, // null = cue の color をそのまま使う(従来どおり)
     subColor: 'rgba(255,255,255,0.9)',
-    plate: 'rgba(0,0,0,0.46)',
-    plateEdge: null,
+    /**
+     * 下敷きの濃さ(2026-08-14 検証指摘 V2 で 0.46 → 0.64)。
+     * キャラのサメ画像は液晶の中央(FREE_TIER は y196)に立つので、
+     * テキスト帯(中心 y194)とほぼ同じ高さで重なる。46% では絵が透けて
+     * 文字が読めなかったため、下敷きを濃くして輪郭も一段はっきりさせた。
+     * (キャラ側も帯が出ている間だけ沈める。render/lcd.js の chars.draw({dim}))
+     */
+    plate: 'rgba(0,0,0,0.64)',
+    plateEdge: 'rgba(255,255,255,0.14)',
     stroke: 'rgba(0,0,0,0.8)',
     sizeStep: 0,
     subSizeStep: 0,
@@ -1288,6 +1654,20 @@ export class LcdAnims {
     }
     // 同じアニメは重ねずに差し替える
     this.active = this.active.filter((a) => a.id !== animId);
+    /*
+     * 大文字スラムは画面に1枚まで(2026-08-14 検証 V31-03)。
+     * RUSH 1G目に上乗せが来ると「スケールアウト!!」と直前の告知が
+     * 同じ場所へ2枚重なって、どちらも読めなくなっていた。
+     * 先に出ていた方を早送りで畳んで、必ず1枚だけが残るようにする。
+     */
+    if (ANIM_HEADLINES[animId]) {
+      for (const a of this.active) {
+        if (ANIM_HEADLINES[a.id]) a.left = Math.min(a.left, 180);
+      }
+      // V31-04: 言い切った文言を覚えて、同じことをテロップに書かせない
+      // (寿命は次のレバーONまで。notifyStageEvent が捨てる)
+      noteSpokenHeadline(ANIM_HEADLINES[animId](params));
+    }
     if (this.active.length >= this.maxConcurrent) this.active.shift();
     const ms = params.ms ?? def.ms;
     this.active.push({ id: animId, def, params, left: ms, ms });
@@ -1347,7 +1727,36 @@ export class LcdAnims {
     const out = [];
     if (this.text) out.push(this.text.text);
     for (const e of this.textQueue) if (e.sticky) out.push(e.text);
+    out.push(...this._animHeadlines());
     return [...new Set(out)];
+  }
+
+  /**
+   * 再生中のアニメが自前で描いている大文字(ANIM_HEADLINES)。
+   * lcd.text を経由しない告知も二重表示の判定に乗せるために使う。
+   * @returns {string[]}
+   */
+  _animHeadlines() {
+    const out = [];
+    for (const a of this.active) {
+      const head = ANIM_HEADLINES[a.id]?.(a.params);
+      if (head) out.push(head);
+    }
+    return out;
+  }
+
+  /**
+   * 出ている文言をメイン行 + サブ行の組で返す(U17 の二重表示判定用)。
+   * getVisibleTexts() と同じ範囲(表示中 + 待機中の sticky 告知)を見る。
+   * @returns {{text:string, sub:string}[]}
+   */
+  getVisibleTextLines() {
+    const out = [];
+    if (this.text) out.push({ text: this.text.text, sub: this.text.sub ?? '' });
+    for (const e of this.textQueue) if (e.sticky) out.push({ text: e.text, sub: e.sub ?? '' });
+    // アニメが canvas に直接描いている大文字も「出ている文言」として数える(U8)
+    for (const head of this._animHeadlines()) out.push({ text: head, sub: '' });
+    return out;
   }
 
   /**
@@ -1368,6 +1777,26 @@ export class LcdAnims {
    */
   registerAmbient(text, opts) {
     registerAmbientText(text, opts);
+  }
+
+  /**
+   * ステージ背景の切替を保留すべきか(U42)。
+   * STAGE_HOLD_ANIMS に登録されたアニメが「結果を出す前」の状態で走っている間だけ true。
+   * @returns {boolean}
+   */
+  holdsStage() {
+    return this.active.some((a) => STAGE_HOLD_ANIMS[a.id]?.(a.params) === true);
+  }
+
+  /**
+   * いま出ているポップアップがこの文言と同じことを言っているか(U8)。
+   * テロップ側が「自分を出すかどうか」を決めるために呼ぶ。
+   * 判定の中身は module 関数 stageTextCovers を参照。
+   * @param {string} text
+   * @returns {boolean}
+   */
+  covers(text) {
+    return stageTextCovers(text);
   }
 
   /**
@@ -1425,15 +1854,28 @@ export class LcdAnims {
 
   /**
    * 液晶の掃除。モード遷移(modeEnter)から呼ばれる。
-   * アニメは全部落とすが、テキストは「読み終わる権利」を尊重する:
-   *   - 通常テキスト … 最低表示時間まで縮めてフェードアウト(瞬時には消さない)
-   *   - sticky テキスト … 遷移直前の結果告知なので次のレバーONまで残す
-   * 完全に消したい場合は clearAll() を使う。
+   * アニメは全部落とすが、テキストは「読み終わる権利」を尊重して
+   * **最低表示時間まで縮めてフェードアウト**させる(瞬時には消さない)。
+   *
+   * ── sticky も畳むようにした(2026-08-14 検証 V31-03)────────────
+   * 以前は sticky(突入告知など)だけ「次のレバーONまで」残していたため、
+   * 「AUTO SCALING RUSH 突入!!」が SPOT ZONE 昇格後の画面にまで居座り、
+   * 新しい盤面の「0 G / +0 枚」「純増16枚/G」に重なって両方読めなくなっていた。
+   * **モードが変わった時点で、その告知が指していた画面はもう無い**ので、
+   * 余韻(MODE_CHANGE_GRACE_MS)だけ残して畳む。
+   * 待機中の sticky も同じ理由で捨てる(前の画面の話をこれから始めても遅い)。
+   * 新しいモードの告知は director がこの後に積むので、消し合いにはならない
+   * (main.js は modeEnter の後片付けを director.attach() より先に登録している)。
+   *
+   * @param {object} [opt]
+   * @param {boolean} [opt.dropSticky] false にすると従来どおり sticky を残す
    */
-  clear() {
+  clear({ dropSticky = true } = {}) {
     this.active = [];
-    this.textQueue = this.textQueue.filter((e) => e.sticky);
-    if (this.text && !this.text.sticky) this._requestFade(this.text);
+    this.textQueue = dropSticky ? [] : this.textQueue.filter((e) => e.sticky);
+    if (!this.text) return;
+    if (this.text.sticky && dropSticky) this._requestFadeSoon(this.text);
+    else if (!this.text.sticky) this._requestFade(this.text);
   }
 
   /** テキストごと全部消す(デバッグ・リセット用) */
@@ -1499,6 +1941,24 @@ export class LcdAnims {
     }
   }
 
+  /**
+   * 「あと graceMs だけ出したら畳む」。最低表示時間より短くしてよい場合に使う。
+   *
+   * モードが変わったとき用(2026-08-14 検証 V31-03)。
+   * _requestFade は最低表示時間(長文だと 2.8秒)を必ず守るので、
+   * 突入告知が出た直後にモードが変わると、新しい盤面の上に最大2.8秒も
+   * 前のモードの告知が居座ってしまう。**もう別の画面なので読ませる意味がない**。
+   * 消える途中だと分かる程度の余韻(graceMs)だけ残して畳む。
+   */
+  _requestFadeSoon(entry, graceMs = MODE_CHANGE_GRACE_MS) {
+    if (!entry || entry.phase === 'fade') return;
+    entry.holdMs = Math.min(entry.holdMs, entry.elapsed + Math.max(0, graceMs));
+    if (entry.elapsed >= entry.holdMs) {
+      entry.phase = 'fade';
+      entry.fadeElapsed = 0;
+    }
+  }
+
   _updateText(dt) {
     const t = this.text;
     if (!t) {
@@ -1553,19 +2013,32 @@ export class LcdAnims {
    * @param {'bg'|'fg'|'ui'} layer
    */
   draw(ctx, layer, w, h) {
-    for (const a of this.active) {
-      if ((a.def.layer ?? 'fg') !== layer) continue;
-      const p = 1 - a.left / a.ms;
-      ctx.save();
-      try {
-        a.def.draw(ctx, Math.max(0, Math.min(1, p)), a.params, w, h);
-      } catch (e) {
-        console.error(`[lcdanims] 描画エラー: ${a.id}`, e);
+    // U39: このブロックの間だけ、極小フォントの指定を下限で丸める
+    const releaseFont = installMinFontSize(ctx, LCD_ANIM_MIN_FONT_PX);
+    /*
+     * 座布団(textPlate)の重なり避けは「同じ描画パスで敷いた矩形」を見るので、
+     * パスの頭で記録を捨てる(2026-08-15 検証指摘 F19)。
+     * 層(bg/fg/ui)ごとに呼ばれるが、重なって困るのは同じ層の中なので
+     * これで足りる。
+     */
+    beginPlateFrame();
+    try {
+      for (const a of this.active) {
+        if ((a.def.layer ?? 'fg') !== layer) continue;
+        const p = 1 - a.left / a.ms;
+        ctx.save();
+        try {
+          a.def.draw(ctx, Math.max(0, Math.min(1, p)), a.params, w, h);
+        } catch (e) {
+          console.error(`[lcdanims] 描画エラー: ${a.id}`, e);
+        }
+        ctx.restore();
       }
-      ctx.restore();
-    }
 
-    if (layer === 'ui' && this.text) this._drawText(ctx, w, h);
+      if (layer === 'ui' && this.text) this._drawText(ctx, w, h);
+    } finally {
+      releaseFont();
+    }
   }
 
   /**

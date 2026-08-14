@@ -12,9 +12,9 @@
  * の形でマージしてください(または `Object.assign(CUTINS, CUTINS_EXTRA)`)。
  */
 
-import { drawGeorge } from '../../render/chars/george.js';
+import { drawShark, sharkArtReady } from '../../render/chars/george.js';
+import { drawHero, heroArtReady } from '../../render/chars/herochan.js';
 import { getLayerRect } from '../../engine/layers.js';
-import { drawKiro } from '../../render/chars/kiro.js';
 
 const FONT_HEAVY = '"Arial Black", "Helvetica Neue", "Hiragino Sans", sans-serif';
 
@@ -107,14 +107,19 @@ function drawImpactText(ctx, text, x, y, p, colors, maxWidth = 600) {
   ctx.restore();
 }
 
-/** キャラを1回だけオフスクリーンに描いてキャッシュする(cutins.js の CharCache と同じ実装) */
+/**
+ * キャラを1回だけオフスクリーンに描いてキャッシュする(cutins.js の CharCache と同じ実装)。
+ * 素材(サメ / ヒーロー)の到着前に描いた白紙を掴み続けないよう、
+ * キーへ **両方の読み込み状態** を混ぜる。届いた瞬間に別キーへ切り替わって描き直される。
+ */
 class CharCache {
   constructor() {
     this.cache = new Map();
   }
 
   /** @returns {HTMLCanvasElement} */
-  get(key, w, h, drawFn) {
+  get(rawKey, w, h, drawFn) {
+    const key = `${rawKey}@${sharkArtReady() ? 1 : 0}${heroArtReady() ? 1 : 0}`;
     if (this.cache.has(key)) return this.cache.get(key);
     const c = document.createElement('canvas');
     c.width = w;
@@ -153,7 +158,9 @@ const charCache = new CharCache();
  *   rgb              … 集中線と背景バーストの基調色(カンマ区切りのRGB)
  *   grad1 / grad2    … ロゴのグラデーション [上, 下]
  *   icon             … 放射状に飛ぶアイコン 'instance'(EC2の箱) / 'lambda'(λ) / 'region'(◆)
- *   char             … ドンと出るキャラ 'george'(サメ) / 'kiro'(幽霊)
+ *   char             … ドンと出るキャラのポーズ違い。
+ *                      'george' = 炎の拳(激アツ) / 'kiro' = ジェットパック(突入感)
+ *                      ※ 2026-08-14 にお化けキャラは全廃。どちらもサメの別ポーズ
  */
 const RUSH_VARIANTS = {
   AS_RUSH: {
@@ -165,6 +172,38 @@ const RUSH_VARIANTS = {
     icon: 'instance',
     iconColors: ['#7bf7d0', '#12a08a'],
     char: 'george',
+  },
+  /* ── U11 で増えた RUSH 3種(2026-08-14)。型は同じで色と文言だけ変える ── */
+  CF_RUSH: {
+    title1: 'CLOUDFRONT',
+    title2: 'RUSH',
+    rgb: '120,160,255',
+    grad1: ['#e8f0ff', '#2a48c0'],
+    grad2: ['#ffffff', '#4f7bf0'],
+    icon: 'region',
+    iconColors: ['#a8c4ff', '#2a48c0'],
+    char: 'kiro',
+  },
+  AURORA_RUSH: {
+    title1: 'AURORA',
+    title2: 'RUSH',
+    rgb: '170,120,255',
+    grad1: ['#f2e8ff', '#5a20b0'],
+    grad2: ['#ffffff', '#a04af0'],
+    icon: 'instance',
+    iconColors: ['#c8a8ff', '#6a20c0'],
+    char: 'george',
+  },
+  HERO_RUSH: {
+    title1: 'AWS HERO',
+    title2: 'RUSH',
+    rgb: '255,208,90',
+    grad1: ['#fffbe0', '#ff9a00'],
+    grad2: ['#ffffff', '#ff5a00'],
+    icon: 'lambda',
+    iconColors: ['#ffe9a8', '#ffa400'],
+    // U30: ここだけ主役が違う。ヒーロー本人が両拳バンザイで飛び出してくる
+    char: 'hero',
   },
   SERVERLESS_RUSH: {
     title1: 'SERVERLESS',
@@ -399,18 +438,45 @@ export const CUTINS_EXTRA = {
       const chP = clamp01((p - 0.18) / 0.3);
       if (chP > 0) {
         const key = `rush_slam_${V.char}`;
-        const cache = V.char === 'kiro'
-          ? charCache.get(key, 360, 360, (c) => {
-            drawKiro(c, { x: 0, y: 0, scale: 1.5, pose: 'premium', t: 0 });
-          })
-          : charCache.get(key, 420, 340, (c) => {
-            drawGeorge(c, { x: 0, y: 0, scale: 1.9, t: 0, dir: 1, mouthOpen: 1, tailAngle: -0.4, brow: -0.5 });
+        /*
+         * kiro枠  = ジェットパックで突っ込むサメ
+         * george枠 = 炎の拳で気合を入れるサメ
+         * hero枠  = **ヒーロー本人が両拳バンザイでデビュー**(U30 / HERO_RUSH 専用)
+         *   ヒーローRUSH はここが初登場の場なので、キャラだけは別素材にする。
+         *   足元のスポット(aura)はカットインの光と喧嘩するので切っておく。
+         */
+        let cache;
+        if (V.char === 'hero') {
+          cache = charCache.get(key, 460, 380, (c) => {
+            drawHero(c, {
+              x: 0, y: 0, scale: 2.05, pose: 'banzai', anim: 'none', t: 0, dir: 1, aura: false,
+            });
           });
+        } else if (V.char === 'kiro') {
+          cache = charCache.get(key, 420, 340, (c) => {
+            drawShark(c, { x: 0, y: 0, scale: 1.8, pose: 'jet', anim: 'none', t: 0, dir: 1 });
+          });
+        } else {
+          cache = charCache.get(key, 420, 340, (c) => {
+            drawShark(c, { x: 0, y: 0, scale: 1.9, pose: 'fire', anim: 'none', t: 0, dir: 1 });
+          });
+        }
         ctx.save();
-        // 手前へ迫ってきて、そのまま少しだけ通り過ぎる
+        /*
+         * 2026-08-14 検証指摘「巨大ロゴがキャラに被り気味」への対応。
+         *
+         * ロゴは lcdTextSpot() で **液晶の中(y60〜360)へ畳み込まれる**(文字は液晶の外に
+         * 出さない house rule)ので、実際の描画位置は上段 y245 / 下段 y294 あたり。
+         * 一方キャラは全画面座標のまま y412 に中心があり、頭〜上半身がそのまま
+         * ロゴの位置へ重なっていた。
+         * → キャラを **液晶より下(リール窓の帯)へ下ろして** 住み分ける。
+         *   ロゴ  液晶の中(y245 / y294)
+         *   キャラ 中心 y532・最終スケール約1.13(上端 ≒ y345)
+         * これで「液晶に文字・その下にサメ」の2段構成になり、どちらも潰れない。
+         */
         ctx.globalAlpha = Math.min(1, chP * 3) * (p > 0.78 ? Math.max(0, 1 - (p - 0.78) / 0.22) : 1);
-        ctx.translate(cx - 40 + easeOutCubic(chP) * 60, cy - 20);
-        const s = 1.9 - easeOutCubic(chP) * 0.65;
+        ctx.translate(cx - 40 + easeOutCubic(chP) * 60, cy + 100);
+        const s = 1.75 - easeOutCubic(chP) * 0.62;
         ctx.scale(s, s);
         ctx.drawImage(cache, -(cache.width / 2), -(cache.height / 2));
         ctx.restore();
@@ -418,11 +484,11 @@ export const CUTINS_EXTRA = {
 
       // ── 巨大ロゴ(2段のスラムイン)──
       // 上段は控えめ、下段 RUSH を一番大きく叩きつける
-      drawSlamText(ctx, V.title1, cx, h * 0.44, clamp01((p - 0.26) / 0.34), V.grad1, {
-        maxWidth: 640, size: 84, shake: p > 0.5 ? 1.6 : 0,
+      drawSlamText(ctx, V.title1, cx, h * 0.48, clamp01((p - 0.26) / 0.34), V.grad1, {
+        maxWidth: 640, size: 78, shake: p > 0.5 ? 1.6 : 0,
       });
-      drawSlamText(ctx, V.title2, cx, h * 0.585, clamp01((p - 0.40) / 0.34), V.grad2, {
-        maxWidth: 660, size: 148, shake: p > 0.62 ? 2.6 : 0,
+      drawSlamText(ctx, V.title2, cx, h * 0.62, clamp01((p - 0.40) / 0.34), V.grad2, {
+        maxWidth: 660, size: 140, shake: p > 0.62 ? 2.6 : 0,
       });
 
       // ── 金の粒が舞う ──
@@ -636,8 +702,9 @@ export const CUTINS_EXTRA = {
 
       // George がせり上がって登場
       const showP = clamp01(p / 0.35);
+      // 権限MAX = サングラスのキメ顔
       const cache = charCache.get('george_iam_badge', 360, 300, (c) => {
-        drawGeorge(c, { x: 0, y: 0, scale: 1.7, t: 0, dir: 1, mouthOpen: 0.25, tailAngle: 0.1, brow: -0.1 });
+        drawShark(c, { x: 0, y: 0, scale: 1.7, t: 0, dir: 1, pose: 'cool', anim: 'none' });
       });
       ctx.save();
       ctx.globalAlpha = Math.min(1, showP * 3);

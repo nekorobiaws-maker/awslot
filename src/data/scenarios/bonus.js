@@ -10,11 +10,13 @@
  *   judge (BONUS_READY, ハズレ) … 揃った瞬間の入賞ファンファーレ
  *   modeEnter BONUS       … 従来の突入カットイン(= 揃った直後のご褒美演出)
  *
- * ■ キャラの配役(2026-08-13 修正)
- *   ボーナス改名にキャラが追従しておらず「ゴーストボーナスなのにサメが出る」状態だった。
- *   bonusId で主役を固定する:
- *     S3_BIG / DYNAMO_BIG(ゴーストボーナス / 同SP)… 主役は幽霊 Kiro。サメは出さない
- *     LAMBDA_REG(シャークボーナス)                … 主役はサメ George。幽霊は引っ込める
+ * ■ キャラの配役(2026-08-13 修正 → 2026-08-14 用語整理)
+ *   bonusId で主役を固定する。**キャラは2体ともサメ**(render/chars/)なので、
+ *   ここで言う配役は「どちらのサメを出すか」の話:
+ *     S3_BIG / DYNAMO_BIG(ゴーストボーナス / 同SP)… 主役は相棒サメ(char:'kiro')
+ *     LAMBDA_REG(シャークボーナス)                … 主役はジョージ(char:'george')
+ *   キャラID 'kiro' と絵柄名「ゴースト7」は歴史的な名前として残しているだけで、
+ *   お化けキャラは画面に一切出ない(2026-08-14 に全廃)。
  *   カットイン・常駐キャラ・ボイスの3点セットで揃えること。
  *
  * ■ ボーナス名の表記は液晶(LCD)の中だけ(2026-08-13 ユーザー指摘)
@@ -64,7 +66,7 @@ export default [
       { at: 260,  layer: 'sfx',     action: 'synth',  params: { preset: 'announce' } },
       { at: 300,  layer: 'lcd',     action: 'text',
         params: { text: 'BONUS 確定', sub: 'ゴースト7を揃えろ!', color: '#ffd24a', ms: 1900 } },
-      // ゴースト7を揃えるので主役は幽霊。通常時から居座っているサメは引っ込める
+      // ゴースト7狙いは相棒サメ(kiro枠)が主役。ジョージは引っ込める
       { at: 600,  layer: 'char',    action: 'hide',   params: { char: 'george' } },
       { at: 700,  layer: 'char',    action: 'show',   params: { char: 'kiro', pose: 'happy' } },
       { at: 700,  layer: 'char',    action: 'motion', params: { char: 'kiro', motion: 'bounce' } },
@@ -89,7 +91,7 @@ export default [
       { at: 0,    layer: 'sfx',     action: 'synth',  params: { preset: 'announce' } },
       { at: 260,  layer: 'lcd',     action: 'text',
         params: { text: 'BONUS 確定', sub: 'サメBARを揃えろ!', color: '#ffd166', ms: 1700 } },
-      // サメBARを揃えるので主役はサメ。幽霊は引っ込める
+      // サメBAR狙いはジョージが主役。相棒サメ(kiro枠)は引っ込める
       { at: 500,  layer: 'char',    action: 'hide',   params: { char: 'kiro' } },
       { at: 600,  layer: 'char',    action: 'show',   params: { char: 'george', pose: 'grin' } },
       { at: 600,  layer: 'char',    action: 'motion', params: { char: 'george', motion: 'swimIn' } },
@@ -153,7 +155,7 @@ export default [
 
   {
     id: 'bonus_cutin_ghost',
-    name: 'ボーナス当選カットイン(幽霊+7のドン)',
+    name: 'ボーナス当選カットイン(サメ+7のドン)',
     // ゴーストボーナス / 同SP 専用
     when: {
       event: 'modeEnter', enterMode: ['BONUS'],
@@ -190,8 +192,17 @@ export default [
       { at: 200,  layer: 'char',    action: 'hide',   params: { char: 'george' } },
       { at: 900,  layer: 'char',    action: 'show',   params: { char: 'kiro', pose: 'premium' } },
       { at: 1000, layer: 'voice',   action: 'play',   params: { key: 'kiro_bonus_01' } },
+      /*
+       * 突入ロゴは「瞬間の演出」。sticky:false を明示する(2026-08-14 V21-01)。
+       * 'BONUS' の語で自動 sticky になると **次のレバーONまで帯が居座り**、
+       * その間ずっと液晶の獲得枚数・残Gが帯の下に隠れる(盤面側でも避けているが、
+       * そもそも突入ロゴを残す必要が無い。ボーナス名は盤面が常設で出している)。
+       */
       { at: 1200, layer: 'lcd',     action: 'text',
-        params: { text: 'GHOST BONUS', sub: `${GHOST_B.games}G / ベル揃いで15枚`, color: '#ffd166', ms: 1800 } },
+        params: {
+          text: 'GHOST BONUS', sub: `${GHOST_B.games}G / ベル揃いで15枚`,
+          color: '#ffd166', ms: 1800, sticky: false,
+        } },
       { at: 1400, layer: 'overlay', action: 'particles', params: { preset: 'coin', x: 360, y: 300, count: 30 } },
       { at: 1600, layer: 'bgm',     action: 'change', params: { bgm: 'bgm_bonus' } },
     ],
@@ -210,13 +221,17 @@ export default [
       // サメが BAR に噛みつく意匠だけを見せる
       { at: 60,  layer: 'overlay', action: 'cutin', params: { id: 'shark_bite_bar' } },
       { at: 60,  layer: 'sfx',     action: 'synth', params: { preset: 'shark_bite' } },
-      // 主役はサメ。以前は幽霊を出していたので名前と絵が食い違っていた
+      // 主役はジョージ。以前は相棒サメ(kiro枠)を出していて名前と絵が食い違っていた
       { at: 200, layer: 'char',    action: 'hide',  params: { char: 'kiro' } },
       { at: 800, layer: 'char',    action: 'show',  params: { char: 'george', pose: 'bite' } },
       { at: 800, layer: 'char',    action: 'motion', params: { char: 'george', motion: 'swimIn' } },
       { at: 1000, layer: 'voice',  action: 'play',  params: { key: 'george_bonus_01' } },
+      // 突入ロゴは残さない(sticky:false の理由は bonus_big_logo のコメント参照)
       { at: 1100, layer: 'lcd',    action: 'text',
-        params: { text: 'SHARK BONUS', sub: `${SHARK_B.games}G / ベル揃いで15枚`, color: '#ffd95e', ms: 1600 } },
+        params: {
+          text: 'SHARK BONUS', sub: `${SHARK_B.games}G / ベル揃いで15枚`,
+          color: '#ffd95e', ms: 1600, sticky: false,
+        } },
       { at: 1400, layer: 'bgm',    action: 'change', params: { bgm: 'bgm_bonus' } },
     ],
   },
@@ -234,7 +249,7 @@ export default [
       { at: 0,    layer: 'lamp',    action: 'pattern', params: { pattern: 'bonus' } },
       { at: 0,    layer: 'sfx',     action: 'synth',  params: { preset: 'dynamo_scale' } },
       { at: 80,   layer: 'overlay', action: 'cutin',  params: { id: 'big_bonus_logo', title: 'BIG BONUS SP' } },
-      // ゴーストボーナスSP なので主役は幽霊のみ。サメは出さない
+      // ゴーストボーナスSP は相棒サメ(kiro枠)が主役。ジョージは出さない
       { at: 200,  layer: 'char',    action: 'hide',   params: { char: 'george' } },
       { at: 700,  layer: 'char',    action: 'show',   params: { char: 'kiro', pose: 'premium' } },
       { at: 700,  layer: 'char',    action: 'motion', params: { char: 'kiro', motion: 'zoom' } },
@@ -248,17 +263,114 @@ export default [
 
   {
     id: 'bonus_dynamo_ondemand',
-    name: 'ゴーストボーナスSP セット継続(オンデマンド切替)',
+    // 表示名も「継続」で統一(id はログ・検証が参照するので据え置き。U1)
+    name: 'ゴーストボーナスSP セット継続(ヘルスチェック→キャパシティチェック)',
+    /*
+     * ■ U34(2026-08-14): ジャッジを転落演出と同格の強度へ
+     *   旧実装は小さな health_check が1枚出るだけで、「セットの継続を賭けた瞬間」
+     *   なのに RUSH 転落(rush_end_all)より軽い画だった。
+     *   capacity_judge(staging/anims/lcdanims-extra.js)で
+     *     ヘルスチェック(プローブが走る) → HEALTHY → キャパシティチェック(ゲージ)
+     *   の2段に伸ばし、**継続ラインを越えた瞬間** を見せ場にする。
+     *   ok は setEnd(当落が確定したイベント)由来なので煽りにはならない。
+     */
     when: { event: 'setEnd', mode: ['BONUS'], match: { result: ['CONTINUE'] } },
     weight: { BONUS: 100, default: 0 },
-    duration: 2000,
+    priority: 'result',
+    duration: 3000,
     cues: [
-      { at: 0,    layer: 'sfx',  action: 'synth', params: { preset: 'dynamo_scale' } },
-      { at: 0,    layer: 'lcd',  action: 'anim',  params: { anim: 'health_check', ok: true, label: '$healthLabel' } },
-      { at: 800,  layer: 'lamp', action: 'pattern', params: { pattern: 'bonus' } },
-      { at: 900,  layer: 'lcd',  action: 'particles', params: { preset: 'coin', x: 220, y: 200, count: 18 } },
-      { at: 1000, layer: 'lcd',  action: 'text',
-        params: { text: 'CONTINUE', sub: 'オンデマンドで受けきった — スループット上限なし', color: '#7bf7d0', ms: 900 } },
+      { at: 0,    layer: 'sfx',  action: 'synth', params: { preset: 'health_check' } },
+      { at: 0,    layer: 'lcd',  action: 'anim',
+        params: { anim: 'capacity_judge', ok: true, label: '$healthLabel' } },
+      { at: 0,    layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'surprised' } },
+      { at: 500,  layer: 'sfx',  action: 'synth', params: { preset: 'countdown_tick' } },
+      { at: 900,  layer: 'sfx',  action: 'synth', params: { preset: 'charge_up' } },
+      // 判定が出る瞬間(capacity_judge の p≒0.7 = 1820ms)に光と音を合わせる
+      { at: 1820, layer: 'sfx',  action: 'synth', params: { preset: 'dynamo_scale' } },
+      { at: 1820, layer: 'overlay', action: 'flash', params: { color: '#7bf7d0', ms: 280 } },
+      { at: 1820, layer: 'overlay', action: 'shake', params: { power: 14, ms: 420 } },
+      { at: 1820, layer: 'lamp', action: 'pattern', params: { pattern: 'bonus' } },
+      { at: 1860, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'happy' } },
+      { at: 1860, layer: 'char', action: 'motion', params: { char: 'kiro', motion: 'hooray' } },
+      { at: 1900, layer: 'lcd',  action: 'particles', params: { preset: 'coin', x: 220, y: 200, count: 20 } },
+      /*
+       * 2026-08-14 ユーザー指摘 U1 の文言(「継続した」と一目で分かること)は
+       * ジャッジの画が **大文字の「キャパシティ確保 — 継続!!」** で受け持つ。
+       * ここでテキスト帯を出すと同じことを2箇所で言う(U8)うえ、
+       * 帯のプレートがジャッジの結論に重なるので出さない。
+       * 「SET n へ」という続きの情報はモード側のテロップが流している。
+       */
+    ],
+  },
+
+  /* ── ボーナス終了時のジャッジ(U34)─────────────────────
+   *
+   * ■ ここが短い理由(実装上の制約。触る前に必ず読むこと)
+   *   ボーナス最終ゲームの setEnd は **その場で transition が走る**
+   *   (game/modes/bonus.js は holdMs も onNextSpin も指定しない)。
+   *   遷移先の modeEnter で main.js が lcdAnims.clear() を呼ぶため、
+   *   ここで液晶アニメを出しても **同じフレームで消える**。
+   *   なので当選側は「音と光の一撃」だけを置き、
+   *   見せ場そのものは直後の RUSH 突入カットイン(data/scenarios/rush.js /
+   *   rushes.js の *_entry)へ渡す = 「そのまま突入告知へ繋ぐ」。
+   */
+  {
+    id: 'bonus_end_judge_win',
+    name: 'ボーナス終了ジャッジ(RUSH当選 → 突入へ)',
+    when: { event: 'setEnd', mode: ['BONUS'], match: { result: ['BONUS_END'] } },
+    weight: { BONUS: 100, default: 0 },
+    priority: 'result',
+    duration: 900,
+    cues: [
+      { at: 0,   layer: 'sfx',     action: 'synth', params: { preset: 'health_check' } },
+      { at: 0,   layer: 'lamp',    action: 'pattern', params: { pattern: 'rush' } },
+      { at: 120, layer: 'sfx',     action: 'synth', params: { preset: 'checklist_ok' } },
+      { at: 140, layer: 'overlay', action: 'flash', params: { color: '#7bf7d0', ms: 220 } },
+      { at: 140, layer: 'overlay', action: 'shake', params: { power: 10, ms: 260 } },
+      { at: 160, layer: 'char',    action: 'pose',  params: { char: 'kiro', pose: 'happy' } },
+    ],
+  },
+
+  {
+    id: 'bonus_end_quiet',
+    name: 'ボーナス終了(RUSH非当選 — 静かに落とす)',
+    /*
+     * 非当選側は setEnd を出さずに通常時へ落ちるので、modeExit を拾う。
+     * 当選側と対になる「緩急」の急のほう: 光らせない・跳ねさせない。
+     * 何が起きたか(高確から再スタート)はモード側のテロップが言うので、
+     * ここは文字を1文字も出さない(U8)。
+     *
+     * 【2026-08-15 検証指摘 / 条件漏れ】
+     * modeExit は「ボーナスが自然に終わった」ときだけでなく、
+     * **スタックを畳んだとき** にも飛ぶ(game/modemachine.js):
+     *   forced:true    … 100回転切れ(forceMode('RESULT'))/ エンディング突入
+     *   restarted:true … リザルトからのリスタート
+     *   dropped:true   … スタック上限に当たって押し出された
+     * このうち 100回転切れは **残りゲームもRUSH当選も買い取られる**(data/session.js)ので、
+     * そこで「RUSH非当選…」のブザーとキャラの落胆を出すのは事実に反するうえ、
+     * リザルトへ切り替わる瞬間に鳴って邪魔になる。
+     * 3つのマーカーが付いていないとき(= 本当に自然終了したとき)だけ発火させる。
+     * ※ ctx はスナップショット+payload なので、畳まれていない modeExit では
+     *   これらのキーは undefined になる(スナップショット側に同名のキーは無い)。
+     */
+    when: {
+      event: 'modeExit',
+      match: {
+        id: ['BONUS'],
+        'state.rushWin': [false],
+        forced: [undefined],
+        restarted: [undefined],
+        dropped: [undefined],
+      },
+    },
+    weight: { default: 100 },
+    duration: 1200,
+    cues: [
+      { at: 0,   layer: 'sfx',  action: 'synth', params: { preset: 'health_check', gain: 0.45 } },
+      { at: 300, layer: 'sfx',  action: 'synth', params: { preset: 'error_buzz', gain: 0.35 } },
+      { at: 300, layer: 'lamp', action: 'pattern', params: { pattern: 'default' } },
+      { at: 320, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'panic' } },
+      { at: 1000, layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'normal' } },
     ],
   },
 

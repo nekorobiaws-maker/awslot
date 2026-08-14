@@ -5,11 +5,14 @@
  */
 
 import { DEFAULT_FLAG_TABLE, flagTableOf } from '../data/flags.js';
+import { FREEZE } from '../data/freeze.js';
 import {
   CZ_ENTRY, CZ_TYPES, CZ_SPEC_BY_ID, AS_RUSH_CORE, BONUS_SPEC_BY_ID,
   DIRECT_BONUS_DIST, RUSH_DERIVED_ENTRY, SERVERLESS_UPGRADE, ZONE_NESTED_ENTRY,
   ZONE_SPEC_BY_ID, NORMAL_SUBSTATES,
 } from '../data/modes.js';
+import { RUSH_ENTRY, RUSH_TYPES, RUSH_SPEC_BY_ID } from '../data/rushes.js';
+import { isRareRole } from '../data/rareroles.js';
 
 /**
  * 小役抽選。DESIGN.md 3.3 / 3.7
@@ -28,6 +31,33 @@ export function drawFlag(rng, forced = null, tableId = DEFAULT_FLAG_TABLE) {
     if (r < acc) return f.id;
   }
   return 'LOSE';
+}
+
+/**
+ * レバーONフリーズの抽選(data/freeze.js)。
+ *
+ * 【必ずゲーム抽選RNGで呼ぶこと】恩恵がボーナス直撃なので結果に効く。
+ * 演出RNG(stagingRng)から呼んではいけない。
+ *
+ * 乱数消費の約束:
+ *   - FREEZE.modes に含まれないモード … **1回も消費しない**(通常時以外で乱数列がズレない)
+ *   - 含まれるモード                 … 役の率にかかわらず **必ず1回だけ** 消費する
+ *
+ * 後者を rng.chance() ではなく next() の直接比較で書いているのは、
+ * Rng#chance が p<=0 のとき next() を消費せずに返すため。
+ * 率を 0 にした瞬間に以降の乱数列が丸ごとズレて同じシードの再現が壊れるので、
+ * game/modes/freetier.js の drawWeightedFixed と同じ「消費数固定」の作法に揃える。
+ *
+ * @param {import('../engine/rng.js').Rng} rng ゲーム抽選RNG
+ * @param {string} flag 成立役(drawFlag の結果。= 出目は既に確定している)
+ * @param {string} modeId レバーON時点のモードID
+ * @returns {boolean} フリーズ当選か
+ */
+export function drawFreeze(rng, flag, modeId) {
+  if (!FREEZE.modes.includes(modeId)) return false;
+  const rate = FREEZE.rateByFlag[flag] ?? 0;
+  const r = rng.next();
+  return rate > 0 && r < rate;
 }
 
 /**
@@ -137,10 +167,101 @@ export function bellBoostOf(dc) {
   return AS_RUSH_CORE.bellBoost[dc] ?? 0;
 }
 
-/** AT当選抽選(ボーナス消化中)。DESIGN.md 3.7 */
+/**
+ * 【退役】AT当選抽選(ボーナス突入時の一発判定)。DESIGN.md 3.7
+ *
+ * 2026-08-14 の U11(RUSH体系の作り替え)で、RUSH突入の判定は
+ * **ボーナス中のレア役契機**(drawBonusRushWin)へ移った(U22)。
+ * 旧経路の比較・検証用にデータごと残してあるが、ゲーム進行からは呼ばれない。
+ */
 export function drawAtWin(rng, bonusId) {
   const spec = BONUS_SPEC_BY_ID[bonusId];
   return rng.chance(spec?.atRate ?? 0);
+}
+
+// ── U11: RUSH 体系(data/rushes.js)──────────────
+
+/**
+ * ボーナス中の **レア役契機** RUSH抽選(U11 の主経路 / U22・U28 でレア役限定)。
+ *
+ * 【必ずゲーム抽選RNGで呼ぶこと】RUSH突入そのものを決める抽選。
+ *
+ * 抽選が走る条件は **レア役が成立したゲームだけ**(data/rareroles.js が正)。
+ * ベル・リプレイ・Bedrock役・ハズレでは抽選そのものが走らない(U22)。
+ * シャークボーナスも同じロジックで抽選する(U28)。
+ *
+ * 乱数消費の約束:
+ *   - レア役以外のゲーム … **1回も消費しない**
+ *   - レア役のゲーム     … 役の率にかかわらず **必ず1回だけ** 消費する
+ * 率が 1.0(サメ揃い・ゴースト揃い)でも next() を引くのは、
+ * data/rushes.js の率をいじった瞬間に乱数列がズレて再現が壊れるのを防ぐため
+ * (game/modes/freetier.js の drawWeightedFixed と同じ作法)。
+ *
+ * @param {import('../engine/rng.js').Rng} rng ゲーム抽選RNG
+ * @param {string} flag 成立役
+ * @param {string} bonusId ボーナス種別(倍率 = ボーナスの格)
+ * @returns {boolean} RUSH当選か
+ */
+export function drawBonusRushWin(rng, flag, bonusId) {
+  if (!isRareRole(flag)) return false;           // レア役以外は抽選しない(U22)
+  const p = bonusRushWinRate(flag, bonusId);
+  return rng.next() < p;
+}
+
+/**
+ * レア役1回あたりのRUSH当選率(抽選せずに率だけ引く)。
+ * 液晶の期待度表示・検証(scripts/sim.mjs)が抽選と同じ式を二度書かないための共通処理。
+ * @param {string} flag 成立役
+ * @param {string} bonusId ボーナス種別
+ * @returns {number} 0〜1(レア役以外は 0)
+ */
+export function bonusRushWinRate(flag, bonusId) {
+  if (!isRareRole(flag)) return 0;
+  // 確定役系(サメ揃い / ゴースト揃い)はボーナスの格にかかわらず当選確定
+  if (RUSH_ENTRY.alwaysWinFlags.includes(flag)) return 1;
+  const base = RUSH_ENTRY.rateByFlag[flag] ?? 0;
+  const mult = RUSH_ENTRY.bonusMult[bonusId] ?? 1;
+  return Math.min(1, base * mult);
+}
+
+/**
+ * RUSH種別の振り分け(data/rushes.js の RUSH_TYPES)。
+ *
+ * @param {import('../engine/rng.js').Rng} rng ゲーム抽選RNG
+ * @param {boolean} [premium] プレミア契機(フリーズ / ボーナス中のゴースト揃い)か。
+ *                            true ならヒーローRUSHの当選率が跳ね上がる
+ * @returns {string} RUSHのモードID
+ */
+export function drawRushType(rng, premium = false) {
+  const dist = premium ? RUSH_TYPES.premiumDistribution : RUSH_TYPES.distribution;
+  return rng.weighted(dist) ?? 'AS_RUSH';
+}
+
+/** オートスケーリングRUSH の初期台数(= 初期ゲーム数)抽選 */
+export function drawRushInitUnits(rng) {
+  const spec = RUSH_SPEC_BY_ID.AS_RUSH;
+  return Number(rng.weighted(spec.initUnitsDist) ?? 3);
+}
+
+/**
+ * CloudFront RUSH の毎ゲーム払い出し抽選。
+ * 乱数は「ヒット判定 → 枚数」の順に最大2回。非ヒット時は1回。
+ * @returns {number} 払い出し枚数(非ヒットなら0)
+ */
+export function drawCloudFrontHit(rng) {
+  const spec = RUSH_SPEC_BY_ID.CF_RUSH;
+  if (!rng.chance(spec.hitRate)) return 0;
+  return Number(rng.weighted(spec.hitCoinDist) ?? 10);
+}
+
+/**
+ * ヒーローRUSH の毎ゲーム抽選。
+ * 当選率・当選枚数は data/rushes.js の `HERO_RUSH`(hitRate / hitCoin)が正。
+ * U40(2026-08-15)で当選枚数が 100 → 50枚 になったので、**数字はここに書き写さない**。
+ */
+export function drawHeroHit(rng) {
+  const spec = RUSH_SPEC_BY_ID.HERO_RUSH;
+  return rng.chance(spec.hitRate) ? spec.hitCoin : 0;
 }
 
 // ── Phase 5 ──────────────────────────────────

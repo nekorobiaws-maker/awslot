@@ -21,6 +21,22 @@ const DIGIT_H = 30;
 const SEG_T = 4;      // セグメント太さ
 const DIGIT_GAP = 5;
 
+/**
+ * 桁数の扱い(2026-08-14 しおん指摘 S1)。
+ *
+ * 以前は全ブロック3桁固定で `Math.min(value, 999)` していたため、
+ * 1281枚のクレジットが 999 と表示されていた。
+ * スコアアタックは RANK S = 1000枚以上が基準なので、
+ * **勝ったセッションほど表示が嘘になる**という致命的な見せ方だった。
+ *
+ * いまは「最低3桁・値が伸びたら自動で桁を増やす(最大5桁)」に変更し、
+ * 増えた桁は横スケールでブロック幅へ収める(7セグの見た目は維持)。
+ */
+const MIN_DIGITS = 3;
+const MAX_DIGITS = 5;
+/** 桁あふれ(99999超)を示す表示。ここまで来ることは通常ないが、嘘をつかないための保険 */
+const OVERFLOW_MAX = 10 ** MAX_DIGITS - 1;
+
 const ON_COLOR = '#ff3b30';
 const ON_GLOW = 'rgba(255,80,60,0.55)';
 const OFF_COLOR = 'rgba(120,20,16,0.35)';
@@ -69,8 +85,14 @@ export class HudView {
 
     const blocks = [
       { label: 'CREDIT', value: values.credit },
-      // 残り回転数のカウントダウン(100→0)。ラベルは GAME(2026-08-13 ユーザー指示)
-      { label: 'GAME', value: values.count },
+      /**
+       * 残り回転数のカウントダウン(100→0)。
+       * ラベルの主語 GAME はユーザー指示(2026-08-13)なので変えず、
+       * 「消化数ではなく残り」であることが読めるよう副題だけ添える
+       * (2026-08-14 しおん指摘 S9「今何ゲーム目かと誤読する」)。
+       * 下部デバッグ表示(main.js)も同じ「残り」で用語を揃えてある。
+       */
+      { label: 'GAME 残り', value: values.count },
       { label: 'PAYOUT', value: values.payout },
     ];
     const bw = this.w / blocks.length;
@@ -83,8 +105,8 @@ export class HudView {
       ctx.textBaseline = 'middle';
       ctx.fillText(b.label, cx, 12);
 
-      const digitsW = DIGIT_W * 3 + DIGIT_GAP * 2;
-      this._drawNumber(ctx, b.value, cx - digitsW / 2, 22, 3);
+      // 数字はブロック幅に収まる範囲で桁を伸ばす(4桁以上は自動で少し縮む)
+      this._drawNumber(ctx, b.value, cx, 22, bw - 16);
 
       if (i > 0) {
         ctx.fillStyle = 'rgba(180,150,255,0.2)';
@@ -93,13 +115,26 @@ export class HudView {
     });
   }
 
-  _drawNumber(ctx, value, x, y, digits) {
-    const v = Math.max(0, Math.min(Math.floor(value), 10 ** digits - 1));
-    const text = String(v).padStart(digits, ' ');
+  /**
+   * 7セグの数値をブロック中央へ描く。
+   * @param {number} cx ブロックの中心X
+   * @param {number} maxW 使ってよい横幅(はみ出す場合は横スケールで詰める)
+   */
+  _drawNumber(ctx, value, cx, y, maxW) {
+    const v = Math.max(0, Math.min(Math.floor(value ?? 0), OVERFLOW_MAX));
+    const text = String(v).padStart(MIN_DIGITS, ' ');
+    const digits = text.length;
+    const naturalW = DIGIT_W * digits + DIGIT_GAP * (digits - 1);
+    const scale = Math.min(1, maxW / naturalW);
+
+    ctx.save();
+    ctx.translate(cx - (naturalW * scale) / 2, y);
+    ctx.scale(scale, scale);
     for (let i = 0; i < digits; i++) {
       const ch = text[i];
-      this._drawDigit(ctx, ch === ' ' ? null : Number(ch), x + i * (DIGIT_W + DIGIT_GAP), y);
+      this._drawDigit(ctx, ch === ' ' ? null : Number(ch), i * (DIGIT_W + DIGIT_GAP), 0);
     }
+    ctx.restore();
   }
 
   _drawDigit(ctx, digit, x, y) {

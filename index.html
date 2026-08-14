@@ -3,17 +3,22 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>AWSLOT — オースロット</title>
+<!-- 2026-08-15 U45: 台名を「JAWSLOT -ジョースロット-」へ改名。
+     画面に出る文言だけを変えるので、コード側の識別子(window.AWSLOT / CSS の id・class)は
+     一切触っていない(触ると console API とスタイルが全部ズレる)。 -->
+<title>JAWSLOT -ジョースロット-</title>
+<link rel="icon" href="assets/favicon.png">
 <!-- OGP / Twitterカード(リンク共有時のプレビュー画像) -->
 <meta property="og:type" content="website">
-<meta property="og:title" content="AWSLOT — オースロット">
+<meta property="og:title" content="JAWSLOT -ジョースロット-">
+<meta property="og:site_name" content="JAWSLOT -ジョースロット-">
 <meta property="og:description" content="AWS題材のパチスロ風スコアアタック。かわいいゴーストとサメと一緒に、100ゲームで残クレジットを競おう!">
 <meta property="og:url" content="https://nekorobiaws-maker.github.io/awslot/">
 <meta property="og:image" content="https://nekorobiaws-maker.github.io/awslot/assets/ogp.png">
 <meta property="og:image:width" content="1536">
 <meta property="og:image:height" content="1024">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="AWSLOT — オースロット">
+<meta name="twitter:title" content="JAWSLOT -ジョースロット-">
 <meta name="twitter:description" content="AWS題材のパチスロ風スコアアタック。かわいいゴーストとサメと一緒に、100ゲームで残クレジットを競おう!">
 <meta name="twitter:image" content="https://nekorobiaws-maker.github.io/awslot/assets/ogp.png">
 <link rel="stylesheet" href="./style.css">
@@ -23,7 +28,7 @@
      main.js が UI画像(筐体アート)の読み込み完了(または4秒タイムアウト)を
      確認してからフェードアウトする(下の #viewport は既定 opacity:0)。 -->
 <div id="boot-screen" class="boot-screen" role="status" aria-live="polite" aria-label="読み込み中">
-  <p class="boot-logo">AWSLOT</p>
+  <p class="boot-logo">JAWSLOT</p>
   <p class="boot-loading">
     <span>読み込み中</span>
     <span class="boot-dots" aria-hidden="true"><i></i><i></i><i></i></span>
@@ -60,7 +65,7 @@
     <canvas id="lcd" class="layer" role="img" aria-label="液晶画面。モードと残りゲーム数を表示"></canvas>
 
     <!-- z=3: ロゴ帯 -->
-    <div class="logo-band" aria-hidden="true"><span class="logo-text">AWSLOT</span></div>
+    <div class="logo-band" aria-hidden="true"><span class="logo-text">JAWSLOT</span></div>
 
     <!-- z=4,5: リール -->
     <div class="bezel reel-bezel" aria-hidden="true"></div>
@@ -98,23 +103,28 @@
 
     <!-- z=3: 下部パネル -->
     <div class="panel">
-      <div class="panel-logo">AWSLOT</div>
-      <div class="panel-sub">オースロット</div>
+      <div class="panel-logo">JAWSLOT</div>
+      <div class="panel-sub">ジョースロット</div>
       <div id="panel-telop" class="panel-telop" role="status" aria-live="polite"></div>
     </div>
 
     <!-- z=8: 全画面演出 -->
     <canvas id="overlay" class="layer" aria-hidden="true"></canvas>
 
-    <!-- z=10: リザルト(50回転終了時)。
+    <!-- z=10: リザルト(1セッション=100回転の終了時)。
          render/resultpanel.js が RESULT モード滞在中だけ hidden を外す。
+         終了演出(data/scenarios/session.js)を見せてから開くので、
+         最終ゲームの直後ではなく数秒後に出る。
          「もう一度やる」は data-action="RESTART" なので、engine/input.js の
-         ポインタ処理がそのまま拾う(Rキー・↑キーと同じ経路)。 -->
+         ポインタ処理がそのまま拾う(Rキー・↑キーと同じ経路)。
+         開いている間は body に .is-result が付き、筐体の外にある
+         打ち方プレート/甘スロボタンを暗転 + 無効化する(V31-09)。 -->
     <div id="result-panel" class="result-panel" role="dialog" aria-modal="true"
          aria-labelledby="result-heading" hidden>
       <div class="result-card">
         <p id="result-heading" class="result-heading">RESULT</p>
-        <p class="result-session" id="result-session">50 SPIN SCORE ATTACK</p>
+        <!-- 回転数は main.js / resultpanel.js が SESSION.totalGames で書き換える -->
+        <p class="result-session" id="result-session">100 SPIN SCORE ATTACK</p>
 
         <p class="result-score-label">SCORE(差枚)</p>
         <p class="result-score" id="result-score" role="status" aria-live="polite">0</p>
@@ -122,18 +132,12 @@
 
         <dl class="result-detail" id="result-detail"></dl>
 
-        <div class="result-form">
-          <label class="result-name-label" for="result-name">なまえ</label>
-          <input id="result-name" class="result-name" type="text" maxlength="12"
-                 placeholder="なまえを入力" autocomplete="off"
-                 aria-label="スコアに登録する名前を入力">
-          <button type="button" class="result-hof" id="result-hof"
-                  aria-label="殿堂入りに登録する。この機能は準備中です">殿堂入り</button>
-        </div>
-        <p class="result-note" id="result-note" role="status" aria-live="polite"></p>
+        <!-- 2026-08-15 U47: 「なまえ」入力と「殿堂入り」(端末内ランキング)は廃止した。
+             スコア + ランク(到達率)+ 内訳 + 甘スロバッジだけのシンプルな構成にする。
+             入力欄が無くなったので、リザルト表示中もキー操作(R / ↑)が常に効く。 -->
 
         <button type="button" class="result-again" data-action="RESTART"
-                aria-label="もう一度やる。新しい50回転を始めます。キーボードのRキーでも操作できます">
+                aria-label="もう一度やる。新しい100回転を始めます。キーボードのRキーでも操作できます">
           もう一度やる
         </button>
         <p class="result-hint">R キー / ↑ キーでも始められます</p>
@@ -165,6 +169,14 @@
       <span class="guide-header-jp">打ち方</span>
     </p>
 
+    <!-- 何を目指すゲームなのかを打ち方より先に置く(2026-08-15 検証指摘 F8)。
+         ゲーム数はハードコード禁止方針のため main.js が
+         src/data/session.js の SESSION.totalGames で書き換える。
+         この "100" は JS 無効時のフォールバック表示用。 -->
+    <p class="guide-goal">
+      <span class="guide-goal-games">100</span>回転で残クレジット(差枚)を競う
+    </p>
+
     <dl class="guide-list">
       <div class="guide-row">
         <dt class="key key-up" aria-hidden="true">↑</dt>
@@ -191,17 +203,28 @@
      #cabinet の scale() 計算には一切関与しない。横長PCでは style.css の
      @media(aspect-ratio) で非表示になり、#controls-guide とは独立して切り替わる。 -->
 <div id="mobile-title" class="mobile-title" aria-hidden="true">
-  <span class="mobile-title-text">オースロット</span>
+  <span class="mobile-title-text">ジョースロット</span>
 </div>
 <p id="mobile-rule" class="mobile-rule">
   <!-- ゲーム数はハードコード禁止方針のため、main.js が起動時に
        src/data/session.js の SESSION.totalGames で書き換える。
        この "100" は JS 無効時のフォールバック表示用。 -->
   <span id="mobile-rule-games">100</span>ゲーム行い、残クレジットを競う。
+  <!-- 目的だけでなく操作方法も置く(2026-08-15 検証指摘 F8)。
+       スマホ縦持ちでは #controls-guide が出ないので、ここが唯一の説明になる。 -->
+  <span class="mobile-rule-keys">画面のボタン、または ↑ で開始 / ← ↓ → で停止</span>
+</p>
+
+<!-- 「幅1100px未満 かつ 横長」の窓では #controls-guide も #mobile-rule も出ず、
+     操作方法が画面のどこにも無かった(2026-08-15 検証指摘 F8)。
+     甘スロ切替の逃がしボタン(.mode-switch-floating)と同じメディアクエリで、
+     最小限のヒントだけを画面左下に出す。 -->
+<p id="compact-hint" class="compact-hint">
+  <span class="compact-hint-games">100</span>回転で残クレジットを競う ／ ↑ 開始・← ↓ → 停止
 </p>
 
 <noscript>
-  <p style="color:#fff;text-align:center;padding:2rem;">AWSLOT の実行には JavaScript が必要です。</p>
+  <p style="color:#fff;text-align:center;padding:2rem;">JAWSLOT の実行には JavaScript が必要です。</p>
 </noscript>
 
 <script type="module" src="./src/main.js"></script>

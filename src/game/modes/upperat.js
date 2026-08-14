@@ -6,10 +6,17 @@
  * Multi-Region   : 純増6枚・継続率85%。全レア役で1セット上乗せ確定。
  *
  * どちらも上乗せ(stock)を持ち、セット末に1セットずつ消費して継続する。
+ *
+ * ── U32(2026-08-14 ユーザー指示)/ 転落後の引き戻しは「ボーナス」へ戻る ──
+ * セットが切れたら引き戻し層(ホットスタンバイ)へ落ちるのは今までどおりだが、
+ * 成功したときの復帰先は **元の上位ATではなくボーナス**(data/rushes.js の
+ * RECOVERY_BONUS)になった。RUSH 4種と同じ扱いに揃えることで、
+ * 「引き戻しに成功したら何が起きるか」を台全体で1通りにしている。
  */
 
 import { UPPER_AT_SPEC_BY_ID } from '../../data/modes.js';
-import { isRare } from '../../data/flags.js';
+import { recoveryEntryParams } from '../../data/rushes.js';
+import { isRareRole } from '../../data/rareroles.js';
 import { residualLine } from '../../data/session.js';
 
 /**
@@ -67,7 +74,7 @@ export const serverlessRush = {
     state.payoutPerGame = spec.payoutPerGame;
     state.continueRate = spec.continueRate;
     state.invocations = 0;
-    state.telop = `サーバー管理から解放 — 純増${spec.payoutPerGame}枚 / 小役で +${spec.addGamePerWin}G`;
+    state.telop = `サーバー管理から解放 — 純増${spec.payoutPerGame}枚 / レア役で +${spec.addGamePerWin}G`;
   },
 
   onGame(state, g) {
@@ -80,11 +87,17 @@ export const serverlessRush = {
     /**
      * 「関数が呼ばれた +1G」(2026-08-13 ユーザー仕様)。
      *
-     * Serverless RUSH 中は **小役が成立するたびに残りゲームが1つ増える**。
+     * Serverless RUSH 中は **レア役が成立するたびに残りゲームが1つ増える**。
      * Lambda が呼ばれるたびに実行が伸びる、という見立て。
-     * 1セット5Gと短いぶん、小役(合計約1/2.8)で粘るのがこのモードの個性になる。
+     *
+     * ── 2026-08-14 しおん指摘 minor / レア役統一の取りこぼしを修正 ──────────
+     * U22〜U24 でゲーム全体の契機が **レア役のみ** に統一されたのに、
+     * ここだけ「ハズレ以外すべて」(約1/2.8)のまま取り残されていた。
+     * 旧: ほぼ毎ゲーム +1G = 5Gセットが実効7〜8Gに伸びる(延長が日常)
+     * 新: レア役契機(通常時 1/24.7)= 平均 +0.2G。**引けた時だけ粘れる**
+     * 判定は data/rareroles.js の isRareRole が唯一の正(直書き条件を作らない)。
      */
-    if (spec.addGamePerWin && g.flag && g.flag !== 'LOSE') {
+    if (spec.addGamePerWin && isRareRole(g.flag)) {
       state.remaining += spec.addGamePerWin;
       state.invocations = (state.invocations ?? 0) + 1;
       events.push({
@@ -141,7 +154,10 @@ export const serverlessRush = {
     return {
       payoutPerGame: pay,
       setEnd: { ...res, healthLabel: 'THROTTLED' },
-      transition: { to: 'HOT_STANDBY', params: { resumeMode: 'SERVERLESS_RUSH', resumeStock: state.stock ?? 0 } },
+      transition: {
+        to: 'HOT_STANDBY',
+        params: recoveryEntryParams('SERVERLESS_RUSH', state.stock ?? 0),
+      },
       telop: 'スロットリング発生… 引き戻しへ',
     };
   },
@@ -183,7 +199,7 @@ export const multiRegion = {
     let telop = null;
 
     // 全レア役で上乗せ確定(3.11 allRareAddSet)
-    if (spec.allRareAddSet && isRare(g.flag)) {
+    if (spec.allRareAddSet && isRareRole(g.flag)) {
       state.stock = (state.stock ?? 0) + spec.addSetPerRare;
       state.lit = Math.min(state.regions.length, state.lit + 1);
       telop = `${state.regions[state.lit - 1]} 点灯 — +${spec.addSetPerRare} SET`;
@@ -208,7 +224,10 @@ export const multiRegion = {
       payoutPerGame: pay,
       events,
       setEnd: { ...res, healthLabel: 'REGION DOWN' },
-      transition: { to: 'HOT_STANDBY', params: { resumeMode: 'MULTI_REGION', resumeStock: state.stock ?? 0 } },
+      transition: {
+        to: 'HOT_STANDBY',
+        params: recoveryEntryParams('MULTI_REGION', state.stock ?? 0),
+      },
       telop: 'リージョン障害… 引き戻しへ',
     };
   },

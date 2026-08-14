@@ -1,5 +1,6 @@
 /*
- * AWSLOT 筐体・ボタン・電飾のCSS。DESIGN.md 5.1 / 5.2 / 5.3
+ * JAWSLOT -ジョースロット- 筐体・ボタン・電飾のCSS。DESIGN.md 5.1 / 5.2 / 5.3
+ * ※ セレクタ名(id / class)は改名前のまま。変えると main.js の配線が全部ズレる
  * 論理解像度 720×1080 を基準に絶対配置し、engine/layers.js が scale() でフィットさせる。
  */
 
@@ -735,7 +736,7 @@ body::before {
 #cabinet.art-cabinet2 .panel-telop { max-width: 520px; }
 
 /* ══════════════════════════════════════════════════════════
- * z=10 リザルトパネル(50回転終了時)
+ * z=10 リザルトパネル(1セッション=100回転を使い切った時)
  *
  * 演出オーバーレイ(z=8)より上に出して、テロップや演出テキストと
  * 重ならないようにする。中身は render/resultpanel.js が流し込む。
@@ -786,6 +787,30 @@ body::before {
   color: rgba(255, 255, 255, 0.6);
 }
 
+/* 甘スロで出したスコアだと分かるバッジ(U44)。
+   main.js が <body> に .is-ama を付ける(付ける条件は ?ama=1)。
+   リザルトのDOMは render/resultpanel.js の担当なので、こちらは
+   見出しの後ろへ CSS だけで足して、あちらの実装に触らない。 */
+body.is-ama .result-heading[data-ama-badge]::after {
+  content: attr(data-ama-badge);
+  display: inline-block;
+  margin-left: 10px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 214, 130, 0.85);
+  background: linear-gradient(180deg, #ff9ad5, #a01f6a);
+  color: #fff7fb;
+  font-family: inherit;
+  font-size: 13px;
+  letter-spacing: 0.12em;
+  text-shadow: 0 1px 2px rgba(80, 10, 50, 0.85);
+  vertical-align: middle;
+}
+body.is-ama .result-session[data-ama-label]::after {
+  content: " / " attr(data-ama-label);
+  color: #ff9ad5;
+}
+
 .result-score-label {
   margin: 0;
   font-size: 11px; font-weight: 700; letter-spacing: 0.16em;
@@ -821,53 +846,10 @@ body::before {
 .result-detail dt { color: rgba(255, 255, 255, 0.68); }
 .result-detail dd { margin: 0; text-align: right; font-weight: 700; color: #ffe9b0; }
 
-.result-form {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  margin-bottom: 6px;
-}
-.result-name-label {
-  font-size: 12px; font-weight: 700;
-  color: rgba(255, 255, 255, 0.7);
-}
-.result-name {
-  flex: 1 1 auto;
-  min-width: 0;
-  padding: 8px 12px;
-  border-radius: 10px;
-  border: 2px solid rgba(255, 210, 120, 0.5);
-  background: rgba(10, 4, 22, 0.85);
-  color: #fff;
-  font-size: 14px;
-  font-family: inherit;
-}
-.result-name::placeholder { color: rgba(255, 255, 255, 0.35); }
-.result-name:focus-visible {
-  outline: 3px solid #ffe066;
-  outline-offset: 1px;
-}
-.result-hof {
-  flex: 0 0 auto;
-  padding: 8px 14px;
-  border-radius: 10px;
-  border: 2px solid rgba(255, 255, 255, 0.35);
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.85);
-  font-size: 12px; font-weight: 900;
-  font-family: inherit;
-  cursor: pointer;
-}
-.result-hof:hover { background: rgba(255, 255, 255, 0.16); }
-.result-hof:focus-visible { outline: 3px solid #ffe066; outline-offset: 2px; }
-
-.result-note {
-  min-height: 16px;
-  margin: 0 0 10px;
-  font-size: 11px; font-weight: 700;
-  color: #7bf7d0;
-}
+/* 2026-08-15 U47: 「なまえ」入力(.result-form / .result-name)・
+   「殿堂入り」ボタン(.result-hof)・端末内ランキング(.result-hof-*)・
+   登録メッセージ(.result-note)のスタイルはDOMごと廃止したので削除した。
+   リザルトは スコア + ランク + 内訳 + 甘スロバッジ + 「もう一度やる」だけ。 */
 
 .result-again {
   display: block;
@@ -897,11 +879,43 @@ body::before {
   color: rgba(255, 255, 255, 0.5);
 }
 
+/* ── リザルト中は筐体の外のUIも一緒に暗転させる(2026-08-15 V31-09)──
+ *
+ * リザルトは筐体(#cabinet)の中だけを覆うので、その外側にある
+ * 打ち方プレート(#controls-guide)と甘スロ切替ボタンだけが明るいまま残り、
+ * しかも押せてしまっていた(押すと集計中の画面から突然ページが再読込される)。
+ * 見た目はここで沈め、実際の無効化は render/resultpanel.js が付ける
+ * inert 属性が担当する(pointer-events は inert 未対応環境の保険)。
+ * .is-result の付け外しはリザルトの開閉と完全に同期している。 */
+body.is-result #controls-guide,
+body.is-result .mode-switch-floating,
+body.is-result .mobile-title,
+body.is-result .mobile-rule,
+body.is-result .compact-hint {
+  opacity: 0.28;
+  filter: grayscale(0.6) brightness(0.55);
+  pointer-events: none;
+  transition: opacity 0.3s ease-out, filter 0.3s ease-out;
+}
+
 /* ── デバッグ凡例 ─────────────────────────── */
 .debug-bar {
   position: absolute;
-  /* 凡例2行 + 状態1行ぶんの高さを確保して筐体下端(1080px)に収める */
-  left: 60px; top: 996px; width: 600px; height: 76px;
+  /* 凡例5行 + 状態1行を筐体の中(下端1080px)に必ず収める。
+     2026-08-15 V31-06: 以前は height:166px + overflow:hidden + 行 nowrap で、
+     「役」や「強制」の行が右端で切れ、下2行が筐体からはみ出して読めなかった。
+     → 上に伸ばして高さを取り、全行を折り返し可(下の .debug-keys)にした。
+     2026-08-15 検証指摘 F7: 216px でもまだ足りず、最終行の状態表示
+     (「残り100回転 FREE_TIER IDLE …」)が下端で上半分だけ描かれていた。
+     内寸 = 216 - padding 12 = 204px に対し、中身は見出し15 + 凡例174 + 状態18 = 約207px。
+     → 高さを 236px(内寸224px)にし、**足りない20pxは上へ伸ばす**(top 856 → 840)。
+     下へ伸ばすと bottom が 1092px になり論理解像度 720×1080 をはみ出すため。
+     bottom = 840 + 236 = 1076px で筐体の内側に収まっている。
+     凡例を1行足すときは必ずここの高さと top も一緒に見ること。
+     それでも増えたときのために overflow:auto は残す(1つだけ書くこと。
+     以前は auto と hidden を二重に書いていて hidden が勝っていた)。 */
+  left: 60px; top: 840px; width: 600px; height: 236px;
+  overflow: auto;
   z-index: 9;
   /* 状態表示は必ず折り返して自分の行に置く(凡例と詰まって読めなくなるのを防ぐ) */
   display: flex; flex-wrap: wrap; align-items: flex-start; gap: 2px 10px;
@@ -912,17 +926,28 @@ body::before {
   color: #b9c2e0;
   font-size: 10px;
   line-height: 1.5;
-  overflow: hidden;
 }
 .debug-title {
   flex: 0 0 auto;
   font-weight: 900; letter-spacing: 0.1em;
   color: #ff6ec7;
 }
-.debug-keys { flex: 1 1 auto; min-width: 0; }
-/* 1行ぶんの凡例は途中で折り返さない(3行に散らばると読みにくいため) */
-.debug-keys > div { white-space: nowrap; }
+.debug-keys { flex: 1 1 auto; min-width: 0; line-height: 1.45; }
+/* どの行も折り返す(V31-06)。切れて読めないくらいなら2行に散らばるほうがまし。
+   折り返した行は見出し(操作 / 強制 / 役 …)の下にぶら下げてインデントする。 */
+.debug-keys > div {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  padding-left: 2.6em;
+  text-indent: -2.6em;
+}
 .debug-keys b { color: #ffe066; font-weight: 700; }
+/* 行頭の見出し(操作 / 強制 / 役 / URL / JS) */
+.debug-keys i {
+  font-style: normal;
+  font-weight: 900;
+  color: #ff6ec7;
+}
 .debug-state {
   flex: 1 0 100%;
   margin-top: 2px;
@@ -931,7 +956,10 @@ body::before {
   color: #7bf7d0;
   font-family: "SFMono-Regular", Menlo, monospace;
   text-align: left;
-  white-space: nowrap;
+  /* 状態行も折り返す(V31-06)。seed や fps が右端で切れると
+     デバッグ情報としての用を成さないため。 */
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -1087,6 +1115,29 @@ body.debug .debug-bar { display: flex; }
   color: rgba(255, 255, 255, 0.72);
 }
 
+/* 目的の1行(2026-08-15 検証指摘 F8)。
+   打ち方は書いてあるのに「何を目指すゲームなのか」がプレートに無く、
+   PCで開いた初見プレイヤーには目的が一切伝わっていなかった。
+   打ち方より先に読ませたいので guide-list の上に置く。 */
+.controls-guide .guide-goal {
+  position: relative;
+  z-index: 1;
+  margin: 0;
+  padding: 8px 14px 0;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.45;
+  letter-spacing: 0.02em;
+  color: rgba(255, 236, 190, 0.95);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+}
+.controls-guide .guide-goal-games {
+  font-size: 13px;
+  font-weight: 900;
+  color: #ffd166;
+}
+
 .controls-guide .guide-list {
   position: relative;
   z-index: 1;
@@ -1201,6 +1252,112 @@ body.debug .debug-bar { display: flex; }
 }
 
 /* ══════════════════════════════════════════════════════════
+ * 甘スロ切替ボタン(.mode-switch)
+ *
+ * 2026-08-14 U44。`?ama=1` を付けて **再読込するだけ** の入口。
+ * ランタイム切替はしない取り決めなので、押すと location を書き換えるだけ。
+ * DOM を作るのも配線するのも src/main.js の **setupAmaUi()**
+ * (2026-08-15: ここに書いてあった buildModeSwitch は実在しない名前だった)。
+ *
+ * 置き場所は2か所:
+ *   PC   … HOW TO PLAY プレートの脚注の下(#controls-guide の中)
+ *   スマホ… 余白の説明文(#mobile-rule)の下
+ * どちらの親も pointer-events:none なので、ボタン側で auto に戻している。
+ * ══════════════════════════════════════════════════════════ */
+.mode-switch {
+  position: relative;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  margin: 8px auto 0;
+  padding: 7px 12px;
+  border: 2px solid rgba(255, 214, 130, 0.8);
+  border-radius: 999px;
+  background: linear-gradient(180deg, #ff9ad5 0%, #e0479f 45%, #a01f6a 100%);
+  box-shadow:
+    0 3px 0 rgba(60, 6, 40, 0.9),
+    0 5px 12px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  color: #fff7fb;
+  font-family: inherit;
+  font-weight: 900;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-shadow: 0 1px 2px rgba(80, 10, 50, 0.8);
+  cursor: pointer;
+  pointer-events: auto;
+}
+.mode-switch:hover { filter: brightness(1.08); }
+.mode-switch:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(60, 6, 40, 0.9); }
+.mode-switch:focus-visible { outline: 3px solid var(--cyan); outline-offset: 2px; }
+
+/* 甘スロで遊んでいる間は「通常へ戻る」に化ける(色でも今どちらかが分かる) */
+.mode-switch.is-back {
+  background: linear-gradient(180deg, #9ad4ff 0%, #3f7fd0 45%, #1c3f80 100%);
+  border-color: rgba(190, 225, 255, 0.85);
+  text-shadow: 0 1px 2px rgba(6, 20, 60, 0.8);
+}
+
+/* プレートの中に置くときは中央寄せの1行として振る舞わせる */
+.controls-guide .mode-switch-wrap {
+  position: relative;
+  z-index: 1;
+  padding: 0 16px 12px;
+  text-align: center;
+}
+
+/* スマホ用(#mobile-rule の下)。余白が狭い機種でも潰れないよう少し小さく */
+.mobile-rule .mode-switch {
+  margin-top: 6px;
+  padding: 6px 11px;
+  font-size: 11px;
+}
+
+/* 逃がし場所(画面左下)。
+   #controls-guide は幅1100px以上、#mobile-rule は筐体より縦長のときだけ出るので、
+   「幅1100px未満 かつ 横長」の窓では入口がどこにも出ない。そこだけを拾う。 */
+.mode-switch-floating {
+  display: none;
+  position: fixed;
+  left: 12px;
+  bottom: 12px;
+  z-index: 3;
+  margin: 0;
+  font-size: 11px;
+}
+@media (max-width: 1099px) and (min-aspect-ratio: 720/1080) {
+  .mode-switch-floating { display: inline-flex; }
+}
+
+/* ══════════════════════════════════════════════════════════
+ * ページ全体の暗転(#page-blackout)
+ *
+ * 2026-08-14 検証指摘 V21-06「フリーズの暗転が筐体の中だけ」。
+ * 要素そのものは **筐体と同じ位置・同じ大きさ**(JS が毎フレーム合わせる)で、
+ * 背景は塗らず、外向きの巨大な box-shadow でページの残り全部を黒くする。
+ * こうすると筐体の中は Canvas 側の暗転が担当したまま、
+ * カットインや「神の声」がこのレイヤーに邪魔されない。
+ *
+ * z-index は #viewport(1)・#controls-guide(2)・#mobile-*(2)より上、
+ * #boot-screen(40)より下。
+ * ══════════════════════════════════════════════════════════ */
+#page-blackout {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  z-index: 30;
+  display: none;
+  opacity: 0;
+  background: transparent;
+  box-shadow: 0 0 0 100vmax #000;
+  pointer-events: none;
+}
+
+/* ══════════════════════════════════════════════════════════
  * スマホ縦持ちなどの上下余白の飾り(#mobile-title / #mobile-rule)
  *
  * #controls-guide と同じ流儀: #viewport の外側の兄弟要素として置き、
@@ -1298,6 +1455,47 @@ body.debug .debug-bar { display: flex; }
   font-size: clamp(10px, calc(var(--mobile-margin) * 0.26), 15px);
   color: rgba(255, 226, 168, 0.92);
   text-shadow: 0 0 8px rgba(255, 190, 60, 0.55), 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+/* 操作方法の行(2026-08-15 検証指摘 F8)。
+   スマホ縦持ちでは #controls-guide が出ないので、目的だけでなく
+   「どう押すのか」もここに無いと初見が詰まる。目的より一段弱い見た目にする。 */
+.mobile-rule .mobile-rule-keys {
+  display: block;
+  margin-top: 3px;
+  font-weight: 600;
+  font-size: 0.86em;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+/* ── 狭い横長の窓だけに出る最小ヒント(2026-08-15 検証指摘 F8)──
+   #controls-guide は幅1100px以上、#mobile-rule は筐体より縦長のときだけ出るので、
+   「幅1100px未満 かつ 横長」(例: 900x600)では操作方法も目的も画面に出ていなかった。
+   .mode-switch-floating と **同じメディアクエリ** で、その窓だけを拾う。
+   甘スロボタン(左下)と重ならないよう右下へ置く。 */
+.compact-hint {
+  display: none;
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  z-index: 3;
+  margin: 0;
+  padding: 5px 10px;
+  max-width: 46vw;
+  border-radius: 8px;
+  background: rgba(8, 6, 24, 0.62);
+  border: 1px solid rgba(255, 214, 130, 0.28);
+  pointer-events: none;
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  line-height: 1.4;
+  color: rgba(255, 232, 186, 0.92);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+.compact-hint-games { color: #ffd166; font-weight: 900; }
+@media (max-width: 1099px) and (min-aspect-ratio: 720/1080) {
+  .compact-hint { display: block; }
 }
 
 /* ══════════════════════════════════════════════════════════

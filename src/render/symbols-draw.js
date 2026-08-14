@@ -148,7 +148,7 @@ function drawMelon(ctx, def, w, h) {
   ctx.fill();
 }
 
-/** 幽霊Kiro + 7 */
+/** 幽霊Kiro + 7(GHOST7.png が読めなかったときのフォールバック) */
 function drawGhost7(ctx, def, w, h) {
   const gx = 26;
   const gy = h / 2;
@@ -172,7 +172,7 @@ function drawGhost7(ctx, def, w, h) {
   outlinedText(ctx, '7', 82, h / 2, def.fg, '#2a0c4d', 4);
 }
 
-/** サメ + BAR */
+/** サメ + BAR(SHARKBAR.png が読めなかったときのフォールバック) */
 function drawSharkBar(ctx, def, w, h) {
   const cx = 28;
   const cy = h / 2;

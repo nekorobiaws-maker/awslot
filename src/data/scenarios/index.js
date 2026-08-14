@@ -9,6 +9,7 @@ import normal from './normal.js';
 import cz from './cz.js';
 import bonus from './bonus.js';
 import rush from './rush.js';
+import rushes from './rushes.js';
 import zones from './zones.js';
 import upper from './upper.js';
 import zencho from './zencho.js';
@@ -21,6 +22,15 @@ import yokokuSecnet from './yokoku-secnet.js';
 import yokokuInfra from './yokoku-infra.js';
 import yokokuDevtools from './yokoku-devtools.js';
 import yokokuDatamedia from './yokoku-datamedia.js';
+import yokokuWind from './yokoku-wind.js';
+import yokokuAruaru from './yokoku-aruaru.js';
+import lunaCameo from './yokoku-luna.js';
+import yokokuBatch3 from './yokoku-batch3.js';
+import yokokuBatch4 from './yokoku-batch4.js';
+import yokokuBedrock from './yokoku-bedrock.js';
+import paramFx from './paramfx.js';
+import session from './session.js';
+import freeze from './freeze.js';
 
 /** @type {object[]} */
 export const SCENARIOS = [
@@ -28,6 +38,8 @@ export const SCENARIOS = [
   ...cz,
   ...bonus,
   ...rush,
+  // U11(2026-08-14): RUSH 4種(オートスケーリング / CloudFront / Aurora / ヒーロー)
+  ...rushes,
   // Phase 5: 派生ゾーン / 上乗せ特化 / 上位AT / 引き戻し / エンディング
   ...zones,
   ...upper,
@@ -52,6 +64,46 @@ export const SCENARIOS = [
   // 予告 第3弾: 開発ツール(yd_) / データ・メディア(ym_)
   ...yokokuDevtools,
   ...yokokuDatamedia,
+  // 予告 第4弾(2026-08-14): 新タイプ演出(yw_)。
+  //   風が子役を運んでくる / リールロック・無音 / ランプ先光り /
+  //   キャラの横切り / AZ切替シャッター / 0コマ停止の煽り / 赤文字の裏切り枠
+  ...yokokuWind,
+  // U13(2026-08-14): AWSあるある分岐予兆(ya2_)。
+  //   レバーONで導入セリフ → リール停止(当落確定)で
+  //     ハズレ   = アンチパターン + ブッブー(sfx-presets.js の buzzer_wrong)
+  //     子役成立 = ベストプラクティスを成立役の色で
+  //   に分岐する。導入セリフはハズレ版と成立版で共通なので、
+  //   文言を直すときは yokoku-aruaru.js の TOPICS だけを直せばよい。
+  ...yokokuAruaru,
+  // プレミアカメオ(lc_)。数百ゲームに1回だけ、レア役が成立したゲームの
+  // 第3停止でルナが液晶の端からひょっこり出てポーズを決める。
+  // char / sfx しか使わない ambient なので、予告の枠も頻度も奪わない。
+  ...lunaCameo,
+  // U35(2026-08-14): 予告 第5弾(yb3_)。未登場サービス10ネタ。
+  //   KMS / Savings Plans / Compute Optimizer / AWS Backup / Global Accelerator /
+  //   CloudFormation / Shield(前兆中限定) / CloudWatch異常検知 /
+  //   Route 53ヘルスチェック / re:Post
+  // 弱はハズレ寄りプールと同じ chance を持たせてあるので、
+  // 本数が増えても予告の総発火量は変わらない(理由はファイル冒頭のコメント)。
+  ...yokokuBatch3,
+  // U52b(2026-08-15): 予告 第6弾(yb4_)。さらに未登場だった10サービス。
+  //   Fargate / ECR / EFS / Service Quotas / Data Firehose /
+  //   DAX / WorkSpaces / Audit Manager / NLB / Organizations
+  // 弱はハズレ寄りプールと同じ chance を持たせてあるので総発火量は変わらない。
+  // 文字はすべて lcd.text(座布団つき)で出す = V31-08 の再発防止。
+  ...yokokuBatch4,
+  // U46b(2026-08-15): Bedrock 生成予告(ybr_)。生成された1行がそのまま結果を表す。
+  //   IAM が設定されます=チェリー / スイカの美味しい季節ですね=スイカ /
+  //   チャンスかもしれません=チャンス目 / サメの群れが…=サメ揃い /
+  //   文字化け・空出力=ハズレ(構造的に当たらないゲーム限定)
+  // 「クイズの時間です」だけは出題シナリオ(quiz.js)側の導入として出している。
+  ...yokokuBedrock,
+  // 受け手のいなかった paramChange(aurora_addgame / standby_extend)を拾う演出
+  ...paramFx,
+  // U7: 100ゲーム終了 → リザルトの間に挟むワンクッション
+  ...session,
+  // 2026-08-14: レバーONフリーズ(game/flow.js の 'freeze' イベント。exclusive)
+  ...freeze,
 ];
 
 /** 定義の妥当性チェック(重複IDやcues欠落の検出。起動時に一度だけ呼ぶ) */

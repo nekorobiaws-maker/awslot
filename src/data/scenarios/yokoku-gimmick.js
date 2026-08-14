@@ -6,8 +6,18 @@
  * (sqs_queue_hold / sfn_arrow_step / deploy_progress / asg_multiply /
  *  cw_meter_swing / kinesis_color_stream / deep_racer_run)。
  *
- * データのみ。import は書かない(依存方向の厳守)。
+ * データのみ。演出の実装(anims / sfx)には依存しない。
+ *
+ * ── RUSH限定シナリオは RUSH_MODES / rushWeight を使うこと(2026-08-14 修正)──
+ * U11 で RUSH が4種になったのに `mode:['AS_RUSH']` のままだったため、
+ * CloudFront / Aurora / ヒーロー RUSH では1本も発火していなかった。
+ * data/rushes.js の RUSH_IDS を単一の正にして、RUSH が増えても自動追従させる。
  */
+
+import { RUSH_IDS, rushWeight } from '../rushes.js';
+
+/** RUSH 全種(when.mode 用)。data/rushes.js が正 */
+const RUSH_MODES = RUSH_IDS;
 
 export default [
   // ── 通常時(FREE_TIER)のギミック予告 ─────────────────
@@ -356,8 +366,8 @@ export default [
     id: 'yg_rush_cw_meter_max',
     name: 'RUSH中:CloudWatchメーターが振り切れる(上乗せ期待濃厚)',
     // 針が THRESHOLD を超えると SCALE OUT 濃厚。振り切れは強レア役限定にして安売りしない
-    when: { event: 'leverOn', flag: ['STRONG_CHERRY', 'CHANCE', 'SHARK'], mode: ['AS_RUSH'] },
-    weight: { AS_RUSH: 100, default: 0 },
+    when: { event: 'leverOn', flag: ['STRONG_CHERRY', 'CHANCE', 'SHARK'], mode: RUSH_MODES },
+    weight: rushWeight(100),
     duration: 3000,
     cues: [
       { at: 0, layer: 'sfx', action: 'synth', params: { preset: 'charge_up' } },
@@ -383,8 +393,8 @@ export default [
     id: 'yg_rush_cw_meter_tease',
     name: '【ガセ】RUSH中:CloudWatchメーターが THRESHOLD 手前で止まる',
     // 弱レア役版。針が黄色ゾーンまでは来るが赤を超えない
-    when: { event: 'leverOn', flag: ['WEAK_CHERRY', 'MELON'], mode: ['AS_RUSH'] },
-    weight: { AS_RUSH: 100, default: 0 },
+    when: { event: 'leverOn', flag: ['WEAK_CHERRY', 'MELON'], mode: RUSH_MODES },
+    weight: rushWeight(100),
     duration: 2400,
     cues: [
       { at: 0, layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
@@ -399,8 +409,8 @@ export default [
     id: 'yg_rush_racer_cheer',
     name: '【賑やかし】RUSH中:ミニDeepRacerが下段を走り抜ける',
     // IDEAS.md 2-35。RUSH の小役でも稀に走らせて画面を寂しくしない
-    when: { event: 'leverOn', flag: ['LOSE', 'BELL', 'REPLAY'], mode: ['AS_RUSH'] },
-    weight: { AS_RUSH: 100, default: 0 },
+    when: { event: 'leverOn', flag: ['LOSE', 'BELL', 'REPLAY'], mode: RUSH_MODES },
+    weight: rushWeight(100),
     chance: 0.03,
     duration: 2000,
     cues: [
@@ -414,8 +424,8 @@ export default [
     id: 'yg_rush_kinesis_rainbow',
     name: 'RUSH中:データ粒の川が虹色になる(上乗せ濃厚)',
     // IDEAS.md 2-20 の最上位。RUSH の強レア役でのみ虹まで到達させる
-    when: { event: 'leverOn', flag: ['STRONG_CHERRY', 'CHANCE', 'SHARK'], mode: ['AS_RUSH'] },
-    weight: { AS_RUSH: 90, default: 0 },
+    when: { event: 'leverOn', flag: ['STRONG_CHERRY', 'CHANCE', 'SHARK'], mode: RUSH_MODES },
+    weight: rushWeight(90),
     duration: 2800,
     cues: [
       { at: 0, layer: 'sfx', action: 'synth', params: { preset: 'stream_flow' } },

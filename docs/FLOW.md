@@ -1,4 +1,8 @@
-# AWSLOT ゲームフロー図
+# JAWSLOT -ジョースロット- ゲームフロー図
+
+> **表示名は「JAWSLOT -ジョースロット-」**(U45 / 2026-08-15)。
+> コード上の識別子(`window.AWSLOT`)・ディレクトリ名・内部名は **AWSLOT のまま**。
+> 改名するのはプレイヤーに見える文言だけ。
 
 > **このドキュメントは実装コード(`src/data/session.js` / `src/data/modes.js` / `src/data/transitions.js` /
 > `src/game/flow.js` / `src/game/modemachine.js` / `src/game/modes/*.js`)を正として作成している。**
@@ -18,21 +22,25 @@
 
 ## 1. 全体モード遷移図
 
-到達可能なモードハンドラは `src/game/modemachine.js` の `MODE_HANDLERS` に18種類登録されている。うち `CZ` は `czId` で4種、`BONUS` は `bonusId` で3種に枝分かれするため、実質的な「モード」の数はDESIGN.mdの言う20種から増えて**23種(到達可能22 + 退役1)**になっている。退役モード(`ROUTE53_FAILOVER`)は点線で載せ、通常プレイでは通らないことを明記する。
+到達可能なモードハンドラは `src/game/modemachine.js` の `MODE_HANDLERS` に18種類登録されている。うち `CZ` は `czId` で**8種**、`BONUS` は `bonusId` で3種、RUSH は4種に分かれるため、実質的な「モード」の数はDESIGN.mdの言う20種から増えて**27種(到達可能26 + 退役1)**になっている。退役モード(`ROUTE53_FAILOVER`)は点線で載せ、通常プレイでは通らないことを明記する。
 
 ### 1a. 幹図(通常時 → CZ → 入賞待ち → ボーナス → AT → 引き戻し → エンディング)
 
 ```mermaid
 flowchart TD
   subgraph NORMAL["■ 通常時(FREE_TIER)"]
-    FREE_TIER["通常ステージ / サミット会場 / Invent会場<br/>内部状態3段階(CZ倍率 x1.0 / x2.0 / x4.0)<br/>天井30G Auto Recovery"]
+    FREE_TIER["通常ステージ / サミット会場 / Invent会場<br/>内部状態3段階(CZ倍率 x1.0 / x2.0 / x4.0)<br/>天井75G Auto Recovery"]
   end
 
-  subgraph CZLAYER["■ CZ層(4種、振分50/25/15/10パーセント)"]
+  subgraph CZLAYER["■ CZ層(8種の格差ラダー、振分29/20/16/11/8/7/5/4パーセント)"]
     CZ_CW["CloudWatch アラートCZ<br/>3G・突破30パーセント・星1"]
+    CZ_SQS["SQS デッドレター再処理CZ<br/>3G・突破26パーセント・星1<br/>DLQを空にできれば突破"]
+    CZ_ALB["ALB ターゲットグループCZ<br/>4G・突破42パーセント・星2<br/>全台healthyでHTTP200"]
     CZ_TA["Trusted Advisor CZ<br/>5G・突破50パーセント・星2<br/>6項目全緑で突破"]
     CZ_SFN["Step Functions CZ<br/>5G・突破55パーセント・星2<br/>Success State到達で突破"]
-    CZ_WA["Well-Architected CZ<br/>6G・突破85パーセント・星3<br/>全柱ぶんSP確定35パーセント"]
+    CZ_CD["CodeDeploy Blue Green CZ<br/>5G・突破62パーセント・星2<br/>100パーセントシフト完了で突破"]
+    CZ_FIS["GameDay CZ FIS障害注入<br/>5G・突破72パーセント・星3<br/>障害5つを耐え切れば突破"]
+    CZ_WA["Well-Architected CZ<br/>18G・突破85パーセント・星3<br/>子役で柱を6本積む参加型・全柱でSP確定35パーセント"]
   end
 
   subgraph READYLAYER["■ 入賞待ち(全経路の入口ゲート)"]
@@ -40,13 +48,16 @@ flowchart TD
   end
 
   subgraph BONUSLAYER["■ ボーナス層(3種)"]
-    BONUS_LAMBDA["シャークボーナス<br/>3G・AT当選率20パーセント"]
-    BONUS_S3["ゴーストボーナス<br/>5G・AT確定100パーセント"]
-    BONUS_DYNAMO["ゴーストボーナスSP<br/>1セット5G・継続率50パーセント<br/>AT確定100パーセント・DCプラス2"]
+    BONUS_LAMBDA["シャークボーナス<br/>6G・RUSH当選率12パーセント"]
+    BONUS_S3["ゴーストボーナス<br/>8G・RUSH当選率45パーセント"]
+    BONUS_DYNAMO["ゴーストボーナスSP<br/>1セット6G・継続率50パーセント<br/>RUSH当選率85パーセント"]
   end
 
-  subgraph ATLAYER["■ 母体AT"]
-    AS_RUSH["Auto Scaling RUSH<br/>1セット5G・DC1から8<br/>純増13から74枚毎G・継続率22から94パーセント"]
+  subgraph ATLAYER["■ RUSH 4種(U11。伸びる軸が1本ずつ違う)"]
+    AS_RUSH["オートスケーリングRUSH<br/>EC2の台数イコール残りゲーム数・純増35枚固定<br/>レア役でオートスケール(弱チェ2台からゴースト22台)<br/>通算22Gで頭打ち(一撃770枚)"]
+    CF_RUSH["CloudFront RUSH<br/>8G固定・毎ゲーム55パーセントで直接払い出し<br/>子役成立で確定クレジット"]
+    AURORA_RUSH["Aurora RUSH<br/>初期8G・ACU30から70<br/>レア役でACU(純増)アップかつ残りプラス1G<br/>通算15Gで頭打ち"]
+    HERO_RUSH["ヒーローRUSH(振分2パーセントのプレミア)<br/>5G固定・毎ゲーム2分の1で50枚"]
   end
 
   subgraph ZONELAYER["■ 派生・上乗せゾーン(詳細は図1b)"]
@@ -59,7 +70,7 @@ flowchart TD
   end
 
   subgraph RECOVERYLAYER["■ 引き戻し層(1段のみ)"]
-    HOT_STANDBY["ホットスタンバイ Multi-AZ<br/>10G・成功率40パーセント"]
+    HOT_STANDBY["ホットスタンバイ Multi-AZ<br/>5G(レア役でプラス1G 上限15G)・成功率82パーセント<br/>成功で復旧のゴーストボーナスへ"]
     ROUTE53["【退役】Route 53 フェイルオーバー<br/>通常プレイでは到達しない"]
   end
 
@@ -67,54 +78,66 @@ flowchart TD
     REINVENT_ED["re:Invent キーノート<br/>5G・純増20枚固定"]
   end
 
-  FREE_TIER -->|"レア役CZ抽選+ステージ滞在中の毎G抽選 振分50パーセント"| CZ_CW
-  FREE_TIER -->|"振分25パーセント"| CZ_TA
-  FREE_TIER -->|"振分15パーセント"| CZ_SFN
-  FREE_TIER -->|"振分10パーセント"| CZ_WA
-  FREE_TIER -->|"30G消化 Auto Recovery 突破確定で送り込み"| CZ_WA
-  FREE_TIER -->|"ボーナス直撃 MELON4.5 CHANCE9 STRONG_CHERRY22 GHOST100パーセント等"| BONUS_READY
-  FREE_TIER -->|"AT直撃 STRONG_CHERRY2 SHARK10パーセント"| AS_RUSH
+  FREE_TIER -->|"レア役CZ抽選+ステージ滞在中の毎G抽選 振分29パーセント"| CZ_CW
+  FREE_TIER -->|"振分20パーセント"| CZ_SQS
+  FREE_TIER -->|"振分16パーセント"| CZ_ALB
+  FREE_TIER -->|"振分11パーセント"| CZ_TA
+  FREE_TIER -->|"振分8パーセント"| CZ_SFN
+  FREE_TIER -->|"振分7パーセント"| CZ_CD
+  FREE_TIER -->|"振分5パーセント"| CZ_FIS
+  FREE_TIER -->|"振分4パーセント"| CZ_WA
+  FREE_TIER -->|"75G消化 Auto Recovery 突破確定で送り込み 5G保証版"| CZ_WA
+  FREE_TIER -->|"ボーナス直撃 MELON1.4 CHANCE2.5 STRONG_CHERRY6.4 GHOST100パーセント等"| BONUS_READY
+  FREE_TIER -->|"RUSH直撃 STRONG_CHERRY0.7 SHARK3.4パーセント レバーONフリーズも直結 種別は振り分け"| ATLAYER
 
   CZ_CW -->|"突破30パーセント 振分86 12 2パーセント"| BONUS_READY
   CZ_CW -->|"失敗70パーセント"| FREE_TIER
+  CZ_SQS -->|"突破26パーセント 振分90 9 1パーセント"| BONUS_READY
+  CZ_SQS -->|"失敗74パーセント"| FREE_TIER
+  CZ_ALB -->|"突破42パーセント 振分80 18 2パーセント"| BONUS_READY
+  CZ_ALB -->|"失敗58パーセント"| FREE_TIER
   CZ_TA -->|"突破50パーセント 振分62 30 8パーセント"| BONUS_READY
   CZ_TA -->|"失敗50パーセント"| FREE_TIER
   CZ_SFN -->|"突破55パーセント 振分58 32 10パーセント"| BONUS_READY
   CZ_SFN -->|"失敗45パーセント"| FREE_TIER
+  CZ_CD -->|"突破62パーセント 振分58 33 9パーセント"| BONUS_READY
+  CZ_CD -->|"失敗38パーセント 自動ロールバック"| FREE_TIER
+  CZ_FIS -->|"突破72パーセント 振分42 40 18パーセント"| BONUS_READY
+  CZ_FIS -->|"失敗28パーセント SLO違反"| FREE_TIER
   CZ_WA -->|"突破85パーセント 振分30 45 25パーセント 全柱金でSP確定"| BONUS_READY
   CZ_WA -->|"失敗15パーセント"| FREE_TIER
 
   BONUS_READY -->|"図柄が揃った瞬間(種別はCZ内訳/直撃振分で決定済み)"| BONUSLAYER
 
-  BONUS_LAMBDA -->|"AT当選20パーセント"| AS_RUSH
-  BONUS_LAMBDA -->|"非当選80パーセント 高確から再開"| FREE_TIER
-  BONUS_S3 -->|"AT確定100パーセント DC初期値抽選"| AS_RUSH
+  BONUS_LAMBDA -->|"ボーナス中の子役契機で当選 総合12パーセント"| ATLAYER
+  BONUS_LAMBDA -->|"非当選 高確から再開"| FREE_TIER
+  BONUS_S3 -->|"ボーナス中の子役契機で当選 総合45パーセント"| ATLAYER
   BONUS_DYNAMO -->|"セット継続50パーセント"| BONUS_DYNAMO
-  BONUS_DYNAMO -->|"消化終了 AT確定 DCプラス2"| AS_RUSH
+  BONUS_DYNAMO -->|"ボーナス中の子役契機で当選 総合85パーセント"| ATLAYER
 
   AS_RUSH -->|"派生ゾーン当選(レア役ごとに抽選)"| DERIVED_ZONES
   DERIVED_ZONES -->|"ゾーン終了 pop"| AS_RUSH
   DERIVED_ZONES -->|"Step Functions全制覇 popThenTo"| MULTI_REGION
-  AS_RUSH -->|"サメ揃い30パーセント直接昇格 または6セット連続継続"| SERVERLESS_RUSH
-  AS_RUSH -->|"DC全滅(スケールイン)"| HOT_STANDBY
+  AS_RUSH -->|"サメ揃い30パーセント直接昇格"| SERVERLESS_RUSH
+  ATLAYER -->|"残りゲーム数が尽きた"| HOT_STANDBY
 
   SERVERLESS_RUSH -->|"レア役契機(GHOST100 SHARK80 STRONG_CHERRY35パーセント等)プラス継続時25パーセント抽選"| MULTI_REGION
   SERVERLESS_RUSH -->|"セット非継続 継続率86パーセント"| HOT_STANDBY
   MULTI_REGION -->|"セット非継続 継続率88パーセント"| HOT_STANDBY
 
-  HOT_STANDBY -->|"成功40パーセント 元のATへ復帰 resumeMode"| ATLAYER
-  HOT_STANDBY -->|"成功40パーセント 元のATへ復帰"| UPPERATLAYER
-  HOT_STANDBY -->|"失敗60パーセント"| FREE_TIER
+  HOT_STANDBY -->|"成功82パーセント 復旧のゴーストボーナスへ そこでレア役を引けば45パーセントでRUSH"| ATLAYER
+  HOT_STANDBY -->|"成功82パーセント 復旧のゴーストボーナスへ"| UPPERATLAYER
+  HOT_STANDBY -->|"失敗18パーセント"| FREE_TIER
   HOT_STANDBY -.->|"【退役】直撃デバッグ専用。通常到達しない"| ROUTE53
 
-  ATLAYER -.->|"差枚プラス2222 またはATセット計14到達(強制)"| REINVENT_ED
-  UPPERATLAYER -.->|"差枚プラス2222 またはATセット計14到達(強制)"| REINVENT_ED
+  ATLAYER -.->|"差枚プラス1500 またはATセット計4到達(強制)"| REINVENT_ED
+  UPPERATLAYER -.->|"差枚プラス1500 またはATセット計4到達(強制)"| REINVENT_ED
   REINVENT_ED -->|"5G消化・全状態リセット"| FREE_TIER
 ```
 
 **読み方の補足**:
 - `BONUS_READY` は `src/game/modemachine.js` の `ENTRY_GATE = { BONUS: 'BONUS_READY' }` で強制される「必ずここを経由する入口」。CZ突破・直撃・前兆やDeepRacer擬似連の当選など、ボーナスへ向かう経路がどれだけ増えても、`_push('BONUS', ...)` は自動的に `BONUS_READY` へ差し替わるので個別に直す必要がない。
-- CZ・ボーナスとも「種別振り分け」はモードに入った時点(`onEnter`)で確定しており、`BONUS_READY` はどの絵柄を揃えさせるかを `state.targetSymbol` で持つだけ。図中では矢印の煩雑化を避けるため、CZ4種→`BONUS_READY` への矢印1本にまとめている(内訳は各CZのラベルに記載)。
+- CZ・ボーナスとも「種別振り分け」はモードに入った時点(`onEnter`)で確定しており、`BONUS_READY` はどの絵柄を揃えさせるかを `state.targetSymbol` で持つだけ。図中では矢印の煩雑化を避けるため、CZ8種→`BONUS_READY` への矢印は各CZから1本ずつにとどめている(内訳は各CZのラベルに記載)。
 - **前兆システム**(`src/data/zencho.js` / `src/game/modes/freetier.js`): 当選(CZ/AT/BONUS)は即座に画面が変わらず、本前兆(2〜5G、当選を保持)を挟んでから告知する。非当選中も 1/40 の確率でガセ前兆(2〜4G)が発生し、前兆中に当選するとガセ→本前兆へ格上げされる(当選を持ったまま格が下がることはない)。**DeepRacer擬似連**は前兆パターンの1つで、step3到達(到達率約29%)で50%の確率でCZへ移行、step4到達(約9%)でボーナス確定、さらに擬似連中にレア役を引くと即ボーナス確定へ格上げされる。
 - **「告知→次スピンで移行」の原則**(`onNextSpin`): 当選告知・CZ結果・天井到達・DC全滅・引き戻し成否は、すべて**告知が起きたモードの画面のまま**そのゲームを終え、**次にレバーを引いた瞬間**に新モードへ入る(3章で詳述)。図の矢印はすべてこの原則に従う。
 - エンディング条件(`ending_cond`)はどのモードにいても毎ゲーム `GameFlow._checkEnding()` が判定しており、成立すると `modeMachine.forceMode('REINVENT_ED')` でスタックごと畳んで強制遷移する(図中の破線矢印)。図では代表して `ATLAYER` / `UPPERATLAYER` からの矢印にしているが、実際は通常時・CZ・ボーナス中でも判定は走る(到達しうるのは主に差枚が伸びやすいAT系)。
@@ -136,8 +159,8 @@ flowchart TD
   end
 
   subgraph BOOST["上乗せ特化ゾーン(枚数の直接上乗せが中心)"]
-    CLOUDFRONT["CloudFront エッジ上乗せ<br/>8G固定・毎Gコイン抽選 平均プラス59枚"]
-    KINESIS["Kinesis 上乗せストリーム<br/>シャード数1から10ぶんのコイン上乗せ<br/>150枚レコードで母体プラス1セットも付く"]
+    CLOUDFRONT["CloudFront エッジ上乗せ<br/>8G固定・毎Gコイン抽選 0から60枚 平均プラス60枚"]
+    KINESIS["Kinesis 上乗せストリーム<br/>シャード数1から10ぶんのコイン上乗せ 5から60枚<br/>60枚レコードで母体プラス1セットも付く"]
     STEP_FUNCTIONS["Step Functions チャレンジ<br/>最大5ステート・プレイヤー選択 左 右<br/>Task成功率70パーセントでDCプラス1"]
   end
 
@@ -190,7 +213,7 @@ flowchart TD
 **読み方の補足**:
 - **買い取る/買い取らない基準**(`src/data/session.js` 冒頭コメント): 残ゲーム数×現在純増や確定済みストックのように「**既に所有している権利**」は買い取る。一方、セット継続抽選の期待値や CZ の突破期待値のように「**まだ引いていない権利**」は買い取らない(買うと「終了間際にCZへ入るのが一番得」という歪みが出るため)。
 - `collectResidualValue()`(`src/game/modemachine.js`)はモードスタックを下から順に舐め、各ハンドラの `residualValue(state, ctx)` を合算するだけで、モード固有の知識を持たない(`game/` → `data/` の依存方向を保つ設計)。派生ゾーン・上乗せ特化ゾーンは母体ATの純増(`ctx.host`)を必要とするため、買い取り計算にもホストを渡す。
-- エンディング(`REINVENT_ED`)はセッション内で複数回起こりうる**別イベント**。差枚+2222やATセット計14に達するたびに発火し、5G消化して `FREE_TIER` へ戻る。エンディング中に100回転を使い切った場合も、残りG(`residualValue`)がそのまま買い取り対象になる。
+- エンディング(`REINVENT_ED`)はセッション内で複数回起こりうる**別イベント**。差枚+1500やATセット計4に達するたびに発火し、5G消化して `FREE_TIER` へ戻る。エンディング中に100回転を使い切った場合も、残りG(`residualValue`)がそのまま買い取り対象になる。
 - リザルト表示中(`session.ended = true`)は `GameFlow.canBet` が `false` を返すため新しいBETは受け付けない。`GameFlow.play()` が `session.ended` を見て自動的に `restart()` を呼ぶため、R/↑キー/筐体のワンボタン操作のどれでも次のセッションへ進める。
 - `restart()` のたびに `session.index` がインクリメントされ、クレジットは常に `SESSION.startCredit = 50` から再スタートする(スコアは差枚 `credit.diff` で見るため初期クレジットの値そのものに意味はない)。
 
@@ -251,20 +274,27 @@ flowchart TD
 
 ## 5. モード早見表
 
-`src/game/modemachine.js` の `MODE_HANDLERS` に登録済みの18ハンドラ(CZが4種・BONUSが3種に枝分かれするため実質22到達可能 + 退役1)。数値は `src/data/modes.js` 等の現在値。**実装が正**であり、この表はスナップショットに過ぎない。
+`src/game/modemachine.js` の `MODE_HANDLERS` に登録済みの21ハンドラ(U11 で RUSH が4種に分かれた)(CZが8種・BONUSが3種に枝分かれするため実質26到達可能 + 退役1)。数値は `src/data/modes.js` 等の現在値(2026-08-14 バランス調整後)。**実装が正**であり、この表はスナップショットに過ぎない。
 
 | # | モード / ID(内訳) | 層 | 役割 | 主要スペック(現在値) | 突入契機 |
 |---|---|---|---|---|---|
-| M01 | 通常ステージ等 / `FREE_TIER` | 通常時 | メイン待機画面。内部状態3段階でCZ確率が変動 | COLD_START(通常)×1.0 / WARM_POOL(高確)×2.0 / PROVISIONED(激アツ)×4.0、高確/激アツ滞在中は毎G抽選(19%/58%)、転落率3%/8%(激アツ平均9G・高確平均17G)、天井30G「Auto Recovery」で最上位CZ確定 | ゲーム開始 / 各所からの転落先 |
-| M02 | CloudWatch アラートCZ / `CZ`(czId=CW_ALARM) | CZ層 | 入門CZ。折れ線グラフが閾値を超えれば突破 | 3G・突破率30%・CZ内振分50%・期待度★☆☆・突破時ボーナス振分86/12/2% | 通常時レア役 or ステージ毎G抽選でCZ当選→振分抽選 |
-| M03 | Trusted Advisor CZ / `CZ`(czId=TRUSTED_ADVISOR) | CZ層 | 6カテゴリのチェックリスト。**全緑でボーナス確定** | 5G・突破率50%・CZ内振分25%・期待度★★☆・突破時ボーナス振分62/30/8% | 同上 |
-| M04 | Step Functions CZ / `CZ`(czId=SFN_CZ) | CZ層 | ワークフローが自動進行。Success Stateまで流れきれば突破 | 5G・突破率55%・CZ内振分15%・期待度★★☆・突破時ボーナス振分58/32/10%(2026-08-13新設) | 同上 |
-| M05 | Well-Architected CZ / `CZ`(czId=WELL_ARCHITECTED) | CZ層 | 最上位CZ。6本の柱、全立ちでSP確定率35% | 6G・突破率85%・CZ内振分10%・期待度★★★・突破時ボーナス振分30/45/25% | 同上 / 通常時30G天井到達で確定 |
+| M01 | 通常ステージ等 / `FREE_TIER` | 通常時 | メイン待機画面。内部状態3段階でCZ確率が変動 | COLD_START(通常)×1.0 / WARM_POOL(高確)×2.0 / PROVISIONED(激アツ)×4.0、高確/激アツ滞在中は毎G抽選(5%/20%)、転落率3%/8%(激アツ平均9G・高確平均17G)、天井**75G**「Auto Recovery」で最上位CZ確定 | ゲーム開始 / 各所からの転落先 |
+| M02 | CloudWatch アラートCZ / `CZ`(czId=CW_ALARM) | CZ層 | 入門CZ。折れ線グラフが閾値を超えれば突破 | 3G・突破率30%・CZ内振分29%・期待度★☆☆・突破時ボーナス振分86/12/2% | 通常時レア役 or ステージ毎G抽選でCZ当選→振分抽選 |
+| M02b | SQS デッドレター再処理CZ / `CZ`(czId=SQS_REDRIVE) | CZ層 | 最弱・最頻枠。**カウントダウン型**。DLQを空にできれば突破 | 3G・突破率26%・CZ内振分20%・期待度★☆☆・突破時ボーナス振分90/9/1% | 同上 |
+| M02c | ALB ターゲットグループCZ / `CZ`(czId=ALB_CZ) | CZ層 | 3台のターゲットを全部 healthy にして HTTP 200 | 4G・突破率42%・CZ内振分16%・期待度★★☆・突破時ボーナス振分80/18/2% | 同上 |
+| M03 | Trusted Advisor CZ / `CZ`(czId=TRUSTED_ADVISOR) | CZ層 | 6カテゴリのチェックリスト。**全緑でボーナス確定** | 5G・突破率50%・CZ内振分11%・期待度★★☆・突破時ボーナス振分62/30/8% | 同上 |
+| M04 | Step Functions CZ / `CZ`(czId=SFN_CZ) | CZ層 | ワークフローが自動進行。Success Stateまで流れきれば突破 | 5G・突破率55%・CZ内振分8%・期待度★★☆・突破時ボーナス振分58/32/10% | 同上 |
+| M04b | CodeDeploy Blue/Green CZ / `CZ`(czId=CODEDEPLOY_BG) | CZ層 | Greenへ100%シフトで突破。失敗は自動ロールバック | 5G・突破率62%・CZ内振分7%・期待度★★☆・突破時ボーナス振分58/33/9% | 同上 |
+| M04c | GameDay CZ(FIS 障害注入)/ `CZ`(czId=FIS_GAMEDAY) | CZ層 | 唯一の**防御型**。障害5つを耐え切れば突破 | 5G・突破率72%・CZ内振分5%・期待度★★★・突破時ボーナス振分42/40/18% | 同上 |
+| M05 | Well-Architected CZ / `CZ`(czId=WELL_ARCHITECTED) | CZ層 | 最上位CZ。**子役で柱を積む参加型**(U10)。全立ちでSP確定率35% | 18G・突破率85%(理論84.98% / 実測75%※)・CZ内振分4%・期待度★★★・突破時ボーナス振分30/45/25% | 同上 / 通常時**75G**天井到達で確定(この場合だけ5G・突破保証) |
 | M06 | BONUS 入賞待ち / `BONUS_READY` | 入口ゲート | ボーナス種別ごとの絵柄を揃えるまでの区間。全ボーナス経路が必ず通過する | GHOST7(BIG系)またはサメBAR(REG)を揃える。小役成立時は揃わずハズレ時のみ引き込み、平均1.6G | CZ突破 / 直撃 / 前兆・DeepRacer当選のすべて(`ENTRY_GATE` で自動的に経由) |
-| M07 | シャークボーナス / `BONUS`(bonusId=LAMBDA_REG) | ボーナス層 | 軽量・テンポ優先の枠 | 3G・ベル高確率で揃い1回成立につき約9.7枚純増・AT当選率20% | BONUS_READYで図柄が揃う |
-| M08 | ゴーストボーナス / `BONUS`(bonusId=S3_BIG) | ボーナス層 | 王道。AT確定の安心感 | 5G・AT確定100%・DC初期値抽選(1台80%/2台15%/3台5%) | 同上 |
-| M09 | ゴーストボーナスSP / `BONUS`(bonusId=DYNAMO_BIG) | ボーナス層 | セット継続型の重量級 | 1セット5G・継続率50%・AT確定100%・DC初期値抽選(1台30%/2台40%/3台20%/4台10%)+DC初期値に更に+2 | 同上 |
-| M10 | Auto Scaling RUSH / `AS_RUSH` | 母体AT | 本機の出玉源。DC(1〜8)が純増と継続率を兼ねる | 1セット5G・DC別純増13/17/21/27/35/45/58/74枚・DC別継続率22/32/46/62/75/84/90/94%・非継続時はDC2以上で一気に-2(スケールイン) | ボーナス終了(AT当選) / 通常時直撃(STRONG_CHERRY 2% / SHARK 10%) / 引き戻し成功 |
+| M07 | シャークボーナス / `BONUS`(bonusId=LAMBDA_REG) | ボーナス層 | 軽量・テンポ優先の枠 | **6G**・ベル高確率で揃い1回成立につき約9.7枚純増(平均+57枚)・RUSH当選率12% | BONUS_READYで図柄が揃う |
+| M08 | ゴーストボーナス / `BONUS`(bonusId=S3_BIG) | ボーナス層 | 王道。RUSHへの本線 | **8G**(平均+76枚)・RUSH当選率45%・非当選時は高確スタート | 同上 |
+| M09 | ゴーストボーナスSP / `BONUS`(bonusId=DYNAMO_BIG) | ボーナス層 | セット継続型の重量級 | **1セット6G**・継続率50%(平均1.8セット・+101枚)・RUSH当選率85% | 同上 |
+| M10 | オートスケーリングRUSH / `AS_RUSH` | RUSH(ゲーム数特化) | **EC2の台数がそのまま残りゲーム数**。**レア役**でオートスケールして伸びる | 初期3〜18台(平均6.96)・純増**35枚**固定・上乗せは弱チェ+2、スイカ/チャンス目+3、強チェ+6、サメ+12、ゴースト+22(期待+0.249G/G)・**通算22Gで頭打ち** ⇒ 平均8.8G・**中央値210枚 / 平均307枚 / p99 770枚** | ボーナス中の**レア役**契機でRUSH当選 → 振分50% / 通常時直撃 / 引き戻し成功 |
+| M10b | CloudFront RUSH / `CF_RUSH` | RUSH(直接払い出し) | 毎ゲーム抽選でクレジットが飛んでくる。ゲーム数は固定 | 8G固定・毎ゲーム**85%**でヒット(25/40/50/60枚の重み抽選)・**レア役**成立で確定クレジット(弱チェ12〜強チェ40 / サメ250 / ゴースト300枚)⇒ 約34.0枚/G・**中央値270枚 / 平均272枚 / p99 505枚** | 同上 → 振分25% |
+| M10c | Aurora RUSH / `AURORA_RUSH` | RUSH(純増特化) | **レア役**でACU(純増)がスケールアップし、ゲーム数も+1 | 初期8G・ACU**30**スタート(**上限70**)・レア役でACU+17〜+40かつ残り+1G(**通算15Gで頭打ち**)⇒ 平均8.7G・**中央値240枚 / 平均331枚 / p99 724枚** | 同上 → 振分23% |
+| M10d | ヒーローRUSH / `HERO_RUSH` | RUSH(プレミア) | 5G固定の一発勝負。毎ゲーム 80% で70枚(U50) | 5G固定・毎ゲーム**80%**で**70枚**・**レア役**成立で+10〜30枚(確定役は+300/+500枚)⇒ 約57.9枚/G・**中央値280枚 / 平均289枚 / p99 404枚** | 同上 → 振分2%(フリーズ/ボーナス中ゴースト揃いのプレミア振分では25%) |
 | M11 | Spot インスタンスゾーン / `SPOT_ZONE` | 派生ゾーン(滞在型) | 爆発型。中断リスクと表裏一体 | 純増16枚・最低6G保証・1/12で中断通知→2G後強制終了(平均約12G) | AS_RUSH中 SHARK 30% / GHOST 30% |
 | M12 | EC2 バーストモード / `EC2_BURST` | 派生ゾーン(滞在型) | クレジット消費型の爆発モード | 純増11枚・クレジット60初期・毎G-5、レア役で回復(上限90、平均約12G) | AS_RUSH中 STRONG_CHERRY 18% / SHARK 25% |
 | M13 | Graviton モード / `GRAVITON` | 派生ゾーン(滞在型) | 安定型。低純増・高継続 | 純増6枚・1セット8G・継続率72% | AS_RUSH中 CHANCE 12% |
@@ -272,35 +302,42 @@ flowchart TD
 | M15 | CloudFront エッジ上乗せ / `CLOUDFRONT` | 上乗せ特化 | 毎ゲーム抽選で枚数を直接上乗せ | 8G固定・平均+59枚(0/5/10/20/60/200枚の重み抽選) | AS_RUSH中 MELON 30% / CHANCE 38% / STRONG_CHERRY 38% / 滞在型ゾーン中のネスト当選(STRONG_CHERRY 6% / SHARK 25% / GHOST 30%) |
 | M16 | Kinesis 上乗せストリーム / `KINESIS` | 上乗せ特化 | シャード数ぶんの上乗せレコードが流れる | シャード数1〜10・シャードごとに枚数上乗せ、150枚レコードで母体+1セットも付く | AS_RUSH中 MELON 20% / CHANCE 26% / STRONG_CHERRY 28% / SHARK 20% / 滞在型ゾーン中のネスト当選(SHARK 15% / GHOST 50%) |
 | M17 | Step Functions チャレンジ / `STEP_FUNCTIONS` | 上乗せ特化 | 唯一のプレイヤー選択モード | 最大5ステート・Task成功率70%でDC+1(純増ブースト)・全制覇でMULTI_REGION直行 | AS_RUSH中 STRONG_CHERRY 6% / SHARK 25% / GHOST 50% |
-| M18 | Serverless RUSH / `SERVERLESS_RUSH` | 上位AT | DC管理から解放。小役で粘るのが個性 | 1セット5G・純増16枚固定・継続率86%・小役成立ごとに残り+1G | AS_RUSH中 サメ揃い30%(昇格抽選、ゾーン抽選より先に判定) / 6セット連続継続 / GHOST契機のゾーン抽選(SERVERLESS_UP 20%) |
+| M18 | Serverless RUSH / `SERVERLESS_RUSH` | 上位AT | セット継続型。小役で粘るのが個性 | 1セット5G・純増16枚固定・継続率86%・小役成立ごとに残り+1G | AS_RUSH中 サメ揃い30%(昇格抽選、ゾーン抽選より先に判定) / GHOST契機のゾーン抽選(SERVERLESS_UP 20%)。※U11 でセット継続が無くなったため「6セット連続継続」の昇格は退役 |
 | M19 | Multi-Region アクティブ・アクティブ / `MULTI_REGION` | 上位AT | 最上位AT。全レア役で上乗せ確定 | 1セット5G・純増24枚固定・継続率88%・全レア役で+1セット確定&リージョン点灯 | Serverless RUSH中 レア役契機(GHOST 100% / SHARK 80% / STRONG_CHERRY 35% / CHANCE 20% / MELON 15%)+セット継続時25%抽選 / Step Functions全制覇(popThenTo) |
-| M20 | ホットスタンバイ(Multi-AZ) / `HOT_STANDBY` | 引き戻し層(1段) | RUSH終了時唯一の防衛線。旧2段構成を統合 | 10G・成功率40%・成功で元のATへ復帰(resumeMode、+DC2) | AS_RUSH/Serverless RUSH/Multi-Regionのセット非継続・DC全滅 |
+| M20 | ホットスタンバイ(Multi-AZ) / `HOT_STANDBY` | 引き戻し層(1段) | RUSH終了時唯一の防衛線。旧2段構成を統合。**U50 以降はここが上振れの主役**(1回のRUSHを800枚で頭打ちにしたぶん、連チャンで伸ばす) | 5G(**レア役**成立で+1G、上限15G)・成功率**82%**・成功で**復旧のゴーストボーナス**へ(U32。`RECOVERY_BONUS`。そのボーナス中にレア役を引けば45%でRUSHへ ⇒ **RUSHが繋がる確率 約37%**) | RUSH 4種の消化終了 / 上位ATのセット非継続 |
 | M21 | 【退役】Route 53 フェイルオーバー / `ROUTE53_FAILOVER` | 引き戻し層(廃止) | 旧2段目。1段化で通常プレイからは到達しない | 3G・成功率10%(ハンドラのみ残置。`?mode=ROUTE53_FAILOVER` の直撃デバッグ専用) | 通常プレイでは到達不可 |
-| M22 | re:Invent キーノート / `REINVENT_ED` | エンディング | 完走エンディング。全状態リセット | 5G・純増20枚固定・全状態リセット | 差枚+2222到達 または ATセット累計14到達(どのモードからでも強制遷移。成立後はカウンタをリセットして再度計測、セッション中に複数回起こりうる) |
+| M22 | re:Invent キーノート / `REINVENT_ED` | エンディング | 完走エンディング。全状態リセット | 5G・純増20枚固定・全状態リセット | 差枚+1500到達 または ATセット累計4到達(閾値は `src/data/modes.js` の `ENDING` が正。U50 で差枚 2222→1500、U32 で ATセット 5→4)(どのモードからでも強制遷移。成立後はカウンタをリセットして再度計測、セッション中に複数回起こりうる) |
 | M23 | RESULT(新設) / `RESULT` | セッション終端 | 100回転を使い切った後のリザルト。ゲームは進行しない | 残存価値の買い取り済み最終スコア・買い取り内訳・戦績(ボーナス/AT/CZ/ゾーン/エンディング回数)を表示 | 100回転消化(`session.remaining <= 0`)時に `forceMode('RESULT')` |
 
 **表の注記**:
-- 「AT累計14セット」は AT層(`AS_RUSH` / `SERVERLESS_RUSH` / `MULTI_REGION`)のセット消化数の合計(`modeMachine.atSetCount`)。通常時(`FREE_TIER`)へ完全に落ちた時点で 0 にリセットされる(`ModeMachine._push()` 内)。引き戻し層(`HOT_STANDBY`)はATの続きなので数えたまま持ち越す。
+- 「AT累計4セット」は AT層(`AS_RUSH` などの RUSH 4種 / `SERVERLESS_RUSH` / `MULTI_REGION`)のセット消化数の合計(`modeMachine.atSetCount`)。通常時(`FREE_TIER`)へ完全に落ちた時点で 0 にリセットされる(`ModeMachine._push()` 内)。引き戻し層(`HOT_STANDBY`)はATの続きなので数えたまま持ち越す。
 - ボーナス中の払出は「小役払出そのもの」(固定純増ではない)。専用の小役テーブル `BONUS`(`src/data/flags.js`)を引き、ベルが高確率で揃って1回成立につき15枚。期待純増は `BONUS_NET_PER_GAME`(`src/data/payouts.js`、約9.7枚/G)で、残存価値の買い取りにもこの値を使う。
-- CZ突破率には意図的な格差が付いている(★1=30% 〜 ★3=85%)。「CZにはよく入るが、抜けられるかはCZの格次第」という設計思想(`src/data/modes.js` CZ_TYPES のコメント参照)。
+- CZ突破率には意図的な格差が付いている(★1=26% 〜 ★3=85%の8段ラダー)。「CZにはよく入るが、抜けられるかはCZの格次第」という設計思想(`src/data/modes.js` CZ_TYPES のコメント参照)。加重平均の突破率は 41.9%。
+- ※ Well-Architected CZ だけ実測(75%)が公称(85%)に届かないのは、**18G のCZが終盤に来ると100回転を使い切って打ち切られる**ため。理論値は 18G で 84.98% = 公称どおりで、仕様バグではない(柱の期待本数 0.452本/G。16G なら 75.5% / 14G なら 62.3% に下がる)。
 
-### 実測値(参考。2026-08-13時点 / `node scripts/sim.mjs --session=5000`)
+### 実測値(参考。2026-08-14 バランス調整後 / `node scripts/sim.mjs --session=50000 20260814`)
 
-100回転 × 5,000セッション(シード2026)のヘッドレス試行結果。数値は乱数依存で毎回わずかに変動する参考値であり、正式な数値仕様ではない。
+100回転 × 50,000セッションのヘッドレス試行結果。数値は乱数依存でわずかに変動する参考値であり、正式な数値仕様ではない(seed 777 / 12345 でも同レンジを確認済み)。
 
-| 指標 | 実測 |
-|---|---|
-| 平均スコア | 542.2枚(目標400〜600枚) |
-| 中央値 | 371枚 |
-| 上位25% / 10% | 719枚 / 1,298枚 |
-| 上位1% / 0.1% | 2,322枚 / 2,453枚 |
-| ボーナス遭遇 | 1.72回/セッション(未遭遇 0.06%) |
-| AT初当り | 1.80回/セッション(うちRUSH新規突入1.12回 / 引き戻し復帰0.45回) |
-| CZ遭遇 | 1.90回/セッション |
-| 派生ゾーン遭遇 | 0.25回/セッション |
-| エンディング遭遇 | 0.0104回/セッション |
-| RUSH滞在 | 18.2G/セッション(DC上限8到達 0.08%) |
-| 残存価値の買い取り | 発生率39.04% / 平均21.9枚(買い取り時平均56.2枚) |
+| 指標 | 実測 | 目標レンジ |
+|---|---|---|
+| 平均スコア | 253.2枚 | 220〜340枚 |
+| 中央値 | 110枚 | 90〜180枚 |
+| 上位25% / 10% | 417枚 / 660枚 | — |
+| 上位1% / 0.1% | 1,622枚 / 2,389枚 | 上位1%で1,600枚超 |
+| プラス収支の割合 | 76.4% | — |
+| 機械割 | 185.0% | 150〜190% |
+| ボーナス遭遇 | 1.26回/セッション(未遭遇 0.38%) | 0.9〜1.3回 |
+| ├ 抽選由来 | 0.79回(通常時G基準 **1/103**) | 1/85〜1/110 |
+| └ 天井由来 | 0.47回(到達 48%のセッション) | 到達 40〜60% |
+| AT初当り | 0.43回/セッション(引き戻し復帰 0.11回) | 0.35〜0.6回 |
+| CZ遭遇 | 1.66回/セッション(天井経由 28.4%) | 天井経由 30%以下 |
+| 派生ゾーン遭遇 | 0.02回/セッション | — |
+| エンディング遭遇 | 0.0016回/セッション | — |
+| RUSH滞在 | 3.9G/セッション(1回あたり AS 6.8G / CF 7.2G / Aurora 8.5G / HERO 4.7G) | — |
+| RUSH 1回の獲得 | AS 271枚 / CF 356枚 / Aurora 331枚 / HERO 434枚 | 250〜400枚 |
+| レバーONフリーズ | 9.7%のセッション(通常時 1/739G) | 8〜12% |
+| 残存価値の買い取り | 発生率30.7% / 平均59.6枚(買い取り時平均194.5枚) | — |
 
 ---
 

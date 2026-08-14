@@ -2,14 +2,26 @@
  * 通常時の演出シナリオ。DESIGN.md 6.5 / IDEAS.md 2章
  *
  * ここに追記するだけで演出が増える。ゲームロジックには一切影響しない。
+ *
+ * ── モードの除外は必ず NOT_NORMAL_MODES を使うこと(2026-08-14 修正)──
+ * 以前はモードIDを直書きしていた(ボーナスとオートスケーリングRUSHの2つだけ)ため、U11 で RUSH が
+ * 4種に増えたときに CF/Aurora/ヒーロー RUSH 滞在中へ通常時演出が漏れていた。
+ * data/rushes.js の RUSH_IDS を単一の正とし、RUSH が増えても自動で追従させる。
  */
+
+import { NOT_NORMAL_MODES } from '../rushes.js';
 
 export default [
   {
     id: 'normal_rare_flash',
-    name: 'レア役成立フラッシュ + ミニ幽霊',
-    // IDEAS.md 2-14「幽霊ミニキャラちょい出し予告」
-    when: { event: 'leverOn', rare: true, notMode: ['BONUS', 'AS_RUSH'] },
+    name: 'レア役成立フラッシュ + ミニサメのちょい出し',
+    /*
+     * IDEAS.md 2-14「ミニキャラちょい出し予告」。
+     * 2026-08-14: キャラはお化けから **サメ** になっている(render/chars/ 参照)。
+     * カットインID `mini_ghost_peek` は互換のため名前だけ残っているが、
+     * 描いているのは「ひょっこり覗きサメ」(staging/anims/cutins.js)。
+     */
+    when: { event: 'leverOn', rare: true, notMode: NOT_NORMAL_MODES },
     weight: { default: 100 },
     duration: 1400,
     cues: [
@@ -27,7 +39,7 @@ export default [
     id: 'normal_rare_strong',
     name: 'レア役(強)ステップアップ予告',
     // IDEAS.md 2-24「SNS通知ベル予告(ステップアップ)」
-    when: { event: 'leverOn', flag: ['STRONG_CHERRY', 'CHANCE'], notMode: ['BONUS', 'AS_RUSH'] },
+    when: { event: 'leverOn', flag: ['STRONG_CHERRY', 'CHANCE'], notMode: NOT_NORMAL_MODES },
     weight: { default: 60 },
     duration: 2200,
     cues: [
@@ -79,7 +91,8 @@ export default [
 
   {
     id: 'normal_ghost_idle',
-    name: '通常時のKiro待機',
+    // ID は互換のため据え置き。中身は相棒サメの待機
+    name: '通常時の相棒サメ待機',
     when: { event: 'modeEnter', enterMode: ['FREE_TIER'] },
     weight: { default: 100 },
     duration: 600,
@@ -210,8 +223,9 @@ export default [
       { at: 800,  layer: 'char',    action: 'show',   params: { char: 'kiro', pose: 'premium' } },
       { at: 840,  layer: 'char',    action: 'motion', params: { char: 'kiro', motion: 'zoom' } },
       { at: 900,  layer: 'lcd',     action: 'particles', params: { preset: 'spark', x: 200, y: 150, count: 20 } },
+      // U6 と同じ理由で「到着した」に揃える(移動は既に完了している)
       { at: 1000, layer: 'lcd',     action: 'text',
-        params: { text: 'Invent会場', sub: '照明が入った — 激アツステージ', color: '#e0b3ff', ms: 1800 } },
+        params: { text: 'Invent会場に到着', sub: '照明が入った — 激アツステージ', color: '#e0b3ff', ms: 1800 } },
       { at: 1400, layer: 'overlay', action: 'particles', params: { preset: 'rainbow', x: 360, y: 380, count: 18 } },
       { at: 2400, layer: 'char',    action: 'pose',   params: { char: 'kiro', pose: 'happy' } },
     ],
@@ -235,8 +249,10 @@ export default [
       { at: 200, layer: 'lcd',     action: 'particles', params: { preset: 'spark', x: 300, y: 210, count: 12 } },
       { at: 240, layer: 'char',    action: 'show',   params: { char: 'kiro', pose: 'happy' } },
       { at: 240, layer: 'char',    action: 'motion', params: { char: 'kiro', motion: 'bounce' } },
+      // 2026-08-14 ユーザー指摘 U6:
+      // 実際には「もう移動した(高確に居る)」ので、近づいてきた表現は嘘だった
       { at: 400, layer: 'lcd',     action: 'text',
-        params: { text: 'サミット会場', sub: '会場が近づいてきた — 高確', color: '#ffb04a', ms: 1400 } },
+        params: { text: 'サミット会場に到着', sub: 'ここから高確 — チャンスが近い', color: '#ffb04a', ms: 1400 } },
     ],
   },
 

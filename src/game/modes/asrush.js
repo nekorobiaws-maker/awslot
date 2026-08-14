@@ -1,115 +1,155 @@
 /**
- * M08. Auto Scaling RUSH(本機の母体AT)。DESIGN.md 2.2 / 3.8 / 3.9
+ * M08. オートスケーリングRUSH(ゲーム数上乗せ特化)。DESIGN.md 2.2 / 3.8 / 3.9
  *
- * DC(Desired Capacity, 1〜8)が純増と継続率の両方を決める。
- * レア役でスケールアウト(DC+1)、セット終了時のヘルスチェックに失敗すると
- * DC-1 の縮退運転、DCが尽きると引き戻し層(ホットスタンバイ)へ。
+ * ── U11(2026-08-14 ユーザー指示)で全面的に作り替え ──────────────
  *
- * Phase 5 で追加:
- *  - 派生ゾーン当選(3.9)。当選したゾーンは「上に積む」(モードスタック)
- *  - Serverless RUSH 昇格(サメ揃い契機 / 5セット連続継続)
- *  - 上乗せストック(stock)の消費。上乗せがある間はヘルスチェックを飛ばして継続
+ * 旧実装は DC(Desired Capacity)が「純増」と「セット継続率」を兼ねる母体ATで、
+ * 1セット5Gごとにヘルスチェック、失敗でスケールイン、DCが尽きたら転落…という
+ * 単独で完結した大きな仕組みだった。
+ *
+ * U11 で RUSH は4種類になり、それぞれ **伸びる軸を1本だけ持つ** 形へ分解された。
+ * このモードの軸は **ゲーム数**:
+ *
+ *   ・**EC2の台数 = 残りゲーム数**(1台 = 1ゲーム)
+ *   ・**レア役**が成立するたびにオートスケール = 台数(= 残りゲーム数)が増える
+ *     (U24 / 2026-08-14: 旧は子役全部が契機だった。レア役の定義は data/rareroles.js)
+ *   ・増える台数は成立役で変わる(data/rushes.js の addUnitsByFlag が正。
+ *     数値をここに書き写すと調整のたびに嘘になるので書かない)
+ *   ・純増は固定(payoutPerGame)。ここが動かないことが「ゲーム数特化」の証明
+ *   ・台数が 0 になったら終了 → 引き戻し層(ホットスタンバイ)へ
+ *
+ * セット継続・ヘルスチェック・スケールインは **このモードからは無くなった**
+ * (継続の駆け引きは「レア役を引けるか」に一本化された)。
+ *
+ * 派生ゾーン(3.9)と Serverless RUSH 昇格は、AWSのスケーリングという題材が
+ * 一番近いこのモードにだけ残してある(他3種は短い特化ゾーンなので寄り道させない)。
+ *
+ * ── 【不変条件】state.units === state.remaining(2026-08-14 修正)──────────
+ *
+ * このモードの中核メタファーは「**EC2の台数がそのまま残りゲーム数**」。
+ * したがって台数は残りゲーム数と **常に同じ値** でなければならない。
+ *
+ * 以前の実装は消化時に remaining だけを減らし、units は上乗せ時にしか動かなかったため
+ * units が事実上 total(通算ゲーム数)と同じ意味になっていた。
+ * 結果、5台で3G消化すると「EC2 5台 / 残り2G」となり、
+ *   ・テロップ「SCALE OUT!! EC2 6 台(残り 2 G)」が自己矛盾する
+ *   ・液晶が「EC2 INSTANCES = 残りゲーム数」と書いた真下で残Gと違う数を大きく描く
+ *   ・買い取り明細の「EC2 n台」も残Gと食い違う
+ *   ・flow.stats.maxDc / peakUnits が「同時最大台数」ではなく通算Gを指す
+ * という破綻が同時に起きていた。
+ *
+ * 「どこまで伸ばしたか」は units ではなく
+ *   state.peakUnits  … 同時に何台まで並んだか(= 残Gの最大到達)
+ *   state.addedUnits … オートスケールで足した台数の合計(= 上乗せG数の合計)
+ *   state.total      … 通算ゲーム数(初期台数 + 上乗せ合計)
+ * が担当する。**units に「伸ばした量」の意味を持たせないこと**。
  */
 
 import {
-  drawScaleOut, drawDerivedZone, drawServerlessUpgrade, bellBoostOf,
+  drawDerivedZone, drawServerlessUpgrade, drawRushInitUnits,
 } from '../lottery.js';
-import { AS_RUSH_CORE, SERVERLESS_UPGRADE } from '../../data/modes.js';
-import { isRare } from '../../data/flags.js';
+import { RUSH_SPEC_BY_ID } from '../../data/rushes.js';
+import { isRareRole } from '../../data/rareroles.js';
 import { residualLine } from '../../data/session.js';
+import { rushEndResult } from './rushes.js';
 
-const { min: DC_MIN, max: DC_MAX } = AS_RUSH_CORE.dcRange;
+const SPEC = RUSH_SPEC_BY_ID.AS_RUSH;
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
 export const asRush = {
   id: 'AS_RUSH',
-  name: 'AUTO SCALING RUSH',
+  name: SPEC.name,
   type: 'AT',
 
-  onEnter(state, params = {}) {
-    state.dc = clamp(params.dc ?? 1, DC_MIN, DC_MAX);
-    state.total = AS_RUSH_CORE.setGames;
-    state.remaining = AS_RUSH_CORE.setGames;
-    state.setCount = 1;
-    state.streak = 0;
+  onEnter(state, params = {}, ctx) {
+    /**
+     * 初期台数。
+     *   params.units … 引き戻しからの復帰・デバッグ起動(?dc=5 は台数として解釈)
+     *   未指定       … data/rushes.js の initUnitsDist から抽選
+     * ctx.rng はゲーム抽選RNG(ModeMachine が渡す)。
+     */
+    const units = params.units ?? params.dc ?? (ctx?.rng ? drawRushInitUnits(ctx.rng) : 3);
+    state.rushId = SPEC.id;
+    state.short = SPEC.short;
+    state.axis = SPEC.axis;
+    /** いま稼働している台数。**常に state.remaining と同じ値**(ファイル冒頭の不変条件) */
+    state.units = clamp(Math.round(units), 1, SPEC.maxUnits);
+    /** 残りゲーム数(液晶・買い取りが読む共通の項目) */
+    state.remaining = state.units;
+    /** 通算ゲーム数 = 初期台数 + 上乗せ合計。「どこまで回したか」はこちらが持つ */
+    state.total = state.units;
+    /** 純増は固定。派生ゾーンと買い取りはこの値を読む(RUSH共通の契約) */
+    state.netPerGame = SPEC.payoutPerGame;
     state.gained = 0;
-    /** 派生ゾーンから積まれた上乗せセット数 */
-    state.stock = params.stock ?? 0;
-    state.lastSetResult = null;
-    /** スケールアウトで増やした台数の合計(成長カーブの可視化用) */
+    state.playedGames = 0;
+    /** 上乗せで増やした台数の合計(成長カーブの可視化用) */
+    state.addedUnits = 0;
     state.scaleOutCount = 0;
-    /** 高DC帯のベル強化で上乗せた枚数の合計 */
-    state.bellBoostTotal = 0;
-    /** DC上限に到達したか(到達告知を1回だけ出すため) */
-    state.reachedMax = state.dc >= DC_MAX;
-    state.telop = `Desired Capacity = ${state.dc}`;
+    /** 到達した最大**同時**台数(= 残Gの最大到達。液晶の「最大 n 台」表示と検証用) */
+    state.peakUnits = state.units;
+    /** 直近のゲームで増えた台数(液晶が新しいアイコンだけ光らせるのに読む) */
+    state.lastScaleOut = 0;
+    state.telop = `EC2 ${state.units} 台で起動 — レア役でオートスケール!!`;
   },
 
   onGame(state, g) {
-    state.remaining--;
-    let telop = null;
     const events = [];
+    let telop = null;
 
-    // ── スケールアウト抽選 ───────────────────────
-    // 本機の主役。ベル・リプレイでも起きるので約5ゲームに1回は台数が動く。
-    // DCが高いほど渋くなる(lottery.drawScaleOut が係数を掛ける)。
-    const up = drawScaleOut(g.rng, g.flag, state.dc);
-    if (up > 0) {
-      if (state.dc < DC_MAX) {
-        const before = state.dc;
-        state.dc = clamp(state.dc + up, DC_MIN, DC_MAX);
-        const delta = state.dc - before;
-        state.scaleOutCount += delta;
-        telop = delta >= 2
-          ? `DOUBLE SCALE OUT!!! DC ${state.dc} 台`
-          : `SCALE OUT!! DC ${state.dc} 台`;
-        // 演出システムへの通知(DESIGN.md 4.2 の paramChange)
-        events.push({ name: 'paramChange', payload: { param: 'dc', value: state.dc, delta } });
-        // DC上限への到達は「狙える夢」の達成。初回だけ専用イベントを出す
-        if (state.dc >= DC_MAX && !state.reachedMax) {
-          state.reachedMax = true;
-          telop = `DESIRED CAPACITY MAX — ${DC_MAX}台 全開!!`;
-          events.push({
-            name: 'paramChange',
-            payload: { param: 'dc_max_reached', value: state.dc, delta: 0 },
-          });
-        }
-      } else {
-        telop = 'DC MAX — これ以上増やせません';
-        events.push({ name: 'paramChange', payload: { param: 'dc_max', value: state.dc, delta: 0 } });
-      }
+    state.remaining--;
+    // 1ゲーム消化 = インスタンスが1台終了する。台数は残Gと同期し続ける(不変条件)
+    state.units = state.remaining;
+    state.playedGames++;
+
+    // ── オートスケール(このモードの主役)────────────────
+    // **レア役**が成立していれば台数が増える = そのぶん残りゲーム数が伸びる(U24)。
+    // 抽選ではなく **成立役で決まる固定値** なので、引けた瞬間に結果が見える。
+    // ベル・リプレイでは伸びない = 「レア役が来た瞬間だけが上乗せ」に統一した。
+    const add = isRareRole(g.flag) ? (SPEC.addUnitsByFlag[g.flag] ?? 0) : 0;
+    // 直近のオートスケール量(液晶が「増えた瞬間」だけ光らせるのに使う)。毎ゲーム0に戻す
+    state.lastScaleOut = 0;
+    /**
+     * 通算ゲーム数の上限(U50 / SPEC.maxTotalGames)。
+     * 残り台数(maxUnits)だけを見ていると「消化しては上乗せ」で無限に伸びるので、
+     * **通算(state.total)側にも上限を持たせる**。上限に達した後のレア役は
+     * オートスケールせず、代わりに派生ゾーン抽選(このあとの処理)へ素通りする。
+     * 派生ゾーン経由の上乗せ(rushes.js の addRushGames)も同じ上限を見ている。
+     */
+    const room = Math.max(0, SPEC.maxTotalGames - state.total);
+    if (add > 0 && room > 0 && state.units < SPEC.maxUnits) {
+      const before = state.units;
+      state.units = clamp(state.units + Math.min(add, room), 1, SPEC.maxUnits);
+      const delta = state.units - before;
+      state.remaining = state.units;   // 同期を保つ(台数 = 残りゲーム数)
+      state.total += delta;
+      state.addedUnits += delta;
+      state.lastScaleOut = delta;
+      state.scaleOutCount++;
+      state.peakUnits = Math.max(state.peakUnits, state.units);
+      // 台数と残Gは同じ数字。ここで両方書くのは「1台 = 1ゲーム」を毎回言い直すため
+      telop = `SCALE OUT!! EC2 +${delta} 台 → ${state.units} 台稼働(= 残り ${state.units} G)`;
+      events.push({
+        name: 'paramChange',
+        payload: {
+          param: 'scale_out', value: state.units, delta, flag: g.flag, remaining: state.remaining,
+          peak: state.peakUnits, added: state.addedUnits,
+        },
+      });
     }
 
-    // ── 払出(純増 + 高DC帯のベル強化)──────────────
-    // 等速で流れるだけの消化にならないよう、DCが育つほどベルが跳ねる波を入れる。
-    let pay = AS_RUSH_CORE.payoutPerGame[state.dc];
-    if (g.flag === 'BELL') {
-      const boost = bellBoostOf(state.dc);
-      if (boost > 0) {
-        pay += boost;
-        state.bellBoostTotal += boost;
-        if (!telop) telop = `BELL RUSH — +${boost}枚!!`;
-        events.push({
-          name: 'paramChange',
-          payload: { param: 'bell_boost', value: state.dc, delta: boost },
-        });
-      }
-    }
+    // ── 払出(固定純増)────────────────────────
+    const pay = state.netPerGame;
     state.gained += pay;
 
     // ── 上位AT昇格 / 派生ゾーン当選(3.9)──────────
-    // 昇格は AS_RUSH 自体が差し替わるので即 return してよいが、
-    // 派生ゾーンの「積み上げ」はセット末(remaining が 0 になるゲーム)だけ扱いが違う。
-    // ここで即 return すると親のヘルスチェックが1G遅れ、
-    // 液晶に「残り0G」と出たままもう1G回って state.remaining が -1 になる。
-    // そのため、セット末に当選した場合はヘルスチェックを先に済ませてから積む。
-    let pendingZone = null;
-    if (isRare(g.flag)) {
+    // 「積む」系の遷移は残ゲームがある時だけ。0G目に積むと
+    // 復帰したときに残り0Gのまま1G回ってしまう(旧実装からの不変条件)。
+    if (isRareRole(g.flag)) {
       if (drawServerlessUpgrade(g.rng, g.flag)) {
         return {
           payoutPerGame: pay,
           events,
-          transition: { to: 'SERVERLESS_RUSH', params: { stock: state.stock } },
+          transition: { to: 'SERVERLESS_RUSH', params: { stock: 0 } },
           telop: 'サメ揃い — SERVERLESS RUSH 昇格!!',
         };
       }
@@ -118,7 +158,7 @@ export const asRush = {
         return {
           payoutPerGame: pay,
           events,
-          transition: { to: 'SERVERLESS_RUSH', params: { stock: state.stock } },
+          transition: { to: 'SERVERLESS_RUSH', params: { stock: 0 } },
           telop: 'SERVERLESS RUSH 昇格!!',
         };
       }
@@ -130,133 +170,31 @@ export const asRush = {
           telop: `${zone.replace('_', ' ')} 突入!!`,
         };
       }
-      pendingZone = zone ?? null;
     }
 
     if (state.remaining > 0) {
       return { payoutPerGame: pay, telop, events };
     }
 
-    // ── セット終了 = ヘルスチェック ──
-    // セット末に当選していた派生ゾーンは、継続が確定してから親の上に積む。
-    // 転落(EXIT)した場合はATごと終わっているので積まない。
-    const withZone = (res) => (pendingZone
-      ? {
-        ...res,
-        transition: { push: pendingZone, params: {} },
-        telop: `${pendingZone.replace('_', ' ')} 突入!!`,
-      }
-      : res);
-
-    // 上乗せストックがあるうちはヘルスチェックを行わずに継続する
-    if (state.stock > 0) {
-      state.stock--;
-      state.setCount++;
-      state.streak++;
-      state.remaining = state.total;
-      state.lastSetResult = 'STOCK';
-      const upgraded = checkStreakUpgrade(state);
-      if (upgraded) return { payoutPerGame: pay, events, ...upgraded };
-      return withZone({
-        payoutPerGame: pay,
-        events,
-        setEnd: { result: 'STOCK', continued: true, healthLabel: 'STOCK' },
-        telop: `上乗せ消化 — SET ${state.setCount}(残り ${state.stock})`,
-      });
-    }
-
-    const rate = AS_RUSH_CORE.continueRate[state.dc];
-    if (g.rng.chance(rate)) {
-      state.setCount++;
-      state.streak++;
-      state.remaining = state.total;
-      state.lastSetResult = 'CONTINUE';
-      const upgraded = checkStreakUpgrade(state);
-      if (upgraded) return { payoutPerGame: pay, events, ...upgraded };
-      return withZone({
-        payoutPerGame: pay,
-        events,
-        setEnd: { result: 'CONTINUE', continued: true, healthLabel: 'HEALTHY' },
-        telop: `HEALTH CHECK OK — SET ${state.setCount}`,
-      });
-    }
-
-    /**
-     * スケールイン(2026-08-13: 1セッション100回転化に合わせて追加)。
-     *
-     * 継続失敗は「DC-1 して縮退運転で継続」なので、RUSH は DC が尽きるまで終わらない。
-     * 1セット5G × 継続率0.62〜0.85 だと DC5 から抜けるのに 75〜100G かかり、
-     * 100回転セッションの半分近くが RUSH のままになっていた(実測 43G/セッション)。
-     * そこで **台数が多いほど一気にスケールインする**(高DCでは DC-2)ようにして、
-     * 「育てた台数は失うのも早い」= 山が終わる感触を作る。
-     */
-    const drop = state.dc >= AS_RUSH_CORE.steepScaleInFrom ? AS_RUSH_CORE.scaleInDrop : 1;
-    state.dc -= drop;
-    state.streak = 0;
-    if (state.dc < DC_MIN) {
-      state.dc = 0;
-      state.lastSetResult = 'EXIT';
-      return {
-        payoutPerGame: pay,
-        events,
-        setEnd: { result: 'EXIT', continued: false, healthLabel: 'UNHEALTHY' },
-        // 残ストックも引き戻し層へ預ける(現状ここへ来る時点で 0 だが、
-        // 「ストックが残ったままATが終わる」仕様変更をしても消えないようにしておく)
-        //
-        // onNextSpin(2026-08-13): 転落は即時遷移にしない。
-        // 即時に HOT_STANDBY へ入ると、同一ゲーム内で modeEnter が発火して
-        // 液晶がその場で切り替わり、setEnd(UNHEALTHY)の判定演出が
-        // 1フレームも見えないまま消える(main.js の modeEnter 掃除)。
-        // 結果、プレイヤーには「継続のときだけ判定が出る = 毎回継続」に見えていた。
-        // 継続時(CONTINUE/DEGRADED)は遷移が無く判定演出が見え切るので、
-        // 転落もこのゲームは AS_RUSH の画面のまま見せ切り、
-        // 次のレバーONで引き戻し層へ入る(CZ・通常時の告知と同じ流儀)。
-        transition: {
-          to: 'HOT_STANDBY',
-          params: { resumeMode: 'AS_RUSH', resumeStock: state.stock },
-          onNextSpin: true,
-        },
-        telop: 'インスタンスが全滅…',
-      };
-    }
-
-    state.setCount++;
-    state.remaining = state.total;
-    state.lastSetResult = 'DEGRADED';
-    return withZone({
+    // ── 台数がゼロ = RUSH 終了 ────────────────────
+    // 復帰パラメータは rushEndResult が data/rushes.js の recoveryParamsFor から作る
+    // (4種で復帰の価値が食い違わないように統一。2026-08-14 minor-a)
+    return {
       payoutPerGame: pay,
       events,
-      setEnd: { result: 'DEGRADED', continued: true, healthLabel: 'DEGRADED' },
-      telop: `縮退運転 — DC ${state.dc} 台で継続`,
-    });
+      ...rushEndResult(state, { telop: '全インスタンスが停止… ホットスタンバイへ' }),
+    };
   },
 
   /**
-   * 50回転終了時の残存価値(data/session.js)。
-   * 現在セットの残Gと、確定済みの上乗せストックを現在のDC純増で枚数換算する。
-   * まだ引いていない継続抽選は買い取らない。
+   * 100回転終了時の残存価値(data/session.js)。
+   * 残りゲーム数 × 固定純増。まだ引いていない上乗せは買い取らない。
+   * ラベルの台数は残Gと同じ値(不変条件)なので明細と本数が食い違わない。
    */
   residualValue(state) {
-    const per = AS_RUSH_CORE.payoutPerGame[state.dc] ?? 0;
-    const lines = [];
-    if (state.remaining > 0) {
-      lines.push(residualLine(`AUTO SCALING RUSH 残り(DC${state.dc})`, state.remaining, per));
-    }
-    if ((state.stock ?? 0) > 0) {
-      lines.push(residualLine(
-        `上乗せストック ${state.stock}セット`, state.stock * AS_RUSH_CORE.setGames, per, 'stock',
-      ));
-    }
-    return lines;
+    if (!(state.remaining > 0)) return [];
+    return [residualLine(
+      `${SPEC.short} 残り(EC2 ${state.remaining}台)`, state.remaining, state.netPerGame,
+    )];
   },
 };
-
-/** 5セット連続継続で Serverless RUSH へ昇格(3.9 onSetEnd) */
-function checkStreakUpgrade(state) {
-  if (state.streak < SERVERLESS_UPGRADE.streak) return null;
-  return {
-    setEnd: { result: 'CONTINUE', continued: true, healthLabel: 'HEALTHY', streak: state.streak },
-    transition: { to: 'SERVERLESS_RUSH', params: { stock: state.stock } },
-    telop: `${state.streak}セット連続継続 — SERVERLESS RUSH 昇格!!`,
-  };
-}

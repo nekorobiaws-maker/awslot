@@ -67,6 +67,144 @@ function strokedText(ctx, text, x, y, { size = 14, color = '#ffffff', edge = 'rg
 }
 
 /**
+ * 文字の下へ黒い座布団を敷く(2026-08-15 検証 V31-08)。
+ *
+ * ステージ背景が明るい絵(assets/ui/stage_*.png)に差し替わってから、
+ * 縁取りだけの小さな文字が絵に溶けて読めない場面が出てきた
+ * (例: CloudFormation 予告の「DEPLOYING 9%」)。
+ * 文字を大きくすると画が煩くなるので、**下地を敷いて明度差を作る**。
+ *
+ * strokedText の直前に同じ座標・同じサイズで呼ぶこと。
+ * 幅は textWidth() で測るので、日本語混じりでもだいたい合う。
+ *
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {string} text 敷きたい文字(幅の計算にだけ使う)
+ * @param {number} x strokedText へ渡すのと同じX
+ * @param {number} y strokedText へ渡すのと同じY(中央基準)
+ * @param {object} opt
+ * @param {number} [opt.size] フォントサイズ(strokedText と揃える)
+ * @param {'center'|'left'|'right'} [opt.align]
+ * @param {boolean} [opt.heavy] strokedText と揃える
+ * @param {number} [opt.padX] 左右の余白
+ * @param {string} [opt.fill] 座布団の色
+ */
+/**
+ * この描画パスで既に敷いた座布団の矩形(2026-08-15 検証指摘 F19)。
+ *
+ * 同じフレームに2つの演出が走ると座布団どうしが重なり、
+ * 下側が半分隠れて中途半端に見えることがあった
+ * (「未観測 / まだ確定していない」の下に「DEPLOYING 45%」が潜り込む等)。
+ * 敷いた場所を覚えておき、重なるときは後から来たほうを縦にずらす。
+ * @type {{x0:number,y0:number,x1:number,y1:number}[]}
+ */
+const PLATE_RECTS = [];
+
+/** 1回の描画パスの始まり(LcdAnims.draw が層ごとに呼ぶ)。座布団の記録を捨てる */
+export function beginPlateFrame() {
+  PLATE_RECTS.length = 0;
+}
+
+/** 2つの矩形が重なるか(辺が触れるだけは重なりとみなさない) */
+function rectsOverlap(a, b) {
+  return a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+}
+
+function textPlate(ctx, text, x, y, {
+  size = 13, align = 'center', heavy = true, padX = 7, fill = 'rgba(0,8,20,0.72)',
+} = {}) {
+  if (!text) return y;
+  ctx.save();
+  ctx.font = `${heavy ? 900 : 700} ${size}px ${heavy ? FONT_HEAVY : FONT}`;
+  const tw = textWidth(ctx, String(text), size);
+  const pw = tw + padX * 2;
+  const ph = size + 8;
+  const px = align === 'left' ? x - padX : align === 'right' ? x - pw + padX : x - pw / 2;
+
+  /*
+   * 重なりを避けて置き直す。ずらすのは **後から来たほう**(先に置いた演出の
+   * 読みやすさを壊さない)。何度もずらすと元の意味の場所から離れてしまうので、
+   * 下へ1回・上へ1回だけ試し、それでも空かなければ諦めて元の位置に敷く
+   * (重なるより、消えて読めないほうが悪い)。
+   */
+  let py = y;
+  for (const dy of [0, ph + 2, -(ph + 2)]) {
+    const cand = { x0: px, y0: y + dy - ph / 2, x1: px + pw, y1: y + dy + ph / 2 };
+    if (!PLATE_RECTS.some((r) => rectsOverlap(cand, r))) { py = y + dy; break; }
+  }
+  PLATE_RECTS.push({ x0: px, y0: py - ph / 2, x1: px + pw, y1: py + ph / 2 });
+
+  roundRect(ctx, px, py - ph / 2, pw, ph, Math.min(7, ph / 2));
+  ctx.fillStyle = fill;
+  ctx.fill();
+  ctx.restore();
+  // 呼び出し側は **この戻り値のYへ文字を描く**(座布団と文字がズレないように)
+  return py;
+}
+
+/**
+ * 大文字の告知を「奥から叩きつける」(U31 / U41 の共通言語)。
+ *
+ * 全画面カットインの drawSlamText(staging/anims/cutins-extra.js)の液晶版。
+ * 液晶は 440×300 しかないので、**必ず maxWidth に収まるまでフォントを詰めてから**
+ * 倍率を掛ける(はみ出した文字は読めない = 演出として失敗)。
+ *
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {string} text
+ * @param {number} t 0→1 の進行度。0.42 付近で着弾する
+ * @param {object} opt
+ * @param {number} opt.maxWidth
+ * @param {number} [opt.size] 着弾後のフォントサイズ
+ * @param {[string,string]} [opt.colors] グラデーション [外, 中]
+ * @param {string} [opt.edge] 縁取りの色
+ */
+function slamHeadline(ctx, text, x, y, t, {
+  maxWidth = 380, size = 40, colors = ['#ffffff', '#ffe066'], edge = 'rgba(8,10,20,0.95)',
+} = {}) {
+  if (t <= 0) return;
+  const e = 1 - (1 - clamp01(t)) ** 5;              // easeOutQuint(減速がきつい)
+  const land = clamp01((t - 0.42) / 0.18);
+  const squash = t < 0.42 ? 1 : 1 + Math.sin(land * Math.PI) * 0.16;
+
+  ctx.save();
+  ctx.globalAlpha *= Math.min(1, t * 5);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  // 収まるまで詰める(measureText の無い環境では既定サイズのまま)
+  let fs = size;
+  ctx.font = `900 ${fs}px ${FONT_HEAVY}`;
+  while (fs > 16 && textWidth(ctx, text, fs) > maxWidth) {
+    fs -= 2;
+    ctx.font = `900 ${fs}px ${FONT_HEAVY}`;
+  }
+
+  ctx.translate(x, y);
+  // 上限は「詰めたサイズで maxWidth に収まる倍率」。そこから等倍へ落ちてくる
+  const tw = Math.max(1, textWidth(ctx, text, fs));
+  const maxScale = Math.max(1, maxWidth / tw);
+  const scale = Math.min(1 + (1 - e) * 1.8, maxScale);
+  ctx.scale(scale * squash, scale / squash);
+
+  if (t > 0.42) {
+    ctx.shadowColor = colors[1];
+    ctx.shadowBlur = 18 + Math.sin(t * 26) * 10;
+  }
+  ctx.lineWidth = Math.max(6, fs * 0.24);
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = edge;
+  ctx.strokeText(text, 0, 0);
+  ctx.shadowBlur = 0;
+
+  const g = ctx.createLinearGradient(0, -fs / 2, 0, fs / 2);
+  g.addColorStop(0, colors[0]);
+  g.addColorStop(0.55, colors[1]);
+  g.addColorStop(1, colors[0]);
+  ctx.fillStyle = g;
+  ctx.fillText(text, 0, 0);
+  ctx.restore();
+}
+
+/**
  * いま設定されているフォントでの文字幅。
  * measureText を持たない描画コンテキスト(検証ハーネスのスタブ)では
  * 半角0.6文字ぶん / 全角1文字ぶんで概算する(レイアウトが壊れないだけでよい)。
@@ -160,6 +298,59 @@ const QUIZ_LOCK_MIN_STEPS = 6;
 
 /** 停止操作を待つフェーズの既定尺[ms]。プレイヤーが長考しても消えない長さ */
 const QUIZ_WAIT_MS = 20000;
+
+/* ── 盤面の縦レイアウト ───────────────────────────────
+ * 2026-08-14 ユーザー指摘 U15「選択肢の幅をもうちょっと縦に広くしてほしい」。
+ *
+ * 液晶 440×300 の縦の取り合いはこうなっている:
+ *   y   3〜  5  盤面の枠線
+ *   y   8〜 34  問題文プレート
+ *   y  36〜166  選択肢 2×2(ここを広げたい)
+ *   y 152〜236  lcd.text の告知プレート ★ここは文字を置かない
+ *   y 250       進行ラベル(CORRECT!! など。プレートの下)
+ *   y 260〜294  盤面の足元(見出しを置く)
+ *
+ * ★の帯は LcdAnims が盤面より後に描くので、文字を置くと必ず隠れる。
+ * プレートの上端は _drawText の「中央 h/2+44 − 本文の高さ/2 − 12」で決まり、
+ * クイズが自分で出す告知(CZ突入 / 不正解… = メイン1行 + サブ1行)だと y152。
+ *
+ * そこで縦を稼ぐために、
+ *   - 見出し(AWS QUIZ / どのサービス?)を上から足元 y278 へ逃がす(上を約22px 解放)
+ *   - 問題文プレートを y24→y8 へ上げ、高さも 28→26 へ詰める
+ * ことで、マスの高さを 50 → 62(1.24倍)、グリッド全体を 106 → 130px にした。
+ * **下段マスの中心は y135**。22px のサービス名(縁取り込みで ±14px)を置いても
+ * 下端 y149 で収まり、告知プレート y152 に潜らない。
+ * マスの下辺 y166 は帯の手前まで伸びるが、そこは枠線だけなので隠れてよい。
+ * 動かすときは「下段マスの中心 + 15 ≦ 152」を必ず守ること。
+ */
+/** 左右の余白 */
+const QUIZ_PAD_X = 12;
+/** 左右のマスの間隔 */
+const QUIZ_COL_GAP = 8;
+/** 問題文プレートの上端と高さ(U15 で y24/h28 → y8/h26) */
+const QUIZ_Q_TOP = 8;
+const QUIZ_Q_H = 26;
+/** 選択肢グリッドの上端(U15 で 58 → 36) */
+const QUIZ_GRID_TOP = 36;
+/** 選択肢1マスの高さ(U15 で 50 → 62) */
+const QUIZ_CELL_H = 62;
+/** 選択肢の行間 */
+const QUIZ_ROW_GAP = 6;
+/** 進行バーの位置(告知プレートの裏に回ってよい装飾) */
+const QUIZ_BAR_Y = 182;
+/** 進行ラベル(CORRECT!! など)の位置 */
+const QUIZ_LABEL_Y = 250;
+/** 見出しを置く足元の位置 */
+const QUIZ_HEAD_Y = 278;
+
+/* ── 縮小表示(V3: CZ盤面の上に出すとき)────────────────────
+ * 盤面 440×300 を 0.74 倍(326×222)にして上へ寄せる。
+ * 液晶の下側 y226〜300 が空くので、CZ の結論の1行(y246)とテロップ帯(y266〜)が
+ * クイズの裏で読める。文字が小さくなりすぎない下限として 0.74 を選んだ
+ * (問題文 19px → 14px / 選択肢 22px → 16px)。 */
+const QUIZ_COMPACT_SCALE = 0.74;
+/** 縮小盤面の上端 */
+const QUIZ_COMPACT_TOP = 2;
 
 /**
  * 進行中のクイズ。'start' で作り直し、以降のフェーズが読み継ぐ。
@@ -482,10 +673,21 @@ const BEDROCK_COLORS = {
  *   画像が未ロードのあいだは null が返るので、色と表示名だけのプレースホルダへ落とす。
  */
 
-/** 絵柄タイルのオフスクリーンキャッシュ(絵柄IDごとに1枚) */
+/**
+ * 絵柄タイルのオフスクリーンキャッシュ(絵柄IDごとに1枚)。
+ *
+ * ■ 2026-08-14 V21(U36)修正: **縦横比を保つ**
+ *   以前は 120×60 の横長タイルへ焼いていたが、原画(assets/symbols/*.png)は
+ *   **418×418 の正方形**。つまり全部の絵柄が縦に半分へ潰れて焼かれており、
+ *   Blue/Green 2択(bluegreen_choice)のように大きく見せる演出で
+ *   「絵柄が縦に潰れている」と分かる形で出てしまっていた。
+ *   焼くときは長辺を SYMBOL_TILE_MAX に合わせ、短辺は原画の比率のまま残す。
+ *   描くときは drawSymbolTile() が箱に収める(contain)ので、
+ *   呼び出し側は「どれくらいの大きさで見せたいか」だけ考えればよい。
+ */
 const SYMBOL_TILE_CACHE = new Map();
-const SYMBOL_TILE_W = 120;
-const SYMBOL_TILE_H = 60;
+/** 焼き付ける長辺の長さ(液晶が440pxなので120あれば拡大しても粗くならない) */
+const SYMBOL_TILE_MAX = 120;
 
 /** オフスクリーンを1枚作る。document が無い環境(検証ハーネス等)では null */
 function makeOffscreen(w, h) {
@@ -545,12 +747,37 @@ function symbolTile(symbolId) {
   if (!img) return null;
   let tile = null;
   try {
-    tile = downscaleStepwise(img, SYMBOL_TILE_W, SYMBOL_TILE_H);
+    // 原画の縦横比のまま長辺を SYMBOL_TILE_MAX に合わせる(正方形の原画は正方形のまま)
+    const iw = img.width || SYMBOL_TILE_MAX;
+    const ih = img.height || SYMBOL_TILE_MAX;
+    const k = SYMBOL_TILE_MAX / Math.max(iw, ih);
+    tile = downscaleStepwise(img, Math.max(1, Math.round(iw * k)), Math.max(1, Math.round(ih * k)));
   } catch (e) {
     tile = null;
   }
   if (tile) SYMBOL_TILE_CACHE.set(symbolId, tile);
   return tile;
+}
+
+/**
+ * 絵柄タイルを「原点中心・箱に収める(contain)」で描く。
+ *
+ * タイルは原画の比率で焼いてあるので、箱(boxW×boxH)へ **潰さずに** 収める。
+ * 箱より小さくなるぶんには構わない(縦横比が正しいことのほうが大事)。
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {CanvasImageSource} tile
+ * @param {number} boxW
+ * @param {number} boxH
+ * @returns {{w:number, h:number}} 実際に描いた大きさ
+ */
+function drawSymbolTile(ctx, tile, boxW, boxH) {
+  const tw = tile.width || boxW;
+  const th = tile.height || boxH;
+  const k = Math.min(boxW / tw, boxH / th);
+  const w = tw * k;
+  const h = th * k;
+  ctx.drawImage(tile, -w / 2, -h / 2, w, h);
+  return { w, h };
 }
 
 /**
@@ -820,9 +1047,15 @@ export const LCD_ANIMS_EXTRA = {
       let to = clamp01(params.to ?? (stage ? STAGE_TO[stage] : 1));
       // 進行中は 100% に見せない。満タンの画は「成功」と読めてしまうため
       if (result === 'run') to = Math.min(to, 0.97);
-      const bx = params.x ?? 118;
+      /*
+       * U16(2026-08-14 ユーザー指摘「デプロイのメーターが中央にない」):
+       * 既定位置が x118〜424(左余白118 / 右余白16)で、見るからに右へ寄っていた。
+       * 幅はそのまま(306)で **左右の余白を均等** にして中央へ置き直す。
+       * x / w を明示したシナリオの見た目は変わらない。
+       */
+      const bw = params.w ?? 306;
+      const bx = params.x ?? Math.round((w - bw) / 2);
       const by = params.y ?? 238;
-      const bw = params.w ?? (w - (params.x ?? 118) - 16);
       const bh = 20;
       const alpha = fadeInOut(p, 0.1, 0.88);
       if (alpha <= 0) return;
@@ -890,7 +1123,14 @@ export const LCD_ANIMS_EXTRA = {
         : phase === 'rollback'
           ? `ROLLBACK  ${Math.round(v * 100)}%`
           : `DEPLOYING  ${Math.round(v * 100)}%`;
-      strokedText(ctx, label, bx + bw / 2, by + bh / 2, {
+      /*
+       * V31-08: バーの下地(alpha 0.6)だけでは、明るいステージ絵の上で
+       * 「DEPLOYING 9%」が読めなかった。文字の下にだけ濃い座布団を敷いて、
+       * 進捗が何%でも(= 文字がバーの明るい部分に乗っても)コントラストを確保する。
+       */
+      // 座布団が重なりを避けてずれることがあるので、文字も戻り値のYへ置く
+      const labelY = textPlate(ctx, label, bx + bw / 2, by + bh / 2, { size: 13 });
+      strokedText(ctx, label, bx + bw / 2, labelY, {
         size: 13,
         color: phase === 'done' ? '#fffbe0' : '#ffffff',
         edge: 'rgba(0,10,30,0.9)',
@@ -977,6 +1217,338 @@ export const LCD_ANIMS_EXTRA = {
       strokedText(ctx, 'AUTO SCALING', w / 2, y - 10, {
         size: 9, color: 'rgba(255,255,255,0.7)', edge: 'rgba(0,30,25,0.9)', heavy: false,
       });
+      ctx.restore();
+    },
+  },
+
+  /**
+   * 【U31】オートスケーリングRUSH の上乗せ告知「スケールアウト!!」。
+   *
+   * ■ 何を見せるか(ユーザー指示「レア役上乗せの瞬間を派手に」)
+   *   1. 帯を暗く落として舞台を作る(下の常設パネルの数字と混ざらないため)
+   *   2. EC2 が **増えたぶんだけ** 光をまとって湧く(前からある台は静かに並ぶ)
+   *   3. 大文字「スケールアウト!!」が奥から叩きつけられる
+   *   4. 台数が prev → n へ **ガコンとカウントアップ**(1台ごとに揺れる)
+   *   5. 右上に「+delta G」のバッジ(台数 = 残りゲーム数だから、伸びたG数でもある)
+   *
+   * ■ 嘘をつかない
+   *   撃たれるのは game/modes/asrush.js が **実際に台数を増やした瞬間**
+   *   (paramChange 'scale_out')だけ。煽りの余地はない。
+   *
+   * params: { n=現在の台数($value), delta=増えた台数($delta) }
+   */
+  scale_out_slam: {
+    layer: 'ui', ms: 1900,
+    draw(ctx, p, params, w, h) {
+      const n = Math.max(1, Math.round(params.n ?? 1));
+      const delta = Math.max(0, Math.round(params.delta ?? 0));
+      const prev = Math.max(0, n - delta);
+      const alpha = fadeInOut(p, 0.06, 0.88);
+      if (alpha <= 0) return;
+
+      const top = 44;
+      const bottom = 208;
+      const cx = w / 2;
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+
+      // ── 1. 舞台(帯を落として、上下に光の線)──
+      ctx.fillStyle = 'rgba(2,14,12,0.9)';
+      ctx.fillRect(0, top, w, bottom - top);
+      ctx.strokeStyle = `rgba(123,247,208,${0.5 + 0.5 * Math.sin(p * Math.PI * 8)})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, top + 1);
+      ctx.lineTo(w, top + 1);
+      ctx.moveTo(0, bottom - 1);
+      ctx.lineTo(w, bottom - 1);
+      ctx.stroke();
+
+      // 中心から広がる光の輪(スケールアウトの「ぶわっ」)
+      if (p < 0.5) {
+        const rp = clamp01(p / 0.5);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        const r = 20 + easeOutCubic(rp) * 260;
+        const g = ctx.createRadialGradient(cx, 118, 8, cx, 118, r);
+        g.addColorStop(0, `rgba(200,255,238,${0.42 * (1 - rp)})`);
+        g.addColorStop(1, 'rgba(18,160,138,0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(0, top, w, bottom - top);
+        ctx.restore();
+      }
+
+      // ── 2. EC2 が湧く(表示は最大10台。それ以上は「…」で畳む)──
+      const SHOW_MAX = 10;
+      const shown = Math.min(n, SHOW_MAX);
+      const shownPrev = Math.min(prev, shown);
+      const iconW = 30;
+      const iconH = 22;
+      const gap = 6;
+      const rowW = shown * iconW + (shown - 1) * gap;
+      const sx = cx - rowW / 2;
+      const iy = 62;
+      for (let i = 0; i < shown; i++) {
+        const x = sx + i * (iconW + gap);
+        const fresh = i >= shownPrev;
+        // 増えた台は少しずつ遅れて湧く(左から順に「ガコッ、ガコッ」)
+        let lp = 1;
+        if (fresh) {
+          const d = 0.12 + ((i - shownPrev) / Math.max(1, shown - shownPrev)) * 0.3;
+          lp = clamp01((p - d) / 0.26);
+          if (lp <= 0) continue;
+        }
+        const s = fresh ? easeOutBack(lp) : 1;
+        ctx.save();
+        ctx.translate(x + iconW / 2, iy + iconH / 2);
+        ctx.scale(s, s);
+        roundRect(ctx, -iconW / 2, -iconH / 2, iconW, iconH, 4);
+        const g = ctx.createLinearGradient(0, -iconH / 2, 0, iconH / 2);
+        g.addColorStop(0, fresh ? '#e6fff6' : '#7bf7d0');
+        g.addColorStop(1, fresh ? '#25d3ac' : '#12a08a');
+        ctx.fillStyle = g;
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+        ctx.lineWidth = 1.6;
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(0,40,35,0.75)';
+        ctx.fillRect(-iconW / 2 + 6, -4, iconW - 12, 2.4);
+        ctx.fillRect(-iconW / 2 + 6, 2, iconW - 12, 2.4);
+        // 湧いた瞬間の光
+        if (fresh && lp < 1) {
+          ctx.save();
+          ctx.globalCompositeOperation = 'lighter';
+          const r = 6 + easeOutCubic(lp) * 30;
+          const rg = ctx.createRadialGradient(0, 0, 2, 0, 0, r);
+          rg.addColorStop(0, `rgba(180,255,230,${0.85 * (1 - lp)})`);
+          rg.addColorStop(1, 'rgba(123,247,208,0)');
+          ctx.fillStyle = rg;
+          ctx.beginPath();
+          ctx.arc(0, 0, r, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+        ctx.restore();
+      }
+      if (n > SHOW_MAX) {
+        strokedText(ctx, `…他 ${n - SHOW_MAX} 台`, cx, iy + iconH + 12, {
+          size: 10, color: 'rgba(155,255,216,0.85)', edge: 'rgba(0,30,25,0.9)', heavy: false,
+        });
+      }
+
+      // ── 3. 大文字の告知(奥から叩きつける)──
+      slamHeadline(ctx, 'スケールアウト!!', cx, 124, clamp01((p - 0.1) / 0.5), {
+        maxWidth: w - 36, size: 40, colors: ['#ffffff', '#7bf7d0'], edge: 'rgba(0,32,26,0.95)',
+      });
+
+      /* ── 4. 台数のカウントアップ(1台ごとにガコンと揺れる)──
+       * y162: 演出テキスト帯のプレート(中心 y194)より上に置いて、
+       * 帯が出ていても数字が隠れないようにする。 */
+      const cu = clamp01((p - 0.3) / 0.42);
+      const count = Math.round(prev + (n - prev) * easeOutQuart(cu));
+      const step = delta > 0 ? Math.abs(Math.sin(cu * Math.PI * Math.max(1, delta))) : 0;
+      ctx.save();
+      ctx.translate(cx, 162 + (cu < 1 ? step * 3 : 0));
+      const cs = 1 + (cu < 1 ? step * 0.08 : Math.max(0, 1 - (p - 0.72) / 0.2) * 0.05);
+      ctx.scale(cs, cs);
+      strokedText(ctx, `${count} 台`, 0, 0, {
+        size: 34, color: '#ffe066', edge: 'rgba(0,32,26,0.95)',
+      });
+      ctx.restore();
+
+      // ── 5. 「台数 = 残りゲーム数」なので、伸びたG数をバッジで添える ──
+      if (delta > 0 && p > 0.34) {
+        const bp = clamp01((p - 0.34) / 0.26);
+        ctx.save();
+        ctx.globalAlpha = alpha * bp;
+        ctx.translate(cx + 104, 162 - easeOutCubic(bp) * 10);
+        const bs = easeOutBack(bp);
+        ctx.scale(bs, bs);
+        roundRect(ctx, -40, -15, 80, 30, 9);
+        ctx.fillStyle = 'rgba(18,160,138,0.9)';
+        ctx.fill();
+        ctx.strokeStyle = '#c9ffe9';
+        ctx.lineWidth = 1.6;
+        ctx.stroke();
+        strokedText(ctx, `+${delta}G`, 0, 1, {
+          size: 19, color: '#ffffff', edge: 'rgba(0,40,32,0.9)',
+        });
+        ctx.restore();
+      }
+
+      ctx.restore();
+    },
+  },
+
+  /**
+   * 【U41】Aurora RUSH の上乗せ告知「スケールアップ!!」。
+   *
+   * ■ AS(U31)との描き分け(演出言語は揃えて、意味は分ける)
+   *   AS     … **台数が並ぶ**(横に増える = スケールアウト)
+   *   Aurora … **器が育つ**(1つの円筒が大きくなる = スケールアップ)
+   *   舞台の作り方・大文字の叩きつけ方・カウントアップの間は共通にしてあるので、
+   *   「同じ種類の良いこと」だと一目で分かる。
+   *
+   * ■ 見せる情報
+   *   1. データベース(円筒)が prev サイズから **ぐいっと拡大**、ACUの目盛りも伸びる
+   *   2. 大文字「スケールアップ!!」
+   *   3. ACU(= 1ゲームの純増枚数)が prev → acu へカウントアップ
+   *   4. 「+1G」バッジ … レア役はゲーム数も伸ばす(game/modes/rushes.js の addGamePerWin)
+   *
+   * params: { acu=新しいACU($value), delta=上げ幅($delta), addGames=1 }
+   */
+  scale_up_slam: {
+    layer: 'ui', ms: 1900,
+    draw(ctx, p, params, w, h) {
+      const acu = Math.max(1, Math.round(params.acu ?? 1));
+      const delta = Math.max(0, Math.round(params.delta ?? 0));
+      const prev = Math.max(1, acu - delta);
+      const addGames = Math.max(0, Math.round(params.addGames ?? 0));
+      const alpha = fadeInOut(p, 0.06, 0.88);
+      if (alpha <= 0) return;
+
+      const top = 44;
+      const bottom = 208;
+      const cx = w / 2;
+      // 器の育ち(0.55 → 1.0)。カウントアップと同じ間で動かして因果を見せる
+      const grow = 0.55 + easeOutBack(clamp01((p - 0.12) / 0.4)) * 0.45;
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+
+      // ── 舞台 ──
+      ctx.fillStyle = 'rgba(10,4,24,0.9)';
+      ctx.fillRect(0, top, w, bottom - top);
+      ctx.strokeStyle = `rgba(180,139,255,${0.5 + 0.5 * Math.sin(p * Math.PI * 8)})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, top + 1);
+      ctx.lineTo(w, top + 1);
+      ctx.moveTo(0, bottom - 1);
+      ctx.lineTo(w, bottom - 1);
+      ctx.stroke();
+
+      // ── 1. 育つ円筒(データベース)──
+      {
+        const baseW = 92;
+        const baseH = 74;
+        const cw2 = (baseW * grow) / 2;
+        const ch2 = (baseH * grow) / 2;
+        const dy = 88;
+        const ell = cw2 * 0.34;
+
+        ctx.save();
+        ctx.translate(cx, dy);
+
+        // 拡大の残像(前の大きさの輪郭が置いていかれる)
+        if (p < 0.62) {
+          const gp = clamp01((p - 0.12) / 0.5);
+          ctx.save();
+          ctx.globalAlpha = alpha * (1 - gp) * 0.5;
+          ctx.strokeStyle = '#c9a8ff';
+          ctx.lineWidth = 1.6;
+          const pw = (baseW * 0.55) / 2;
+          const ph = (baseH * 0.55) / 2;
+          ctx.strokeRect(-pw, -ph, pw * 2, ph * 2);
+          ctx.restore();
+        }
+
+        // 胴
+        const body = ctx.createLinearGradient(-cw2, 0, cw2, 0);
+        body.addColorStop(0, '#4a2a9a');
+        body.addColorStop(0.5, '#a06bff');
+        body.addColorStop(1, '#4a2a9a');
+        ctx.fillStyle = body;
+        ctx.fillRect(-cw2, -ch2, cw2 * 2, ch2 * 2);
+        // 上面 / 底面
+        ctx.beginPath();
+        ctx.ellipse(0, -ch2, cw2, ell, 0, 0, Math.PI * 2);
+        ctx.fillStyle = '#c9a8ff';
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(0, ch2, cw2, ell, 0, 0, Math.PI * 2);
+        ctx.fillStyle = '#7b3fd6';
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.ellipse(0, -ch2, cw2, ell, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(-cw2, -ch2);
+        ctx.lineTo(-cw2, ch2);
+        ctx.moveTo(cw2, -ch2);
+        ctx.lineTo(cw2, ch2);
+        ctx.stroke();
+
+        // 中を流れるデータの層(2本)
+        ctx.save();
+        ctx.globalAlpha = alpha * 0.75;
+        ctx.strokeStyle = '#7be3ff';
+        ctx.lineWidth = 1.4;
+        for (let i = 1; i <= 2; i++) {
+          const ly = -ch2 + (ch2 * 2 * i) / 3;
+          ctx.beginPath();
+          ctx.ellipse(0, ly, cw2 * 0.98, ell * 0.9, 0, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.restore();
+
+        // 育った瞬間の光
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        const gr = cw2 * (1.4 + Math.sin(p * Math.PI * 6) * 0.1);
+        const rg = ctx.createRadialGradient(0, 0, 6, 0, 0, gr);
+        rg.addColorStop(0, `rgba(201,168,255,${0.32 * (1 - p * 0.5)})`);
+        rg.addColorStop(1, 'rgba(123,227,255,0)');
+        ctx.fillStyle = rg;
+        ctx.beginPath();
+        ctx.arc(0, 0, gr, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+
+        ctx.restore();
+      }
+
+      // ── 2. 大文字の告知 ──
+      slamHeadline(ctx, 'スケールアップ!!', cx, 140, clamp01((p - 0.1) / 0.5), {
+        maxWidth: w - 36, size: 38, colors: ['#ffffff', '#b48bff'], edge: 'rgba(20,4,40,0.95)',
+      });
+
+      /* ── 3. ACU(= 純増)のカウントアップ ──
+       * AS 版と同じく、演出テキスト帯のプレートより上(y172)に置く */
+      const cu = clamp01((p - 0.3) / 0.42);
+      const val = Math.round(prev + (acu - prev) * easeOutQuart(cu));
+      ctx.save();
+      ctx.translate(cx, 172);
+      const cs = 1 + (cu < 1 ? Math.abs(Math.sin(cu * Math.PI * 3)) * 0.06 : 0);
+      ctx.scale(cs, cs);
+      strokedText(ctx, `ACU ${val} = 純増 ${val} 枚/G`, 0, 0, {
+        size: 19, color: '#7be3ff', edge: 'rgba(20,4,40,0.95)',
+      });
+      ctx.restore();
+
+      // ── 4. ゲーム数も伸びる ──
+      if (addGames > 0 && p > 0.34) {
+        const bp = clamp01((p - 0.34) / 0.26);
+        ctx.save();
+        ctx.globalAlpha = alpha * bp;
+        ctx.translate(cx + 132, 88 - easeOutCubic(bp) * 10);
+        const bs = easeOutBack(bp);
+        ctx.scale(bs, bs);
+        roundRect(ctx, -34, -15, 68, 30, 9);
+        ctx.fillStyle = 'rgba(90,32,176,0.92)';
+        ctx.fill();
+        ctx.strokeStyle = '#e0ccff';
+        ctx.lineWidth = 1.6;
+        ctx.stroke();
+        strokedText(ctx, `+${addGames}G`, 0, 1, {
+          size: 19, color: '#ffffff', edge: 'rgba(20,4,40,0.9)',
+        });
+        ctx.restore();
+      }
+
       ctx.restore();
     },
   },
@@ -1085,7 +1657,10 @@ export const LCD_ANIMS_EXTRA = {
         size: 9, color: 'rgba(255,255,255,0.75)', edge: 'rgba(0,10,30,0.9)', heavy: false,
       });
       if (params.sub) {
-        strokedText(ctx, String(params.sub), cx, cy + 15, {
+        // V31-08: サブ行はメーターの台座(cy+6 まで)より下に出るので、
+        // 明るいステージ絵の上だと縁取りだけでは読めない。座布団を敷く。
+        const subY = textPlate(ctx, String(params.sub), cx, cy + 15, { size: 10, heavy: false, padX: 6 });
+        strokedText(ctx, String(params.sub), cx, subY, {
           size: 10, color: 'rgba(255,255,255,0.8)', edge: 'rgba(0,10,30,0.9)', heavy: false,
         });
       }
@@ -1094,7 +1669,11 @@ export const LCD_ANIMS_EXTRA = {
       if (shown > 1) {
         const blink = 0.5 + 0.5 * Math.sin(p * Math.PI * 16);
         ctx.globalAlpha = alpha * (0.55 + 0.45 * blink);
-        strokedText(ctx, 'THRESHOLD!!', cx + r + 12, cy - 22, {
+        // こちらも台座の外。赤文字は明るい背景に一番負けるので下地を濃いめに
+        const thY = textPlate(ctx, 'THRESHOLD!!', cx + r + 12, cy - 22, {
+          size: 13, align: 'left', fill: 'rgba(24,0,4,0.78)',
+        });
+        strokedText(ctx, 'THRESHOLD!!', cx + r + 12, thY, {
           size: 13, color: '#ff5a5a', edge: 'rgba(30,0,0,0.9)', align: 'left',
         });
       }
@@ -1232,10 +1811,11 @@ export const LCD_ANIMS_EXTRA = {
    *
    * ■ レイアウト(液晶 440×300 を全面占有)
    *   常設UI(モード名バー・テロップ帯)は不透明の背景で伏せる。
-   *   ただし **y168〜236 は lcd.text の告知プレート専用に空けておく**。
+   *   ただし **y152〜236 は lcd.text の告知プレート専用に空けておく**。
    *   LcdAnims は ui レイヤーのアニメを描いてから最後にテキスト帯を描くので、
-   *   ここに要素を置くと告知テロップに確実に隠れる。読ませたい問題文と選択肢は
-   *   y0〜166 に、進行ラベルはテキストプレートの下 y240〜262 に置く。
+   *   ここに文字を置くと告知テロップに確実に隠れる。読ませたい問題文と選択肢は
+   *   y8〜150 に、進行ラベルはプレートの下 y250、見出しは足元 y278 に置く。
+   *   実際の座標はファイル上部の QUIZ_* 定数(「盤面の縦レイアウト」)にまとめてある。
    */
   aws_quiz_roulette: {
     layer: 'ui', ms: QUIZ_WAIT_MS,
@@ -1289,13 +1869,13 @@ export const LCD_ANIMS_EXTRA = {
       // 1.5Hz の点滅。ms に引きずられないよう経過ミリ秒から出す
       const blink = 0.55 + 0.45 * Math.sin((elapsed / 1000) * Math.PI * 3);
 
-      // ── レイアウト ──
-      const padX = 12;
-      const gap = 8;
+      // ── レイアウト(縦の取り合いはファイル上部の「盤面の縦レイアウト」を参照)──
+      const padX = QUIZ_PAD_X;
+      const gap = QUIZ_COL_GAP;
       const cellW = (w - padX * 2 - gap) / 2;
-      const cellH = 50;
-      const gridTop = 58;
-      const rowGap = 6;
+      const cellH = QUIZ_CELL_H;
+      const gridTop = QUIZ_GRID_TOP;
+      const rowGap = QUIZ_ROW_GAP;
       const cellXY = (i) => [
         padX + (i % 2) * (cellW + gap),
         gridTop + Math.floor(i / 2) * (cellH + rowGap),
@@ -1304,6 +1884,20 @@ export const LCD_ANIMS_EXTRA = {
         const [x, y] = cellXY(i);
         return [x + cellW / 2, y + cellH / 2];
       };
+
+      /* ── 縮小表示(2026-08-14 検証指摘 V3)────────────────────────
+       * CZ の盤面の上でクイズを出すと、盤面を丸ごと覆って
+       * 「いまCZがどこまで進んでいるか」が見えなくなる。
+       * compact:true のときは盤面全体を QUIZ_COMPACT_SCALE 倍へ縮め、
+       * 液晶の下側(結論の1行 y246 とテロップ帯 y266〜)を空ける。
+       * これで CZ の状態(HTTP 200 / 残りメッセージ数など)を読みながらクイズを回せる。
+       * 縮小は座標変換だけなので、以下のレイアウト計算は一切変えなくてよい。 */
+      const compact = params.compact === true;
+      if (compact) {
+        ctx.save();
+        ctx.translate((w - w * QUIZ_COMPACT_SCALE) / 2, QUIZ_COMPACT_TOP);
+        ctx.scale(QUIZ_COMPACT_SCALE, QUIZ_COMPACT_SCALE);
+      }
 
       ctx.save();
       ctx.globalAlpha = alpha;
@@ -1319,11 +1913,11 @@ export const LCD_ANIMS_EXTRA = {
       ctx.lineWidth = 2.4;
       ctx.strokeRect(3, 3, w - 6, h - 6);
 
-      // ── 見出し ──
-      strokedText(ctx, 'AWS QUIZ', 14, 14, {
+      // ── 見出し(盤面の足元。上は選択肢の高さに使う)──
+      strokedText(ctx, 'AWS QUIZ', 14, QUIZ_HEAD_Y, {
         size: 12, color: '#7cf3ff', edge: 'rgba(0,10,30,0.9)', align: 'left',
       });
-      strokedText(ctx, 'どのサービス?', w - 14, 14, {
+      strokedText(ctx, 'どのサービス?', w - 14, QUIZ_HEAD_Y, {
         size: 11, color: 'rgba(190,225,255,0.8)', edge: 'rgba(0,10,30,0.9)', align: 'right', heavy: false,
       });
 
@@ -1331,15 +1925,16 @@ export const LCD_ANIMS_EXTRA = {
       ctx.save();
       const qIn = clamp01(elapsed / 260);
       ctx.globalAlpha = alpha * (phase === 'start' ? qIn : 1);
-      const qTop = 24 + (phase === 'start' ? (1 - easeOutCubic(qIn)) * -8 : 0);
-      roundRect(ctx, 10, qTop, w - 20, 28, 7);
+      // 出だしは少し上から降りてくる。上げ幅は枠線(y3〜5)に潜らない 6px まで
+      const qTop = QUIZ_Q_TOP + (phase === 'start' ? (1 - easeOutCubic(qIn)) * -6 : 0);
+      roundRect(ctx, 10, qTop, w - 20, QUIZ_Q_H, 7);
       ctx.fillStyle = 'rgba(124,243,255,0.10)';
       ctx.fill();
       ctx.strokeStyle = 'rgba(124,243,255,0.35)';
       ctx.lineWidth = 1.2;
       ctx.stroke();
       const qSize = fitFont(ctx, round.question, w - 36, { max: 19, min: 12 });
-      strokedText(ctx, round.question, w / 2, qTop + 14, {
+      strokedText(ctx, round.question, w / 2, qTop + QUIZ_Q_H / 2, {
         size: qSize, color: '#ffffff', edge: 'rgba(0,10,30,0.95)',
       });
       ctx.restore();
@@ -1443,9 +2038,9 @@ export const LCD_ANIMS_EXTRA = {
         ctx.restore();
       }
 
-      // ── 進行インジケータ(装飾。y168〜236 はテロップ優先なので隠れてよい)──
+      // ── 進行インジケータ(装飾。告知プレートの帯は優先なので隠れてよい)──
       {
-        const barY = 178;
+        const barY = QUIZ_BAR_Y;
         let v = 0;
         if (phase === 'spin') v = 1;
         else if (phase === 'lock') v = 1 - clamp01(elapsed / QUIZ_LOCK_MS);
@@ -1460,7 +2055,7 @@ export const LCD_ANIMS_EXTRA = {
         ctx.restore();
       }
 
-      // ── 進行ラベル(テキストプレート y168〜236 の下に置く)──
+      // ── 進行ラベル(告知プレートの下に置く)──
       {
         let label = 'リールを止めて回せ';
         let col = 'rgba(190,225,255,0.9)';
@@ -1474,7 +2069,7 @@ export const LCD_ANIMS_EXTRA = {
         }
         ctx.save();
         ctx.globalAlpha = alpha * (stopped && !verdict ? blink : 1);
-        strokedText(ctx, label, w / 2, 250, {
+        strokedText(ctx, label, w / 2, QUIZ_LABEL_Y, {
           size, color: col, edge: 'rgba(0,10,30,0.95)', heavy: size > 14,
         });
         ctx.restore();
@@ -1525,6 +2120,7 @@ export const LCD_ANIMS_EXTRA = {
       }
 
       ctx.restore();
+      if (compact) ctx.restore();
     },
   },
 
@@ -1588,7 +2184,8 @@ export const LCD_ANIMS_EXTRA = {
       const s = scale * near;
       ctx.scale(s, s);
       if (tile) {
-        ctx.drawImage(tile, -60, -30, 120, 60);
+        // 縦横比はタイル側が持っている(U36)。ここは収める箱の大きさだけ指定する
+        drawSymbolTile(ctx, tile, 96, 96);
       } else {
         // 画像が未ロード / 生成できない環境でも「何かが舞った」ことは伝える
         const def = SYMBOLS[symbolId];
@@ -1632,8 +2229,13 @@ export const LCD_ANIMS_EXTRA = {
    * ここは「走る画」だけを担当し、突入・確定は**一切断言しない**。
    * 結果告知は result 付きイベントに紐づくシナリオ(dr_pseudo_result_*)の担当。
    *
-   * 配置: 走行レーンは y 100〜158。lcd.text のプレート(y168〜236)には掛からない。
-   * 擬似連カウントは上部 y62 に出す。
+   * 配置(2026-08-14 検証指摘: コメントと実装がズレていたので実測に合わせて直した):
+   *   走行レーン  laneTop y94 から laneH(通常18 / step4は14)刻みで最大4レーン
+   *               → 車体の中心は最大 y148、砂ぼこり(y+8・半径最大7.6)まで含めて y164 まで。
+   *               lcd.text のプレート(y168〜236)には掛からない。
+   *   擬似連カウント 上部 y62(冒頭だけ大きく出て走り出しと同時に消える)。
+   *   ※ 以前は「y100〜158」と書いてあったが、実装は laneTop 104 + 20×3 + 6 = y170 まで
+   *      伸びていてプレートに掛かっていた。数値を触るときはこのコメントも直すこと。
    */
   deepracer_race: {
     layer: 'fg', ms: 2200,
@@ -1647,8 +2249,8 @@ export const LCD_ANIMS_EXTRA = {
       // step ごとの熱量。速度・車体色・砂ぼこりの量が変わる
       const SPEED = [0.8, 1.0, 1.35, 1.9][step - 1];
       const COLOR = ['#8ad4ff', '#7bf7d0', '#ffd166', '#ff8a00'][step - 1];
-      const laneTop = 104;
-      const laneH = step >= 4 ? 14 : 20;
+      const laneTop = 94;
+      const laneH = step >= 4 ? 14 : 18;
       const lanes = Math.min(4, Math.max(1, Math.ceil(cars / (step >= 4 ? 3 : 2))));
 
       ctx.save();
@@ -1832,6 +2434,191 @@ export const LCD_ANIMS_EXTRA = {
           size: 12, color: '#4ce0a0', edge: 'rgba(0,20,10,0.95)',
         });
       }
+      ctx.restore();
+    },
+  },
+
+  /**
+   * 【U34】ボーナス終了時の2段ジャッジ「ヘルスチェック → キャパシティチェック」。
+   *
+   * ■ 何のための画か(ユーザー指示「転落演出と同格の強度へ」)
+   *   セット継続型ボーナス(ゴーストボーナスSP)の終わりに走る判定を、
+   *   1枚絵の合否表示ではなく **2段階の物語** にする:
+   *     p 0.00〜0.34  HEALTH CHECK   … プローブが走る(結果は伏せる)
+   *     p 0.34〜0.44  1段目の判定     … HEALTHY なら緑のスタンプ
+   *     p 0.44〜0.70  CAPACITY CHECK … キャパシティのゲージが伸びる
+   *                                     しきい値の線を **越えれば継続**
+   *     p 0.70〜1.00  結論           … 継続なら大きくドン + 光。
+   *                                     不足なら音も光も足さず、静かに沈める(緩急)
+   *
+   * ■ 嘘をつかない
+   *   ok は **setEnd(当落が確定したイベント)からしか渡さない**。
+   *   ゲージの伸び方も ok で決まる(伸びてから落ちる、はやらない)。
+   *
+   * params: { ok=false, label='CAPACITY', addGames=0 }
+   *   label … 1行の見出し(ゲーム側の healthLabel。既定は 'CAPACITY')
+   */
+  capacity_judge: {
+    layer: 'ui', ms: 2600,
+    draw(ctx, p, params, w, h) {
+      const ok = Boolean(params.ok);
+      const addGames = Math.max(0, Math.round(params.addGames ?? 0));
+      const label = String(params.label ?? 'CAPACITY');
+      const alpha = fadeInOut(p, 0.05, 0.94);
+      if (alpha <= 0) return;
+
+      const probeP = clamp01(p / 0.34);
+      const stampP = clamp01((p - 0.34) / 0.1);
+      const capP = clamp01((p - 0.44) / 0.26);
+      const verdictP = clamp01((p - 0.7) / 0.3);
+      // 1段目(ヘルスチェック)は継続・終了のどちらでも通す。
+      // 「生きてはいるが器が足りない」= キャパシティ側で落とす筋書きにして、
+      // 失敗をいきなり突きつけない(緩急)
+      const health = true;
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+
+      // ── 下地(緊張を作るために一度暗く落とす)──
+      ctx.fillStyle = `rgba(4,8,18,${0.55 + (verdictP > 0 && ok ? 0.16 : 0.1)})`;
+      ctx.fillRect(0, 0, w, h);
+      ctx.strokeStyle = verdictP > 0
+        ? (ok ? 'rgba(123,247,208,0.95)' : 'rgba(255,120,120,0.7)')
+        : `rgba(138,212,255,${0.3 + 0.3 * Math.sin(p * Math.PI * 12)})`;
+      ctx.lineWidth = 2.2;
+      ctx.strokeRect(3, 3, w - 6, h - 6);
+
+      // ── 1段目: ヘルスチェック ──
+      strokedText(ctx, 'HEALTH CHECK', w / 2, 30, {
+        size: 12, color: 'rgba(190,225,255,0.9)', edge: 'rgba(0,10,30,0.9)', heavy: false,
+      });
+      {
+        const baseY = 66;
+        const x0 = 26;
+        const x1 = w - 26;
+        const span = x1 - x0;
+        ctx.save();
+        ctx.strokeStyle = stampP > 0 ? '#4ce0a0' : '#8ad4ff';
+        ctx.lineWidth = 2.2;
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        for (let i = 0; i <= 100; i++) {
+          const t = i / 100;
+          if (t > probeP) break;
+          const x = x0 + span * t;
+          const beat = (t * 4) % 1;
+          const y = beat > 0.42 && beat < 0.58
+            ? baseY - Math.sin(((beat - 0.42) / 0.16) * Math.PI) * 22
+            : baseY + Math.sin(t * 40) * 1.4;
+          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+        ctx.restore();
+      }
+      if (stampP > 0) {
+        ctx.save();
+        const ss = easeOutBack(stampP);
+        ctx.translate(w - 74, 66);
+        ctx.rotate(-0.12);
+        ctx.scale(ss, ss);
+        roundRect(ctx, -46, -14, 92, 28, 8);
+        ctx.fillStyle = 'rgba(12,74,52,0.9)';
+        ctx.fill();
+        ctx.strokeStyle = '#4ce0a0';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        strokedText(ctx, health ? 'HEALTHY' : 'DOWN', 0, 1, {
+          size: 15, color: '#7bffc4', edge: 'rgba(0,20,10,0.95)',
+        });
+        ctx.restore();
+      }
+
+      // ── 2段目: キャパシティチェック ──
+      // 結論が出たらゲージは役目を終えるので、判定の文字と場所を譲る(薄く沈める)
+      if (capP > 0) {
+        ctx.save();
+        ctx.globalAlpha = alpha * (1 - verdictP * 0.8);
+        strokedText(ctx, `CAPACITY CHECK — ${label}`, w / 2, 104, {
+          size: 12, color: 'rgba(255,224,102,0.9)', edge: 'rgba(20,14,0,0.9)', heavy: false,
+        });
+
+        // ゲージ。ok なら threshold を越え、不足ならその手前で止まる
+        const gx = 44;
+        const gw = w - 88;
+        const gy = 122;
+        const gh = 20;
+        const threshold = 0.72;
+        const target = ok ? 0.96 : 0.54;
+        const fill = target * easeOutCubic(capP);
+        roundRect(ctx, gx, gy, gw, gh, gh / 2);
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.fill();
+        ctx.save();
+        roundRect(ctx, gx, gy, gw, gh, gh / 2);
+        ctx.clip();
+        const g = ctx.createLinearGradient(gx, 0, gx + gw, 0);
+        g.addColorStop(0, '#8ad4ff');
+        g.addColorStop(1, fill >= threshold ? '#7bf7d0' : '#ffd166');
+        ctx.fillStyle = g;
+        ctx.fillRect(gx, gy, gw * fill, gh);
+        ctx.restore();
+        ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+        ctx.lineWidth = 1.5;
+        roundRect(ctx, gx, gy, gw, gh, gh / 2);
+        ctx.stroke();
+        // しきい値の線(ここを越えたら継続)
+        const tx = gx + gw * threshold;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(tx, gy - 6);
+        ctx.lineTo(tx, gy + gh + 6);
+        ctx.stroke();
+        strokedText(ctx, '継続ライン', tx, gy + gh + 16, {
+          size: 10, color: 'rgba(255,255,255,0.8)', edge: 'rgba(0,10,30,0.9)', heavy: false,
+        });
+        ctx.restore();
+      }
+
+      /* ── 結論 ──
+       * 文字はすべて **演出テキスト帯(中心 y194 / プレート y168〜220)より上** に置く。
+       * ボーナス最終ゲームは「RUSH 当選!!」の sticky 帯が残っていることがあり、
+       * 下に置くと結論がプレートに隠れてしまうため(2026-08-14 U34)。 */
+      if (verdictP > 0) {
+        if (ok) {
+          // 継続: 大きくドン + 光が弾ける(そのまま次セットの告知へ繋ぐ)
+          slamHeadline(ctx, 'キャパシティ確保 — 継続!!', w / 2, 118, verdictP, {
+            maxWidth: w - 40, size: 30, colors: ['#ffffff', '#7bf7d0'], edge: 'rgba(0,26,18,0.95)',
+          });
+          if (addGames > 0) {
+            strokedText(ctx, `+${addGames}G`, w / 2, 156, {
+              size: 22, color: '#ffe066', edge: 'rgba(30,20,0,0.95)',
+            });
+          }
+          ctx.save();
+          ctx.globalCompositeOperation = 'lighter';
+          const r = 24 + easeOutCubic(verdictP) * 240;
+          const g2 = ctx.createRadialGradient(w / 2, 118, 4, w / 2, 118, r);
+          g2.addColorStop(0, `rgba(123,247,208,${0.45 * (1 - verdictP)})`);
+          g2.addColorStop(1, 'rgba(123,247,208,0)');
+          ctx.fillStyle = g2;
+          ctx.beginPath();
+          ctx.arc(w / 2, 118, r, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        } else {
+          // 終了: 光らせない・跳ねさせない。静かに沈めて終わる
+          ctx.save();
+          ctx.globalAlpha = alpha * verdictP;
+          strokedText(ctx, 'キャパシティ不足 — ここまで', w / 2, 118, {
+            size: 20, color: '#ffb3b3', edge: 'rgba(24,4,4,0.95)',
+          });
+          ctx.fillStyle = `rgba(2,4,10,${0.35 * verdictP})`;
+          ctx.fillRect(0, 0, w, h);
+          ctx.restore();
+        }
+      }
+
       ctx.restore();
     },
   },
@@ -2195,9 +2982,9 @@ export const LCD_ANIMS_EXTRA = {
       ctx.save();
       ctx.globalAlpha = alpha;
 
-      // パネル
+      // パネル(2026-08-14 検証 V31-01: 0.9 では背景の柄が透けて小さな行が沈むので 0.96 へ)
       roundRect(ctx, px, py, pw, ph, 8);
-      ctx.fillStyle = 'rgba(8,12,26,0.9)';
+      ctx.fillStyle = 'rgba(8,12,26,0.96)';
       ctx.fill();
       ctx.strokeStyle = color;
       ctx.lineWidth = done && tier === 'hot' ? 2.4 : 1.4;
@@ -2208,16 +2995,33 @@ export const LCD_ANIMS_EXTRA = {
       ctx.stroke();
       ctx.shadowBlur = 0;
 
-      // ── ヘッダ: サービス名 / 呼び出しているAPI / トークンカウンタ ──
-      strokedText(ctx, 'Amazon Bedrock', px + 10, py + 13, {
+      /* ── ヘッダ: サービス名 / 呼び出しているAPI / トークンカウンタ ──
+       *
+       * 2026-08-14 検証 V31-01:
+       * API 名を固定座標(px+96)に置いていたため、U39 の最低フォント機構で
+       * 『Amazon Bedrock』の幅が伸びた途端に食い込み、
+       * 「Amazon BedrocInvokeModelWithResponseStream」と読める状態になっていた。
+       * **実測した幅から座席を決める**ことで、フォント下限
+       * (lcdanims.js の LCD_ANIM_MIN_FONT_PX)を動かしても重ならないようにする。
+       * それでも入らない狭さのときは API 名を出さない
+       * (サービス名とトークン数のほうが情報として重要。切り詰めた API 名は嘘になる)。
+       */
+      const headY = py + 13;
+      strokedText(ctx, 'Amazon Bedrock', px + 10, headY, {
         size: 9, color: 'rgba(190,225,255,0.85)', edge: 'rgba(0,10,30,0.9)', align: 'left', heavy: false,
       });
-      monoText(ctx, 'InvokeModelWithResponseStream', px + 96, py + 13, {
-        size: 8, color: 'rgba(150,190,230,0.7)',
-      });
-      monoText(ctx, `tokens: ${st.tokens}`, px + pw - 10, py + 13, {
+      // strokedText は font を張ったまま抜けるので、その場で実寸を測れる
+      const svcW = textWidth(ctx, 'Amazon Bedrock', 9);
+      const tokenW = monoText(ctx, `tokens: ${st.tokens}`, px + pw - 10, headY, {
         size: 10, color: done ? color : 'rgba(225,242,255,0.92)', align: 'right',
       });
+      const apiX = px + 10 + svcW + 10;
+      const apiRoom = (px + pw - 10 - tokenW - 10) - apiX;
+      const apiName = 'InvokeModelWithResponseStream';
+      ctx.font = `700 8px ${FONT_MONO}`;
+      if (textWidth(ctx, apiName, 8) <= apiRoom) {
+        monoText(ctx, apiName, apiX, headY, { size: 8, color: 'rgba(150,190,230,0.7)' });
+      }
 
       // ── ステータス行: 3段階の遷移(いまどこかを色で示す)──
       const sy = py + 30;
@@ -2302,10 +3106,21 @@ export const LCD_ANIMS_EXTRA = {
         });
       }
 
-      // ── 締め(推論が終わったことの小さな証跡)──
+      /* ── 締め(推論が終わったことの小さな証跡)──
+       * 2026-08-14 検証 V31-01: 不透明度 0.55 の細字がパネルの下地と本文の光に
+       * 埋もれて読めなかったので、座布団を敷いて文字も明るくした。 */
       if (done) {
-        monoText(ctx, 'stop_reason: end_turn', px + 14, py + ph - 9, {
-          size: 8, color: 'rgba(180,210,240,0.55)',
+        const srText = 'stop_reason: end_turn';
+        const srY = py + ph - 9;
+        ctx.font = `700 8px ${FONT_MONO}`;
+        const srW = textWidth(ctx, srText, 8);
+        ctx.save();
+        roundRect(ctx, px + 10, srY - 8, srW + 9, 16, 5);
+        ctx.fillStyle = 'rgba(3,7,18,0.85)';
+        ctx.fill();
+        ctx.restore();
+        monoText(ctx, srText, px + 14, srY, {
+          size: 8, color: 'rgba(206,228,250,0.92)',
         });
       }
 
@@ -2322,6 +3137,552 @@ export const LCD_ANIMS_EXTRA = {
         ctx.fill();
         ctx.restore();
       }
+      ctx.restore();
+    },
+  },
+
+  /* ══ 2026-08-14 追加: 新タイプの予告用アニメ ═══════════════════════════ */
+
+  /**
+   * レバーONフリーズ「全リージョン同時停止」。data/scenarios/freeze.js 専用。
+   *
+   * ゲーム側(game/flow.js の FLOW.FREEZE)がリールを止めている間に流す全面演出。
+   * 演出がゲームを止めているわけではない点に注意(止めているのはゲーム側)。
+   *
+   * 流れ:
+   *   0.00〜0.30 … 世界中のリージョンの灯が1つずつ落ちていく(無音の溜め)
+   *   0.30〜0.50 … 完全な暗転。中央で1点だけ脈打つ
+   *   0.50〜1.00 … 虹の衝撃波が広がり、FREEZE の文字が浮かび上がる
+   *
+   * params: { ms=2600 }
+   */
+  freeze_all_stop: {
+    layer: 'fg', ms: 2600,
+    draw(ctx, p, params, w, h) {
+      const cx = w / 2;
+      const cy = 148;
+
+      // ── 暗転(全消灯)──
+      ctx.save();
+      ctx.fillStyle = `rgba(2,4,10,${clamp01(p / 0.18) * 0.94})`;
+      ctx.fillRect(0, 0, w, h);
+      ctx.restore();
+
+      // ── リージョンの灯。等間隔に並んだ点が順に落ちる ──
+      const cols = 8;
+      const rows = 4;
+      ctx.save();
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const i = r * cols + c;
+          // 落ちる順番はバラけさせる(一斉ではなく "次々と落ちる" 不穏さ)
+          const order = ((i * 37) % (cols * rows)) / (cols * rows);
+          const off = clamp01((p - order * 0.28) / 0.06);
+          const lit = 1 - off;
+          if (lit <= 0.02) continue;
+          const x = 44 + c * ((w - 88) / (cols - 1));
+          const y = 62 + r * 34;
+          ctx.globalAlpha = lit * 0.9;
+          ctx.fillStyle = lit > 0.5 ? '#7bf7d0' : '#ff8a5a';
+          ctx.beginPath();
+          ctx.arc(x, y, 3 + lit * 2, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.globalAlpha = lit * 0.28;
+          ctx.beginPath();
+          ctx.arc(x, y, 9 + lit * 5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      ctx.restore();
+
+      // ── 暗転中の脈 ──
+      if (p >= 0.28 && p < 0.54) {
+        const q = (p - 0.28) / 0.26;
+        const pulse = Math.sin(q * Math.PI * 3) ** 2;
+        ctx.save();
+        ctx.globalAlpha = 0.55 * pulse;
+        const g = ctx.createRadialGradient(cx, cy, 2, cx, cy, 60);
+        g.addColorStop(0, '#ffffff');
+        g.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 60, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        ctx.save();
+        ctx.globalAlpha = 0.8;
+        strokedText(ctx, 'ALL REGIONS HALTED', cx, cy + 76, {
+          size: 11, color: 'rgba(200,220,255,0.85)', edge: 'rgba(0,0,0,0.9)', heavy: false,
+        });
+        ctx.restore();
+      }
+
+      // ── 虹の衝撃波 + FREEZE ──
+      if (p >= 0.5) {
+        const q = clamp01((p - 0.5) / 0.5);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        for (let i = 0; i < 4; i++) {
+          const rq = clamp01(q * 1.4 - i * 0.13);
+          if (rq <= 0 || rq >= 1) continue;
+          const rad = 24 + easeOutQuart(rq) * 300;
+          ctx.globalAlpha = (1 - rq) * 0.5;
+          ctx.strokeStyle = `hsl(${(q * 720 + i * 60) % 360}, 95%, 65%)`;
+          ctx.lineWidth = 5 - i;
+          ctx.beginPath();
+          ctx.arc(cx, cy, rad, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.restore();
+
+        const pop = easeOutBack(clamp01(q / 0.4));
+        ctx.save();
+        ctx.globalAlpha = clamp01(q / 0.2);
+        ctx.translate(cx, cy);
+        ctx.scale(pop, pop);
+        strokedText(ctx, 'FREEZE', 0, 0, {
+          size: 46, color: `hsl(${(q * 620) % 360}, 95%, 70%)`, edge: 'rgba(0,0,0,0.95)',
+        });
+        ctx.restore();
+      }
+    },
+  },
+
+  /**
+   * 【必須要望】風がレア役を運んでくる。
+   *
+   * CloudFront のエッジから吹く風(= Kinesis の流れ)が液晶を右→左に吹き抜け、
+   * 絵柄が 1〜3 枚流れてきて中央に着地する。着地した絵柄がそのゲームの成立役。
+   * 運ぶのは U24(2026-08-14)以降 **レア役だけ**(呼び出し側の縛り。
+   * data/scenarios/yokoku-wind.js を参照)。アニメ自体は絵柄IDを選ばない。
+   *
+   * ■ 嘘をつかないための約束(演出契約)
+   *   運ぶ絵柄は **必ず成立役に一致させる**(シナリオ側が when.flag で縛る)。
+   *   ハズレのゲームで使うガセ版は count:0 を渡して **何も運ばれない** 画にする。
+   *   「風は吹いたが何も乗ってこなかった」= 結論を出していないので整合が崩れない。
+   *
+   * params:
+   *   symbol   … 運ぶ絵柄ID(data/symbols.js の id。既定 'BELL')
+   *   count    … 運ぶ枚数 0〜3。**0 = 何も運ばれない(ガセ版)**
+   *   strength … 0:青(弱) / 1:金(レア) / 2:虹(プレミア)
+   *   dir      … -1 で右→左(既定) / 1 で左→右
+   *
+   * 配置: 着地点は y=132 の帯。lcd.text のプレート(y168〜236)には掛からない。
+   */
+  edge_wind_carry: {
+    layer: 'fg', ms: 1800,
+    draw(ctx, p, params, w, h) {
+      const symbolId = params.symbol ?? 'BELL';
+      const count = Math.round(clamp(params.count ?? 1, 0, 3));
+      const strength = Math.round(clamp(params.strength ?? 0, 0, 2));
+      const dir = (params.dir ?? -1) >= 0 ? 1 : -1;
+      const landY = params.y ?? 132;
+      const alpha = fadeInOut(p, 0.08, 0.86);
+      if (alpha <= 0) return;
+
+      // 虹(strength 2)は時間で色相が回る。金・青は固定色
+      const hue = (p * 620) % 360;
+      const accent = strength === 2 ? `hsl(${hue}, 92%, 66%)` : LEVEL_COLORS[strength];
+      // 風そのものの色。強いほど濃く、長く尾を引く
+      const windAlpha = [0.42, 0.58, 0.74][strength];
+      const streaks = [9, 13, 18][strength];
+
+      // ── 1. 吹き抜ける風の筋 ──────────────────────────
+      ctx.save();
+      ctx.lineCap = 'round';
+      for (let i = 0; i < streaks; i++) {
+        const seed = ((i * 53) % 100) / 100;
+        const t = ((p * 1.9) + seed) % 1;
+        const ly = 46 + ((i * 23) % 128);
+        const len = 44 + (i % 4) * 30 + strength * 12;
+        const lx = dir > 0 ? -len + t * (w + len) : w - t * (w + len);
+        ctx.globalAlpha = alpha * windAlpha * Math.sin(t * Math.PI);
+        ctx.strokeStyle = strength === 0 ? 'rgba(214,236,255,0.85)' : accent;
+        ctx.lineWidth = 1 + (i % 3) * 0.8;
+        ctx.beginPath();
+        ctx.moveTo(lx, ly);
+        ctx.quadraticCurveTo(lx + dir * len * 0.5, ly - 6 - (i % 3) * 2, lx + dir * len, ly);
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      // ── 2. エッジロケーション(風の吹き出し口)──────────
+      {
+        const ex = dir > 0 ? 16 : w - 16;
+        const puff = 0.5 + 0.5 * Math.sin(p * Math.PI * 5);
+        ctx.save();
+        ctx.globalAlpha = alpha * 0.5 * puff;
+        const g = ctx.createRadialGradient(ex, landY - 6, 3, ex, landY - 6, 46);
+        g.addColorStop(0, accent);
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(ex, landY - 6, 46, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // ── 3. 運ばれてくる絵柄 ─────────────────────────
+      if (count <= 0) {
+        /*
+         * ガセ版。何も運ばれない代わりに、砂粒(= 流れていくログの断片)だけが
+         * 通り過ぎる。ここで絵柄を出すと「ベルが来た」と読めてしまうので絶対に出さない。
+         */
+        ctx.save();
+        ctx.globalAlpha = alpha * 0.55;
+        ctx.fillStyle = 'rgba(200,222,246,0.9)';
+        for (let i = 0; i < 16; i++) {
+          const seed = ((i * 71) % 100) / 100;
+          const t = ((p * 2.3) + seed) % 1;
+          const px = dir > 0 ? t * w : w - t * w;
+          const py = landY - 34 + ((i * 19) % 70) + Math.sin((t + seed) * Math.PI * 3) * 7;
+          const s = 1.2 + (i % 3) * 0.7;
+          ctx.globalAlpha = alpha * 0.5 * Math.sin(t * Math.PI);
+          ctx.fillRect(px, py, s * 2.4, s);
+        }
+        ctx.restore();
+        return;
+      }
+
+      const tileW = 92;
+      const tileH = 46;
+      const pitch = tileW + 10;
+      const startX = (w - (count - 1) * pitch) / 2;
+      for (let i = 0; i < count; i++) {
+        // 1枚ずつ順に飛んでくる。最後の1枚が着地したところで演出が締まる
+        const delay = i * 0.12;
+        const local = clamp01((p - delay) / (0.62 - delay * 0.4));
+        if (local <= 0) continue;
+        const e = easeOutCubic(local);
+        const targetX = startX + i * pitch;
+        const fromX = dir > 0 ? -tileW : w + tileW;
+        const x = fromX + (targetX - fromX) * e;
+        // 風に乗って上下に揺れながら来て、着地でぴたりと止まる
+        const sway = (1 - e) * Math.sin((p * 6) + i) * 20;
+        const y = landY + sway;
+        const rot = (1 - e) * dir * (0.5 + Math.sin(p * 7 + i) * 0.3);
+        const scale = 0.72 + e * 0.28;
+
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.translate(x, y);
+        ctx.rotate(rot);
+        ctx.scale(scale, scale);
+
+        // 着地後の縁取り(強度の色)
+        if (e >= 0.98) {
+          const glow = 0.55 + 0.45 * Math.sin(p * Math.PI * 9 + i);
+          ctx.save();
+          ctx.shadowColor = accent;
+          ctx.shadowBlur = (6 + strength * 8) * glow;
+          roundRect(ctx, -tileW / 2 - 3, -tileH / 2 - 3, tileW + 6, tileH + 6, 9);
+          ctx.strokeStyle = accent;
+          ctx.lineWidth = 2 + strength;
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        const tile = symbolTile(symbolId);
+        if (tile) {
+          // 潰さずに枠へ収める(U36)。枠(tileW×tileH)は着地の当たり判定として残す
+          drawSymbolTile(ctx, tile, tileW, tileH * 1.6);
+        } else {
+          // 画像が未ロードでも「何が運ばれてきたか」は必ず読めるようにする
+          const def = SYMBOLS[symbolId];
+          roundRect(ctx, -tileW / 2, -tileH / 2, tileW, tileH, 8);
+          ctx.fillStyle = def?.bg ?? '#26324e';
+          ctx.fill();
+          ctx.strokeStyle = def?.accent ?? '#ffffff';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          strokedText(ctx, def?.label ?? symbolId, 0, 0, {
+            size: 18, color: def?.fg ?? '#ffffff', edge: 'rgba(0,10,30,0.9)',
+          });
+        }
+        ctx.restore();
+      }
+
+      // ── 4. 着地したときの一言(サービス名。結論は言わない)──
+      if (p > 0.55) {
+        ctx.save();
+        ctx.globalAlpha = alpha * clamp01((p - 0.55) / 0.15);
+        strokedText(ctx, 'EDGE WIND', w / 2, landY - 44, {
+          size: 11, color: accent, edge: 'rgba(0,10,30,0.9)', heavy: false,
+        });
+        ctx.restore();
+      }
+    },
+  },
+
+  /**
+   * AZ 切替シャッター。液晶にシャッターが降り、上がると絵/文言が変わっている。
+   *
+   * 閉じている時間の長さ(hold)で期待度を出す = 「長く閉まっているほど熱い」。
+   * シャッターの裏で何が起きたかは after の文言で伝えるが、
+   * **当落は断言しない**(結論を出すのは当落確定イベントに紐づくシナリオの担当)。
+   *
+   * params:
+   *   hold  … 閉じている時間の割合 0.1〜0.6(既定 0.3)。長いほど熱い
+   *   label … シャッターに書く文字(既定 'AZ 切替')
+   *   after … 開いたあとに出る文字(既定 'ap-northeast-1c ACTIVE')
+   *            AZ の呼び方は実在の名前に統一する(2026-08-14 F5。'AZ-1c' は存在しない表記)
+   *   color … 強調色(既定 '#7cf3ff')
+   */
+  /**
+   * BLUE/GREEN デプロイ 2択(U18 / 2026-08-14 ユーザー指示)。
+   *
+   * ■ 何を見せる演出か
+   *   液晶が青(Blue = 現行)と緑(Green = 新)の2色に割れ、
+   *   それぞれの側に **実際の絵柄画像** が乗る:
+   *     青 … REPLAY(リプレイ / DynamoDB) = 現行のまま「もう1回」
+   *     緑 … MELON (スイカ / S3)         = 新しいほうへ「切り替え」
+   *   トラフィックの寄り(バー)で引っ張ってから、第3停止でどちらかが確定する。
+   *   絵柄は絵柄飛来予告(symbol_fly_in / edge_wind_carry)と同じ symbolTile 経由なので、
+   *   リール上の絵柄と絵が一致する(画像未ロード時だけ色とラベルのプレースホルダ)。
+   *
+   * ■ 嘘をつかない作り
+   *   このアニメは **勝敗を自分で決めない**。params.win をシナリオが渡し、
+   *   シナリオは when.flag で成立役を縛っている(青=リプレイ / 緑=スイカ)。
+   *   したがって画面に出る勝ち側は必ずそのゲームの成立役と一致する。
+   *   演出RNGが関わるのは「どちらへ寄せて煽るか(lean)」だけで、
+   *   これはシナリオの重み付き抽選(director)で選ばれる。
+   *
+   * params:
+   *   win   … 'blue' | 'green'(確定側。phase:'decide' で初めて見せる)
+   *   lean  … 'even' | 'blue' | 'green'  煽りの寄せ方(バーがどちらに寄って揺れるか)
+   *   phase … 'shift'(切替中・当落は伏せる)/ 'decide'(確定)
+   *   ms    … 尺
+   *
+   * レイアウト: y40〜166 に収める(y168〜236 は lcd.text のプレート、y266〜 はテロップ帯)。
+   */
+  bluegreen_choice: {
+    layer: 'ui', ms: 1600,
+    draw(ctx, p, params, w, h) {
+      const phase = params.phase === 'decide' ? 'decide' : 'shift';
+      const win = params.win === 'green' ? 'green' : params.win === 'blue' ? 'blue' : null;
+      const lean = params.lean === 'blue' || params.lean === 'green' ? params.lean : 'even';
+      const decided = phase === 'decide' && win != null;
+
+      const alpha = Math.min(1, p / 0.12) * (p > 0.9 ? Math.max(0, 1 - (p - 0.9) / 0.1) : 1);
+      if (alpha <= 0) return;
+
+      const top = 40;
+      const bottom = 166;
+      const midX = w / 2;
+
+      /* ── トラフィックの寄り(0 = 全部 Blue / 1 = 全部 Green)──
+       * 切替中は寄せ方(lean)に応じて揺らして煽る。確定後は勝ち側へ振り切る。 */
+      let shift;
+      if (decided) {
+        const k = easeOutCubic(clamp01(p / 0.35));
+        const from = lean === 'green' ? 0.72 : lean === 'blue' ? 0.28 : 0.5;
+        shift = from + ((win === 'green' ? 1 : 0) - from) * k;
+      } else {
+        const center = lean === 'green' ? 0.66 : lean === 'blue' ? 0.34 : 0.5;
+        shift = clamp(center + Math.sin(p * Math.PI * 3.2) * 0.16, 0.06, 0.94);
+      }
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+
+      /* ── パネルの下地(2026-08-14 V21-09)──
+       * この帯はキャラ(液晶の char サブレイヤー)より **後** に描かれる。
+       * 以前は半透明の地しか敷いていなかったので、後ろのサメが透けて
+       * 「TRAFFIC SHIFTED」等の文字と混ざって読めなかった。
+       * 2択の絵は主役なので、帯のあいだは下を隠し切る。 */
+      ctx.fillStyle = 'rgba(6,10,22,0.94)';
+      ctx.fillRect(0, top, w, bottom - top);
+
+      // ── 2色の地(勝敗が出たら負け側を沈める)──
+      const sides = [
+        {
+          id: 'blue', x: 0, wpx: midX, symbol: 'REPLAY', label: 'BLUE(現行)',
+          col: '#5aa8ff', fill: 'rgba(20,48,110,0.92)',
+        },
+        {
+          id: 'green', x: midX, wpx: w - midX, symbol: 'MELON', label: 'GREEN(新)',
+          col: '#4ce0a0', fill: 'rgba(12,74,52,0.92)',
+        },
+      ];
+      for (const s of sides) {
+        const lose = decided && s.id !== win;
+        ctx.save();
+        ctx.globalAlpha = alpha * (lose ? 0.3 : 1);
+        ctx.fillStyle = s.fill;
+        ctx.fillRect(s.x, top, s.wpx, bottom - top);
+        // 縁(確定側は光る)
+        const hot = decided && s.id === win;
+        ctx.strokeStyle = hot ? '#ffffff' : s.col;
+        ctx.lineWidth = hot ? 3 : 1.6;
+        if (hot) {
+          ctx.shadowColor = s.col;
+          ctx.shadowBlur = 18 * (0.6 + 0.4 * Math.sin(p * Math.PI * 10));
+        }
+        ctx.strokeRect(s.x + 1.5, top + 1.5, s.wpx - 3, bottom - top - 3);
+        ctx.shadowBlur = 0;
+
+        // 側の名前
+        strokedText(ctx, s.label, s.x + s.wpx / 2, top + 16, {
+          size: 12, color: hot ? '#ffffff' : 'rgba(255,255,255,0.85)', edge: 'rgba(0,10,30,0.9)',
+        });
+
+        /* ── 実際の絵柄画像(絵柄飛来予告と同じ経路)──
+         * 2026-08-14 V21(U36): ここは「どちらの絵柄を狙うか」を見せる主役なので、
+         * **縦横比を保ったまま** できるだけ大きく出す(潰れると別の絵柄に見える)。
+         * 箱は 112×80。原画が正方形なので実寸は 80×80 になり、
+         * 下のトラフィックバー(y134〜146)にも見出しにも掛からない。 */
+        const tileW = 112;
+        const tileH = 80;
+        const cx = s.x + s.wpx / 2;
+        const cy = top + 54;
+        const pop = hot ? 1 + easeOutBack(clamp01(p / 0.4)) * 0.12 : 1;
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.scale(pop, pop);
+        const tile = symbolTile(s.symbol);
+        if (tile) {
+          drawSymbolTile(ctx, tile, tileW, tileH);
+        } else {
+          const def = SYMBOLS[s.symbol];
+          roundRect(ctx, -tileW / 2, -tileH / 2, tileW, tileH, 8);
+          ctx.fillStyle = def?.bg ?? '#26324e';
+          ctx.fill();
+          ctx.strokeStyle = def?.accent ?? '#ffffff';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          strokedText(ctx, def?.label ?? s.symbol, 0, 0, {
+            size: 16, color: def?.fg ?? '#ffffff', edge: 'rgba(0,10,30,0.9)',
+          });
+        }
+        ctx.restore();
+        ctx.restore();
+      }
+
+      // ── 中央の切替ライン(トラフィックの境目)──
+      const lineX = shift * w;
+      ctx.save();
+      ctx.globalAlpha = alpha * 0.9;
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      ctx.moveTo(lineX, top);
+      ctx.lineTo(lineX, bottom);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+
+      // ── トラフィック配分バー ──
+      const bx = 26;
+      const bw = w - 52;
+      const by = bottom - 32;
+      roundRect(ctx, bx, by, bw, 12, 6);
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.fill();
+      ctx.save();
+      roundRect(ctx, bx, by, bw, 12, 6);
+      ctx.clip();
+      ctx.fillStyle = '#5aa8ff';
+      ctx.fillRect(bx, by, bw * (1 - shift), 12);
+      ctx.fillStyle = '#4ce0a0';
+      ctx.fillRect(bx + bw * (1 - shift), by, bw * shift, 12);
+      ctx.restore();
+      ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+      ctx.lineWidth = 1.2;
+      roundRect(ctx, bx, by, bw, 12, 6);
+      ctx.stroke();
+
+      // ── 見出し(何のメーターかを名乗る。U16 と同じ考え方)──
+      // 結論の1行なので、帯の中でも黒い座布団を敷いて確実に読ませる(V21-09)
+      ctx.save();
+      ctx.globalAlpha = alpha * 0.85;
+      roundRect(ctx, w / 2 - 92, bottom - 19, 184, 20, 8);
+      ctx.fillStyle = 'rgba(2,6,16,0.9)';
+      ctx.fill();
+      ctx.restore();
+      strokedText(ctx, decided ? 'TRAFFIC SHIFTED' : 'TRAFFIC SHIFTING…', w / 2, bottom - 8, {
+        size: 11, color: decided ? '#ffe066' : 'rgba(210,230,255,0.9)',
+        edge: 'rgba(0,10,30,0.9)', heavy: false,
+      });
+
+      ctx.restore();
+    },
+  },
+
+  az_shutter: {
+    layer: 'fg', ms: 1900,
+    draw(ctx, p, params, w, h) {
+      const hold = clamp(params.hold ?? 0.3, 0.1, 0.6);
+      const label = params.label ?? 'AZ 切替';
+      const after = params.after ?? 'ap-northeast-1c ACTIVE';
+      const color = params.color ?? '#7cf3ff';
+      // 上下から降りてくる幕が覆う範囲(タイトルバーとテロップ帯は避ける)
+      const top = 40;
+      const bottom = 262;
+      const mid = (top + bottom) / 2;
+      const half = (bottom - top) / 2;
+
+      const closeEnd = (1 - hold) * 0.45;
+      const openStart = closeEnd + hold;
+      let cover;                        // 0=全開 / 1=全閉
+      if (p < closeEnd) cover = easeOutCubic(clamp01(p / closeEnd));
+      else if (p < openStart) cover = 1;
+      else cover = 1 - easeOutCubic(clamp01((p - openStart) / Math.max(0.05, 1 - openStart)));
+
+      ctx.save();
+
+      // ── 上下のシャッター板(ルーバーの横筋つき)──
+      const drawPanel = (y0, y1) => {
+        if (y1 - y0 <= 0) return;
+        const g = ctx.createLinearGradient(0, y0, 0, y1);
+        g.addColorStop(0, '#1a2740');
+        g.addColorStop(0.5, '#2b3c5c');
+        g.addColorStop(1, '#14203a');
+        ctx.fillStyle = g;
+        ctx.fillRect(0, y0, w, y1 - y0);
+        ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+        ctx.lineWidth = 1;
+        for (let y = y0 + 6; y < y1; y += 9) {
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          ctx.lineTo(w, y);
+          ctx.stroke();
+        }
+      };
+      drawPanel(top, top + half * cover);
+      drawPanel(bottom - half * cover, bottom);
+
+      // ── 合わせ目の光の線 ──
+      if (cover > 0.02 && cover < 0.999) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        const gy = ctx.createLinearGradient(0, mid - 14, 0, mid + 14);
+        gy.addColorStop(0, 'rgba(124,243,255,0)');
+        gy.addColorStop(0.5, color);
+        gy.addColorStop(1, 'rgba(124,243,255,0)');
+        ctx.globalAlpha = 0.55;
+        ctx.fillStyle = gy;
+        ctx.fillRect(0, mid - 14, w, 28);
+        ctx.restore();
+      }
+
+      // ── 閉じている間の表示(何が起きているかだけ伝える)──
+      if (cover >= 0.995) {
+        const blink = 0.6 + 0.4 * Math.sin(p * Math.PI * 12);
+        ctx.globalAlpha = blink;
+        strokedText(ctx, label, w / 2, mid - 10, { size: 20, color, edge: 'rgba(0,10,30,0.9)' });
+        ctx.globalAlpha = 1;
+        strokedText(ctx, 'SWITCHING…', w / 2, mid + 16, {
+          size: 11, color: 'rgba(232,241,255,0.85)', edge: 'rgba(0,10,30,0.9)', heavy: false,
+        });
+      }
+
+      // ── 開いたあとの文言(シャッターの裏で切り替わっていた)──
+      if (p > openStart && cover < 0.6) {
+        ctx.globalAlpha = clamp01((0.6 - cover) / 0.6);
+        strokedText(ctx, after, w / 2, mid - 46, { size: 17, color, edge: 'rgba(0,10,30,0.9)' });
+      }
+
       ctx.restore();
     },
   },

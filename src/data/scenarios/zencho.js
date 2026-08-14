@@ -16,6 +16,22 @@
  *   left / total を画面へ出すと前兆の長さが割れる。
  *   「5G目まで伸びたら本前兆確定」という期待度設計が成立しなくなるため、
  *   テロップに出してよいのは step / level だけ。
+ *
+ * ══ 色のルール(2026-08-14 ユーザー指摘 U9)═══════════════════════════
+ *
+ * 「スイカ(S3)対応の予兆は緑、チェリー(IAM)対応は赤」という要望と、
+ * 既存の「赤文字予兆 = 信頼度85%」がどちらも赤を使うので、**レイヤーを分けて**両立させる。
+ * 定義の本体は data/zencho.js の ZENCHO_TEXT_COLORS(このファイルは import を書けないので値は直書き)。
+ *
+ *   信頼度示唆 … tone:'hot' + color:'#ff3b30'
+ *                 帯の下敷きごと赤くなり、文字が一段大きく脈打つ = 「赤帯」
+ *                 これが付くのは strength 2以上 かつ step 2以降の予兆だけ(zn_hot_*)
+ *   対応役示唆 … tone なし。文字色だけで示す = 「文字だけ色付き」
+ *                 緑 #4ce0a0 … スイカ(S3)対応 / 赤 #ff4d4d … チェリー(IAM)対応
+ *                 青 #8ad4ff・金 #ffd166 … 対応役なし(汎用の弱・中)
+ *
+ * 【厳守】役対応色は tone:'hot' と併用しない。逆に tone:'hot' の color は必ず #ff3b30。
+ *         こうしておけば「脈打つ赤帯 = 信頼度」「文字だけ赤 = IAM対応」で必ず読み分けられる。
  */
 
 export default [
@@ -130,6 +146,107 @@ export default [
       { at: 300, layer: 'lcd',     action: 'text',
         params: { text: 'FINDING ×${step}', sub: 'GuardDuty: UnauthorizedAccess', color: '#ff9f43', ms: 1200 } },
       { at: 820, layer: 'overlay', action: 'flash', params: { color: '#ff9f43', ms: 160 } },
+    ],
+  },
+
+  /* ── 2026-08-14 追加の演出パターン ────────────────────────────────
+   *
+   * 前兆の "絵の種類" を増やして被りを減らすための追加分。
+   * **前兆の発生回数は増えない**(総量は data/zencho.js の ZENCHO.fake.denom が握っており、
+   * U5 対応で 1/40 → 1/90 へ絞ってある)。ここは「出たときに何が見えるか」の話。
+   * 新規アニメは足さず、既存資産(cw_meter_swing / sqs_queue_hold / step_up /
+   * bedrock_typing / guardduty_alert / cloudtrail_root_login / stream / spark)で組む。
+   */
+
+  {
+    id: 'zn_bill_shock',
+    name: '【前兆・弱】請求アラートが急上昇していく',
+    when: { event: 'paramChange', mode: ['FREE_TIER'], match: { param: ['zencho'], pattern: ['bill_shock'] } },
+    weight: { FREE_TIER: 100, default: 0 },
+    duration: 1800,
+    cues: [
+      { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'alarm_beep', gain: 0.6 } },
+      // メーターが振り切れていく = 請求額のグラフ。
+      // 針が振り切れるのは「金額が上がった」以上の意味を持たない(当落は断言しない)
+      // label を省くと既定の 'CPU UTIL' が出て請求の話にならない(2026-08-15 検証指摘)。
+      // EstimatedCharges は CloudWatch の請求メトリクスの実名
+      { at: 40,  layer: 'lcd', action: 'anim',
+        params: { anim: 'cw_meter_swing', to: 0.92, over: true, ms: 1600, label: 'EST. CHARGES' } },
+      { at: 260, layer: 'lcd', action: 'particles', params: { preset: 'spark', x: 330, y: 120, count: 8 } },
+      // U9: 対応役なし(汎用の中)なので金
+      { at: 320, layer: 'lcd', action: 'text',
+        params: { text: 'BILLING +${step}00%', sub: '今月の請求額が跳ね上がっている', color: '#ffd166', ms: 1100 } },
+    ],
+  },
+
+  {
+    id: 'zn_glacier_restore',
+    name: '【前兆・弱】Glacier からの復元を待っている',
+    when: { event: 'paramChange', mode: ['FREE_TIER'], match: { param: ['zencho'], pattern: ['glacier_restore'] } },
+    weight: { FREE_TIER: 100, default: 0 },
+    duration: 1900,
+    cues: [
+      { at: 0,   layer: 'sfx',  action: 'synth', params: { preset: 'stream_flow', gain: 0.6 } },
+      // 復元の進捗バー。result を渡さない = 'run'(進行中)なので結論は出ない
+      { at: 40,  layer: 'lcd',  action: 'anim',  params: { anim: 'deploy_progress', stage: '$level', ms: 1700 } },
+      { at: 200, layer: 'lcd',  action: 'particles', params: { preset: 'stream', x: 120, y: 150, count: 10 } },
+      // U9: S3(スイカ)対応の示唆なので緑。tone は付けない
+      { at: 300, layer: 'lcd',  action: 'text',
+        params: { text: 'RESTORE ${step}/5', sub: 'Glacier からの復元が進んでいる', color: '#4ce0a0', ms: 1200 } },
+      { at: 340, layer: 'char', action: 'show', params: { char: 'kiro', pose: 'normal' } },
+    ],
+  },
+
+  {
+    id: 'zn_lambda_coldstart',
+    name: '【前兆・弱】コールドスタートで待たされているだけ',
+    // ガセ寄りの枠。何も起きないまま引っ張るのがこのパターンの役目なので、
+    // 派手なキューは置かず「待たされている」以上のことは言わない
+    when: { event: 'paramChange', mode: ['FREE_TIER'], match: { param: ['zencho'], pattern: ['lambda_coldstart'] } },
+    weight: { FREE_TIER: 100, default: 0 },
+    duration: 1500,
+    cues: [
+      { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick', gain: 0.5 } },
+      { at: 40,  layer: 'lcd', action: 'anim',  params: { anim: 'step_up', step: '$level' } },
+      { at: 240, layer: 'lcd', action: 'text',
+        params: { text: 'INIT… ${step}', sub: 'コールドスタートで少し待たされている', color: '#8ad4ff', ms: 1000 } },
+    ],
+  },
+
+  {
+    id: 'zn_chatops_incident',
+    name: '【前兆・中】Slack に #incident チャンネルが立つ',
+    when: { event: 'paramChange', mode: ['FREE_TIER'], match: { param: ['zencho'], pattern: ['chatops_incident'] } },
+    weight: { FREE_TIER: 100, default: 0 },
+    duration: 2100,
+    cues: [
+      { at: 0,   layer: 'sfx',  action: 'synth', params: { preset: 'announce' } },
+      { at: 0,   layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
+      // 書き込みが積み上がっていく画。SQS の保留カードを Slack のメッセージに見立てる
+      { at: 60,  layer: 'lcd',  action: 'anim',
+        params: { anim: 'sqs_queue_hold', count: '$step', level: '$level', x: 12, baseY: 150 } },
+      { at: 240, layer: 'char', action: 'show', params: { char: 'kiro', pose: 'surprised' } },
+      { at: 320, layer: 'lcd',  action: 'text',
+        params: { text: '#incident (${step})', sub: '対応メンバーが集まってきた', color: '#ffd166', ms: 1200 } },
+      { at: 1800, layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'normal' } },
+    ],
+  },
+
+  {
+    id: 'zn_region_evacuation',
+    name: '【前兆・強】別リージョンへの退避が始まる(強度3専用)',
+    when: { event: 'paramChange', mode: ['FREE_TIER'], match: { param: ['zencho'], pattern: ['region_evacuation'] } },
+    weight: { FREE_TIER: 100, default: 0 },
+    duration: 2300,
+    cues: [
+      { at: 0,    layer: 'sfx',     action: 'synth', params: { preset: 'region_light' } },
+      { at: 0,    layer: 'lamp',    action: 'pattern', params: { pattern: 'rare' } },
+      { at: 60,   layer: 'lcd',     action: 'particles', params: { preset: 'stream', x: 90, y: 130, count: 14 } },
+      { at: 200,  layer: 'lcd',     action: 'anim',  params: { anim: 'step_up', step: '$level' } },
+      { at: 300,  layer: 'lcd',     action: 'text',
+        params: { text: 'EVACUATING ${step}', sub: '別リージョンへ退避を始めた', color: '#ffd166', ms: 1300 } },
+      { at: 360,  layer: 'char',    action: 'show', params: { char: 'kiro', pose: 'panic' } },
+      { at: 1900, layer: 'char',    action: 'pose', params: { char: 'kiro', pose: 'surprised' } },
     ],
   },
 
@@ -543,6 +660,171 @@ export default [
     ],
   },
 
+  /* ── CodePipeline 擬似連(2026-08-14 追加)──────────────────────────
+   *
+   * ゲームロジックからのイベント契約:
+   *   paramChange { param:'codepipeline', step:1..4, stage:'Source'|'Build'|'Test'|'Deploy',
+   *                 result:null|'cz'|'bonus'|'miss' }
+   *
+   * DeepRacer 擬似連(dr_pseudo_*)と同じ骨格。param を分けてあるので絵を取り違えない。
+   * **擬似連の総発生量は据え置き**(data/zencho.js で DeepRacer と weight を分け合っている)。
+   *
+   * ■ 整合の担保(dr_pseudo_* と同じ)
+   *   step だけのイベント(result:null)は結論を出さない。進捗バーとステージ名だけ。
+   *   突入・確定の画は result が来たときにしか出さない。
+   */
+  {
+    id: 'cp_pseudo_step1',
+    name: 'CodePipeline擬似連 1回目(Source を取得)',
+    when: {
+      event: 'paramChange', mode: ['FREE_TIER'],
+      match: { param: ['codepipeline'], step: [1], result: [null] },
+    },
+    weight: { FREE_TIER: 2000, default: 0 },
+    duration: 2200,
+    cues: [
+      { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'ui_select' } },
+      { at: 60,  layer: 'lcd', action: 'anim',
+        params: { anim: 'deploy_progress', stage: 1, ms: 2000 } },
+      { at: 300, layer: 'lcd', action: 'text',
+        params: { text: 'STAGE: ${stage}', sub: 'ソースを取得した', color: '#8ad4ff', ms: 1000 } },
+    ],
+  },
+  {
+    id: 'cp_pseudo_step2',
+    name: 'CodePipeline擬似連 ×2(Build が走り出す)',
+    when: {
+      event: 'paramChange', mode: ['FREE_TIER'],
+      match: { param: ['codepipeline'], step: [2], result: [null] },
+    },
+    weight: { FREE_TIER: 2000, default: 0 },
+    duration: 2400,
+    cues: [
+      { at: 0,    layer: 'sfx',     action: 'synth', params: { preset: 'charge_up' } },
+      { at: 0,    layer: 'overlay', action: 'flash', params: { color: '#8ad4ff', ms: 180 } },
+      { at: 60,   layer: 'lcd',     action: 'anim',
+        params: { anim: 'deploy_progress', stage: 2, ms: 2200 } },
+      { at: 1100, layer: 'lcd',     action: 'text',
+        params: { text: 'STAGE: ${stage}', sub: 'ビルドが走り出した', color: '#7bf7d0', ms: 1000 } },
+    ],
+  },
+  {
+    id: 'cp_pseudo_step3',
+    name: 'CodePipeline擬似連 ×3(Test 通過。移行抽選の緊張感)',
+    when: {
+      event: 'paramChange', mode: ['FREE_TIER'],
+      match: { param: ['codepipeline'], step: [3], result: [null] },
+    },
+    weight: { FREE_TIER: 2000, default: 0 },
+    duration: 2600,
+    cues: [
+      { at: 0,    layer: 'sfx',     action: 'synth', params: { preset: 'charge_up' } },
+      { at: 0,    layer: 'lamp',    action: 'pattern', params: { pattern: 'rare' } },
+      { at: 0,    layer: 'overlay', action: 'flash', params: { color: '#ffd166', ms: 220 } },
+      { at: 60,   layer: 'lcd',     action: 'anim',
+        params: { anim: 'deploy_progress', stage: 3, ms: 2400 } },
+      { at: 900,  layer: 'char',    action: 'show', params: { char: 'kiro', pose: 'surprised' } },
+      { at: 1400, layer: 'sfx',     action: 'synth', params: { preset: 'countdown_tick' } },
+      { at: 1500, layer: 'lcd',     action: 'text',
+        params: { text: 'STAGE: ${stage}', sub: 'テストを通過した', color: '#ffd166', ms: 1100 } },
+    ],
+  },
+  {
+    id: 'cp_pseudo_step4',
+    name: 'CodePipeline擬似連 ×4(Deploy へ到達。激アツ)',
+    when: {
+      event: 'paramChange', mode: ['FREE_TIER'],
+      match: { param: ['codepipeline'], step: [4], result: [null] },
+    },
+    weight: { FREE_TIER: 2000, default: 0 },
+    duration: 3200,
+    cues: [
+      { at: 0,    layer: 'sfx',     action: 'synth', params: { preset: 'freeze_hit' } },
+      { at: 0,    layer: 'lamp',    action: 'pattern', params: { pattern: 'bonus' } },
+      { at: 0,    layer: 'overlay', action: 'flash', params: { color: '#ffffff', ms: 320 } },
+      { at: 20,   layer: 'overlay', action: 'shake', params: { power: 18, ms: 620 } },
+      { at: 60,   layer: 'lcd',     action: 'anim',
+        params: { anim: 'deploy_progress', from: 0.86, to: 0.97, ms: 3000 } },
+      { at: 700,  layer: 'sfx',     action: 'synth', params: { preset: 'charge_up' } },
+      { at: 900,  layer: 'char',    action: 'show',   params: { char: 'kiro', pose: 'premium' } },
+      { at: 940,  layer: 'char',    action: 'motion', params: { char: 'kiro', motion: 'zoom' } },
+      { at: 1200, layer: 'overlay', action: 'particles', params: { preset: 'rainbow', x: 360, y: 380, count: 26 } },
+      // 結論は出さない。「本番反映の直前まで来た」画までで、当落は result 側が告げる
+      { at: 1600, layer: 'lcd',     action: 'text',
+        params: { text: 'STAGE: ${stage}', sub: '本番環境へ流れ込む', color: '#ffe066', ms: 1400 } },
+    ],
+  },
+
+  {
+    id: 'cp_pseudo_result_cz',
+    name: 'CodePipeline擬似連 → CZ突入【result:cz のときだけ】',
+    when: {
+      event: 'paramChange', mode: ['FREE_TIER'],
+      match: { param: ['codepipeline'], result: ['cz'] },
+    },
+    weight: { FREE_TIER: 3000, default: 0 },
+    duration: 3000,
+    cues: [
+      { at: 0,    layer: 'sfx',     action: 'synth', params: { preset: 'charge_up' } },
+      { at: 0,    layer: 'lamp',    action: 'pattern', params: { pattern: 'rare' } },
+      { at: 60,   layer: 'lcd',     action: 'anim',
+        params: { anim: 'deploy_progress', stage: 3, ms: 2200 } },
+      { at: 900,  layer: 'overlay', action: 'flash', params: { color: '#7bf7d0', ms: 300 } },
+      { at: 920,  layer: 'overlay', action: 'shake', params: { power: 12, ms: 420 } },
+      { at: 960,  layer: 'sfx',     action: 'synth', params: { preset: 'upgrade_chime' } },
+      { at: 1000, layer: 'char',    action: 'show', params: { char: 'kiro', pose: 'happy' } },
+      // 「突入」を含むので可読性エンジンが自動で sticky にする
+      { at: 1060, layer: 'lcd',     action: 'text',
+        params: { text: 'TEST 全通過 — CZ突入', sub: 'デプロイ承認が下りた', color: '#7bf7d0', ms: 1900 } },
+      { at: 1300, layer: 'sfx',     action: 'synth', params: { preset: 'fanfare_reg' } },
+    ],
+  },
+  {
+    id: 'cp_pseudo_result_bonus',
+    name: 'CodePipeline擬似連 → ボーナス確定【result:bonus のときだけ】',
+    when: {
+      event: 'paramChange', mode: ['FREE_TIER'],
+      match: { param: ['codepipeline'], result: ['bonus'] },
+    },
+    weight: { FREE_TIER: 3000, default: 0 },
+    duration: 3400,
+    cues: [
+      { at: 0,    layer: 'sfx',     action: 'synth', params: { preset: 'freeze_hit' } },
+      { at: 0,    layer: 'lamp',    action: 'pattern', params: { pattern: 'bonus' } },
+      { at: 0,    layer: 'overlay', action: 'flash', params: { color: '#ffffff', ms: 380 } },
+      { at: 20,   layer: 'overlay', action: 'shake', params: { power: 20, ms: 700 } },
+      { at: 60,   layer: 'lcd',     action: 'anim',
+        params: { anim: 'deploy_progress', from: 0.62, result: 'success', ms: 2600 } },
+      { at: 900,  layer: 'sfx',     action: 'synth', params: { preset: 'fanfare_big' } },
+      { at: 940,  layer: 'char',    action: 'show',   params: { char: 'kiro', pose: 'premium' } },
+      { at: 980,  layer: 'char',    action: 'motion', params: { char: 'kiro', motion: 'zoom' } },
+      // 「確定」を含むので可読性エンジンが自動で sticky にする
+      { at: 1060, layer: 'lcd',     action: 'text',
+        params: { text: 'BONUS 確定!!', sub: '本番環境へデプロイ完了', color: '#ffe066', ms: 2200 } },
+      { at: 1400, layer: 'overlay', action: 'particles', params: { preset: 'rainbow', x: 360, y: 400, count: 34 } },
+    ],
+  },
+  {
+    id: 'cp_pseudo_result_miss',
+    name: '【ガセ】CodePipeline擬似連 ロールバック【result:miss のときだけ】',
+    // 非当選が確定したイベントでしか来ない。ここからCZ/ボーナスへ向かう経路は無い
+    when: {
+      event: 'paramChange', mode: ['FREE_TIER'],
+      match: { param: ['codepipeline'], result: ['miss'] },
+    },
+    weight: { FREE_TIER: 3000, default: 0 },
+    duration: 2200,
+    cues: [
+      { at: 0,    layer: 'lcd',  action: 'anim',
+        params: { anim: 'deploy_progress', result: 'rollback', ms: 1800 } },
+      { at: 800,  layer: 'sfx',  action: 'synth', params: { preset: 'error_buzz', gain: 0.6 } },
+      { at: 860,  layer: 'char', action: 'show', params: { char: 'kiro', pose: 'normal' } },
+      { at: 900,  layer: 'lcd',  action: 'text',
+        params: { text: 'ROLLBACK', sub: 'デプロイは巻き戻された…', color: '#8aa0b4', ms: 1200 } },
+      { at: 1200, layer: 'lamp', action: 'pattern', params: { pattern: 'idle' } },
+    ],
+  },
+
   /* ── SQS キュー滞留の結末(当落連動)──────────────────────────────
    *
    * ユーザー仕様(2026-08-13):
@@ -682,6 +964,38 @@ export default [
       { at: 180, layer: 'lcd',     action: 'anim',  params: { anim: 'lcd_flash', color: '#ff3b30', strength: 0.6 } },
       { at: 300, layer: 'lcd',     action: 'text',
         params: { text: 'FINDING ×${step}', sub: '検知が止まらない', tone: 'hot', color: '#ff3b30', ms: 1300 } },
+    ],
+  },
+  {
+    id: 'zn_hot_region_evacuation',
+    name: '【赤】退避先リージョンが次々に切り替わる(強度3専用)',
+    /*
+     * 2026-08-14 追加。region_evacuation は minStrength:3 なので、
+     * このシナリオは **必ず強度3のときにしか出ない**(= 既存の赤より一段信頼できる)。
+     *
+     * 【赤を増やしたぶんの手当て】
+     * 赤を1本足すと「赤 = 確定」へ寄る。裏切り枠(構造的に必ず空振りする赤)を
+     * 同じだけ増やして相殺している。既存の裏切り枠 yh_hot_false_alarm は
+     * 別担当のファイル(yokoku-heavy.js)なので触らず、
+     * data/scenarios/yokoku-wind.js に yw_hot_false_evacuation を新設した。
+     * 実測での最終調整はバランス担当へ申し送り。
+     */
+    when: {
+      event: 'paramChange', mode: ['FREE_TIER'],
+      match: { param: ['zencho'], pattern: ['region_evacuation'], strength: [2, 3], step: [2, 3, 4, 5] },
+    },
+    weight: { FREE_TIER: 900, default: 0 },
+    duration: 2200,
+    cues: [
+      { at: 0,   layer: 'sfx',     action: 'synth', params: { preset: 'region_light' } },
+      { at: 0,   layer: 'lamp',    action: 'pattern', params: { pattern: 'rare' } },
+      { at: 60,  layer: 'overlay', action: 'flash', params: { color: '#ff3b30', ms: 220 } },
+      { at: 100, layer: 'lcd',     action: 'particles', params: { preset: 'stream', x: 90, y: 130, count: 18 } },
+      { at: 200, layer: 'lcd',     action: 'anim',  params: { anim: 'step_up', step: '$level' } },
+      // 信頼度示唆の赤。tone:'hot' + #ff3b30 のセットで「赤帯」になる(U9 の色ルール)
+      { at: 300, layer: 'lcd',     action: 'text',
+        params: { text: 'EVACUATE ×${step}', sub: '退避先が次々に切り替わる', tone: 'hot', color: '#ff3b30', ms: 1400 } },
+      { at: 360, layer: 'char',    action: 'show', params: { char: 'kiro', pose: 'panic' } },
     ],
   },
   {

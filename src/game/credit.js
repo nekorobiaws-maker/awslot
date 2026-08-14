@@ -19,7 +19,7 @@ export class Credit {
     this._frac = 0;        // 小数払出の端数キャリー
   }
 
-  /** 差枚(出玉)。50回転スコアアタックではこれがそのままスコアになる */
+  /** 差枚(出玉)。100回転スコアアタックではこれがそのままスコアになる */
   get diff() {
     return this.totalOut - this.totalIn;
   }

@@ -10,6 +10,7 @@
 
 import { uiAssets, loadUiAssets } from '../engine/assets.js';
 import { setLayerViews } from '../engine/layers.js';
+import { isRushMode } from '../data/rushes.js';
 
 /** 角丸矩形パス(ctx.roundRect が無い環境でも動くように自前で持つ) */
 function roundRect(ctx, x, y, w, h, r) {
@@ -68,8 +69,8 @@ const CABINET_BANDS = [
  * cabinet2.png(1086×1448)用のバンド表。
  *
  * 新しい絵は
- *   - 上部にAWSLOTのネオンタイトルが描き込み済み(logo_band は使わない)
- *   - 下部の幽霊パネルも描き込み済み(bottom_panel も使わない)
+ *   - 上部にJAWSLOTのネオンタイトルが描き込み済み(logo_band は使わない)
+ *   - 下部の回路パネルも描き込み済み(bottom_panel も使わない)
  *   - リール窓が独立3窓、レバーは右側
  * という構成。横は 0.76倍の等倍(src x=541 が論理x=360)で載せている。
  * 0.76 は「リール窓の開口(src 307..775)が論理360pxに合う」ことと
@@ -79,10 +80,10 @@ const CABINET_BANDS = [
  * Canvas 側は setLayerViews() で窓へぴったり載せるので、窓の比が
  * 論理比(液晶 440:300 / リール 360:180)と一致していれば表示は無歪みになる。
  * 逆算すると
- *   液晶窓: 幅500.1 → 高さ341 が要る → 縦0.836(元絵の液晶は横長なので縦に伸ばす)
+ *   液晶窓: 幅500.1 → 高さ341 が要る → 縦0.808(元絵の液晶は横長なので縦に詰める)
  *   リール窓: 幅355.7 → 高さ177.8 が要る → 縦0.823
- * 伸ばす帯はどちらも「Canvasで隠れる窓の中」と「側面のLED帯・ベゼル」なので、
- * 幽霊・サメ・レバー球・MAX BET・赤ボタン・下部パネルは全部 0.76 の等倍のまま。
+ * 伸縮する帯はどちらも「Canvasで隠れる窓の中」と「側面のLED帯・ベゼル」なので、
+ * サメ・レバー球・MAX BET・赤ボタン・下部パネルは全部 0.76 の等倍のまま。
  *
  * 2026-08-13 修正: 以前は冠の上端が論理y=-26.4から始まっており、
  * 上端26.4px分がCanvas(0〜1080)の外に出て頭が切れて見えていた
@@ -100,13 +101,39 @@ const CABINET_BANDS = [
  *   - DOMヒットエリア(style.css の #cabinet.art-cabinet2 各 top 値): 手動で
  *     +26.4pxしてある(台座帯には操作系が無いので対象外)
  * 詳細は assets/ui/README.md の座組み表を参照。
+ *
+ * 2026-08-14 再キャリブレーション(SUMMIT / INVENT METER 入りの正アートへ差し替え):
+ * 絵をピクセル走査で測り直したところ、**リールと操作デッキは元絵の座標が
+ * 1px も動いていなかった**。
+ *   リール開口 x307.5..774.5 / y659.5..869.5(3窓の内訳は
+ *              R1 307.5..443.5 / R2 473.5..609.5 / R3 639..774.5)
+ *   デッキの黒い凹み y888..965
+ *   停止ボタン中心 src(437.5, 1025.5) (539.5, 1025.5) (640.5, 1025.5)
+ *   MAX BET のキャップ x295..380 / y905..950、右レバー球 中心≒(985, 875)、
+ *   左の黒球ノブ 中心≒(230, 1022)、下部の波パネル x150..930 / y1070..1290
+ * つまりリール帯以降の帯と style.css の DOM ヒットエリアは変更不要。
+ *
+ * 変わったのは液晶の開口だけで、**x216..872 / y176..580**(前アートは
+ * y169..592 まで絵が続いていた)。下端が12px上がり上端が7px下がっている。
+ * 液晶帯だけを開口に合わせて引き直し、リール帯の始まり dst=506.64 は据え置いた。
+ * 新しい配分は
+ *   - 冠帯を [30,170]→[30,174] へ伸ばす(縦倍率は 0.76 の等倍のまま。
+ *     JAWSLOTタイトルの歪みも上端の見切れも起きない)
+ *   - 液晶帯を **液晶窓とまったく同じ src[174,582] で切る**。こうすると
+ *     窓の表示矩形 = 帯の表示矩形になり、比の計算が一段で済む
+ *     (幅 660×0.76=501.6 に対し高さ342.0 → 501.6:342.0 = 440:300 で誤差0)
+ *   - はみ出した分は金属帯(液晶下のベゼルと水平の梁だけ)が吸収する。
+ *     縦倍率 0.746 は等倍0.76とほぼ同じなので、むしろ前より素直になった
+ * 結果、下流(リール窓・操作デッキ・台座)の dst は据え置きのまま、
+ * 液晶だけが正しい開口へ収まる。side LED帯(style.css の .lamp top:110.4px)も
+ * 逆算すると src y≒175 で従来と同じ位置を指すので追従不要。
  */
 const CABINET2_BANDS = [
-  [30, 170, 0, 106.4],           // 冠 + AWSLOTタイトル(等倍0.76。全体を表示)
-  [170, 578, 106.4, 447.36],     // 液晶窓 → Canvas #lcd(縦0.836)
-  [578, 656, 447.36, 506.64],    // 液晶とリールの間の金属帯(等倍0.76)
+  [30, 174, 0, 109.44],          // 冠 + JAWSLOTタイトル(等倍0.76。全体を表示)
+  [174, 582, 109.44, 451.44],    // 液晶窓 → Canvas #lcd(縦0.8382。帯=窓)
+  [582, 656, 451.44, 506.64],    // 液晶とリールの間の金属帯(縦0.746)
   [656, 872, 506.64, 684.48],    // リール窓 → Canvas #reels(縦0.823)
-  [872, 1290, 684.48, 1002.16],  // 操作デッキ + 下部の幽霊パネル(等倍0.76)
+  [872, 1290, 684.48, 1002.16],  // 操作デッキ + 下部の波パネル(等倍0.76)
   [1290, 1448, 1002.16, 1080],   // 台座(平坦なので詰める。縦倍率0.493まで圧縮)
 ];
 
@@ -119,12 +146,110 @@ const CABINET2_BANDS = [
  * つながって1枚の大きな黒面に見え、リール窓の上枠が消えてしまう。
  * デッキの凹みなら実機のクレジット表示と同じ位置関係になる。
  * 高さは 360:60 の比になるよう凹みの上下へわずかにはみ出させている。
+ *
+ * 2026-08-14 再キャリブレーションの実測値(SUMMIT / INVENT METER 入りの正アート):
+ *   液晶  開口 x216..872 / y176..580 → 窓は x214..874 / y174..582
+ *         (開口の2px外側。そこは元絵でも黒縁なので、はみ出しても黒が黒になるだけ。
+ *          逆に開口より内側に取ると端数の丸めでサメの絵が1px覗く)
+ *   リール開口 x307.5..774.5 / y659.5..869.5 → 窓は x307..775 / y656..872
+ *         (前アートから 0px 変わっていないので据え置き)
+ *   HUD   デッキの黒い凹み y888..965 の内側(こちらも位置は据え置き)
+ *
+ * リール窓の左右にある **SUMMITパネル(x150..295)と INVENT METER(x810..900)** は
+ * 窓 x307..775 の外なので Canvas に隠れない。HUD窓(x405..775 / y900.5..962.2)も
+ * 両パネルの下端 y≒890 より下なので干渉しない。
  */
 const CABINET2_WINDOWS = {
-  lcd:   { x0: 214, y0: 170,   x1: 872, y1: 578 },
+  lcd:   { x0: 214, y0: 174,   x1: 874, y1: 582 },
   reels: { x0: 307, y0: 656,   x1: 775, y1: 872 },
   hud:   { x0: 405, y0: 900.5, x1: 775, y1: 962.2 },
 };
+
+/**
+ * cabinet2.png のグリーンバック(緑一色の背景)を抜くためのしきい値。
+ *
+ * 2026-08-14 に差し替わった新アートは筐体の周りが緑一色になっている。
+ * そのまま論理720×1080へ載せると、筐体の左右(論理x 0..35 と 718..720)と
+ * 足元・レバーの隙間に緑が出てしまうので、読み込み後に一度だけ走査して
+ * 緑を透明化する(下に敷いてある body の暗い背景がそのまま見える)。
+ *
+ * 判定は「緑度 = G - max(R, B)」。紫・オレンジ・クロムでできた筐体には
+ * 緑度が正の画素がほとんど無いので、単純なしきい値で狙い撃ちできる。
+ *   hard 以上         → 完全に透明
+ *   soft 〜 hard      → 緑の混ざり具合に応じて半透明(輪郭のアンチエイリアス)
+ *   minG 未満(暗い)  → 触らない(黒い影は筐体側なので残す)
+ * 半透明にした画素は G を max(R,B)+spill で頭打ちにして、緑かぶり(スピル)で
+ * 輪郭が緑くにじむのを防ぐ。
+ *
+ * keep は「元絵の緑を残す矩形」の配列。走査そのものを飛ばすので、
+ * レバーと筐体の隙間のような「背景とつながっていない緑」まで抜ける代わりに、
+ * 絵として描かれた緑は明示的に守る必要がある。守っているのは2か所:
+ *   1. 液晶(サメの周りの緑のAWSアイコン)。矩形は液晶窓そのものを使う
+ *   2. INVENT METER の緑セグメント(実測 x838..879 / y857..879。
+ *      アンチエイリアスまで含めると x838..880 / y841..881)。
+ *      2026-08-14 のアート差し替えで新しく増えた緑で、守らないと
+ *      メーターの下3目盛りが四角く抜け落ちる
+ * 逆に keep 矩形の中に「抜きたい背景の緑」が入らないことも確認済み
+ * (どちらの矩形も筐体の内側で、背景の緑とは接していない)。
+ */
+const CABINET2_CHROMA = {
+  hard: 40,
+  soft: 6,
+  minG: 12,
+  spill: 6,
+  keep: [
+    CABINET2_WINDOWS.lcd,
+    { x0: 832, y0: 836, x1: 886, y1: 886 },
+  ],
+};
+
+/**
+ * グリーンバックの緑を透明にする(ImageData を直接書き換える)。
+ * @param {ImageData} image
+ * @param {typeof CABINET2_CHROMA} opt
+ * @returns {number} 完全に透明化した画素数(緑背景でなければ 0 近くになる)
+ */
+function keyOutGreen(image, opt) {
+  const { width: w, height: h, data: px } = image;
+  // keep は矩形1つでも配列でも受ける(将来また守る場所が増えたとき用)
+  const keeps = !opt.keep ? [] : Array.isArray(opt.keep) ? opt.keep : [opt.keep];
+  const span = Math.max(1, opt.hard - opt.soft);
+  /** この行に掛かる keep 矩形だけを入れておく作業用配列(毎行使い回す) */
+  const rowKeeps = [];
+  let cleared = 0;
+  for (let y = 0; y < h; y++) {
+    rowKeeps.length = 0;
+    for (const k of keeps) if (y >= k.y0 && y < k.y1) rowKeeps.push(k);
+    for (let x = 0; x < w; x++) {
+      let keep = false;
+      for (const k of rowKeeps) {
+        if (x >= k.x0 && x < k.x1) { keep = true; break; }
+      }
+      if (keep) continue;
+      const o = (y * w + x) << 2;
+      const g = px[o + 1];
+      if (g < opt.minG) continue;
+      const r = px[o];
+      const b = px[o + 2];
+      const max = r > b ? r : b;
+      const green = g - max;
+      if (green <= opt.soft) continue;
+      if (green >= opt.hard) {
+        px[o] = 0;
+        px[o + 1] = 0;
+        px[o + 2] = 0;
+        px[o + 3] = 0;
+        cleared++;
+        continue;
+      }
+      const a = Math.round((255 * (opt.hard - green)) / span);
+      if (a < px[o + 3]) px[o + 3] = a;
+      const cap = max + opt.spill;
+      if (g > cap) px[o + 1] = cap;
+    }
+  }
+  return cleared;
+}
 
 /**
  * 筐体アートごとの座組み。
@@ -141,8 +266,10 @@ const CABINET_ARTS = [
     bands: CABINET2_BANDS,
     /** Canvas を載せる窓(元絵px)。setLayerViews() で表示矩形へ変換して渡す */
     windows: CABINET2_WINDOWS,
-    /** 元絵に描かれた液晶(BIG BONUS)を黒で潰す。窓と同じ矩形 */
+    /** 元絵に描かれた液晶(サメのアート)を黒で潰す。窓と同じ矩形 */
     screenSrc: CABINET2_WINDOWS.lcd,
+    /** 背景がグリーンバックなので読み込み時に緑を抜く */
+    chroma: CABINET2_CHROMA,
     overlays: [],
   },
   {
@@ -156,6 +283,8 @@ const CABINET_ARTS = [
     // 旧筐体は engine/layers.js の既定位置に窓が合わせてあるので上書きしない
     windows: null,
     screenSrc: null,
+    // 旧筐体は背景が暗紫の1枚絵なので抜かない
+    chroma: null,
     // ロゴ帯(液晶とリールの間)と下部パネル(BIG BONUS)は別画像で重ねる
     overlays: [
       {
@@ -200,6 +329,8 @@ export class CabinetView {
     this.artDpr = 0;
     /** @type {object|null} 使用中の筐体アート定義 */
     this.art = null;
+    /** @type {CanvasImageSource|null} 実際に描く絵(グリーンバックを抜いた後のもの) */
+    this.artImage = null;
     this._onResize = this._onResize.bind(this);
 
     this._initArt();
@@ -274,6 +405,7 @@ export class CabinetView {
       const art = CABINET_ARTS.find((a) => uiAssets.has(a.id));
       if (!art) return;
       this.art = art;
+      this.artImage = this._prepareArtImage(art);
       this.root.classList.add('art-cabinet', art.className);
       for (const ov of art.overlays) {
         if (uiAssets.has(ov.id)) this.root.classList.add(ov.cls);
@@ -289,6 +421,40 @@ export class CabinetView {
     // DPRが変わったとき(別解像度のディスプレイへ移動など)だけ描き直す
     const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 3));
     if (Math.abs(dpr - this.artDpr) > 0.001) this.drawArt();
+  }
+
+  /**
+   * 筐体アートを「そのまま描ける絵」にして返す。
+   *
+   * cabinet2.png はグリーンバックなので、緑を抜いたオフスクリーンCanvasを
+   * ここで一度だけ作る(drawArt はDPR変更のたびに走るため、毎回走査すると重い)。
+   * getImageData が使えない環境や、緑がほとんど無い画像(将来の差し替えで
+   * 透過PNGになった場合など)では元の画像をそのまま返す。
+   * @param {object} art CABINET_ARTS の要素
+   * @returns {CanvasImageSource|null}
+   */
+  _prepareArtImage(art) {
+    const img = uiAssets.get(art.id);
+    if (!img || !art.chroma) return img;
+    const w = img.naturalWidth ?? img.width;
+    const h = img.naturalHeight ?? img.height;
+    if (!w || !h) return img;
+    try {
+      const off = document.createElement('canvas');
+      off.width = w;
+      off.height = h;
+      const ctx = off.getContext('2d', { willReadFrequently: true });
+      if (!ctx) return img;
+      ctx.drawImage(img, 0, 0);
+      const image = ctx.getImageData(0, 0, w, h);
+      // 面積の2%も抜けないなら「グリーンバックではない」とみなして元絵を使う
+      if (keyOutGreen(image, art.chroma) < w * h * 0.02) return img;
+      ctx.putImageData(image, 0, 0);
+      return off;
+    } catch (e) {
+      console.warn('[cabinet] 筐体アートの背景を抜けなかったので元画像で描画します', e);
+      return img;
+    }
   }
 
   /** 元絵のx座標 → 論理x */
@@ -330,7 +496,7 @@ export class CabinetView {
   drawArt() {
     const ctx = this.artCtx;
     const art = this.art;
-    const cab = art ? uiAssets.get(art.id) : null;
+    const cab = art ? (this.artImage ?? uiAssets.get(art.id)) : null;
     if (!ctx || !cab) return;
 
     const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 3));
@@ -362,9 +528,11 @@ export class CabinetView {
   }
 
   /**
-   * 元絵に描かれた液晶(BIG BONUS)を黒で潰す。
+   * 元絵に描かれた液晶(cabinet2 はサメのアート)を黒で潰す。
    * #lcd はこの窓へぴったり載せてあるので普段は見えないが、
    * 端数の丸めで1pxはみ出したときに元絵の絵柄が覗かないようにする保険。
+   * グリーンバックを抜いた画像では液晶内の緑アイコンを残してあるので、
+   * この黒塗りが「窓の中は必ず黒」を保証する役目も兼ねる。
    */
   _fillScreen(ctx) {
     const s = this.art.screenSrc;
@@ -398,7 +566,9 @@ export class CabinetView {
     if (modeId === 'BONUS' || modeId === 'BONUS_READY') {
       return this.setLampPattern(LAMP_PATTERNS.BONUS);
     }
-    if (modeId === 'AS_RUSH') return this.setLampPattern(LAMP_PATTERNS.RUSH);
+    // U11: RUSH 4種はすべて RUSH の電飾(ヒーローはボーナス電飾でさらに派手に)
+    if (modeId === 'HERO_RUSH') return this.setLampPattern(LAMP_PATTERNS.BONUS);
+    if (isRushMode(modeId)) return this.setLampPattern(LAMP_PATTERNS.RUSH);
     if (modeId === 'CZ') return this.setLampPattern(LAMP_PATTERNS.RARE);
     return this.setLampPattern(spinning ? LAMP_PATTERNS.SPIN : LAMP_PATTERNS.IDLE);
   }

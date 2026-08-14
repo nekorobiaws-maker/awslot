@@ -74,7 +74,9 @@ export const NORMAL_NET_PER_GAME = expectedPayoutPerGame('NORMAL') - BET_PER_GAM
 
 /**
  * ボーナス中の期待純増(枚/G)。
- * ベル約1/1.2 × 15枚 が効くので 9.7枚前後になる。
+ * ベル約1/1.4 × 15枚 が効くので **8.45枚前後**(U22 の前は 1/1.2 で 9.76枚)。
  * 買い取りではこの値に残ゲーム数を掛ける。
+ * ここは BONUS_FLAGS から毎回算出しているので、枚数を語る他所のコメントは
+ * この定数を参照して書くこと(数字の写しは陳腐化する)。
  */
 export const BONUS_NET_PER_GAME = expectedPayoutPerGame('BONUS') - BET_PER_GAME;

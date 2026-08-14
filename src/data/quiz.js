@@ -22,11 +22,33 @@
  */
 
 /**
- * 出題リスト(10問)。
+ * 出題リスト(46問)。
  *   q      … 問題文(液晶の横幅に収まるよう 16 文字以内を目安)
  *   answer … 正解のサービス名
  *   decoys … 誤答3つ。「機能が近い」「名前が紛らわしい」ものを混ぜて、
  *            知っていれば必ず解けるが、知らないと迷う難度にしてある
+ *
+ * ■ 出題を足すときの条件(U52a / 2026-08-15)
+ *   1. **正解が1つに定まること**。誤答が「言われてみればそれも正解」になる問題は作らない
+ *      (過去に container / mail の2問がこれで作り直しになっている。上のコメント参照)
+ *   2. **公式仕様として安定している事実だけ**を問う。
+ *      「いま一番安い」「最新世代は」のような時期で変わる論点、
+ *      提供終了・改名の途中にあるサービス(旧 Elastic Transcoder など)は避ける
+ *   3. 既存問題と **正解サービスも論点も** かぶらせない
+ *      (例: Shield=DDoS があるので WAF=L7攻撃 は入れない。裏返しの問題になるため)
+ *
+ * ■ 条件①③に自分で違反していた2問の修正(2026-08-15 検証指摘 F10 / F11)
+ *   egress … 「プライベートサブネットから外へ」は S3/DynamoDB 宛なら
+ *            VPC エンドポイントが正解になり、誤答側にも理があった(条件①)。
+ *            宛先をインターネットに限定して正解を1つに定めた。
+ *   ml     … SageMaker と Bedrock が互いの誤答に入る鏡写しのペアだった(条件③)。
+ *            SageMaker 固有の論点(統合開発環境)へずらして重なりを解いた。
+ *   **新しい問題を足すときは、既存の誤答リストまで見て裏返しになっていないか確認すること。**
+ *
+ * ■ 削除した問題(U46a / 2026-08-15)
+ *   satellite(人工衛星と通信したい → Ground Station)はユーザー指示で
+ *   「アンテナ・衛星ネタをやめる」ことになったため削除した。
+ *   同じ指示で data/scenarios/yokoku-infra.js の Ground Station 予告3本も外してある。
  */
 export const QUIZ_QUESTIONS = [
   {
@@ -150,12 +172,6 @@ export const QUIZ_QUESTIONS = [
     decoys: ['EC2', 'Batch', 'ParallelCluster'],
   },
   {
-    id: 'satellite',
-    q: '人工衛星と通信したい',
-    answer: 'Ground Station',
-    decoys: ['Direct Connect', 'Site-to-Site VPN', 'IoT Core'],
-  },
-  {
     id: 'kafka',
     // MQ は ActiveMQ / RabbitMQ 互換。Kafka 互換のマネージドは MSK
     q: 'Apache Kafka 互換のマネージド',
@@ -212,6 +228,192 @@ export const QUIZ_QUESTIONS = [
     q: '多数のVPCを一箇所で相互接続',
     answer: 'Transit Gateway',
     decoys: ['VPC Peering', 'Direct Connect', 'PrivateLink'],
+  },
+
+  /* ══ U52a(2026-08-15)で追加した21問 ══════════════════════════════
+   * 上の25問と正解サービス・論点がかぶらないものだけを選んである。
+   * 各問のコメントは「なぜ誤答が正解になりえないか」の根拠。 */
+
+  {
+    id: 'dwh',
+    // Redshift は列指向のデータウェアハウス。誤答はどれも分析用のDWHではない
+    // (RDS=OLTP / DynamoDB=KVS / Neptune=グラフ)
+    q: 'ペタバイト級のDWHが欲しい',
+    answer: 'Redshift',
+    decoys: ['RDS', 'DynamoDB', 'Neptune'],
+  },
+  {
+    id: 'nfs',
+    // EFS は NFS のマネージド共有ファイルシステム。
+    // EBS はブロック / S3 はオブジェクト / FSx for Windows は SMB なので NFS ではない
+    q: '複数のEC2から同時に使うNFS',
+    answer: 'EFS',
+    decoys: ['EBS', 'S3', 'FSx for Windows'],
+  },
+  {
+    id: 'queue',
+    // 「貯めて順に取り出す」= キュー。SNS はプッシュ型の pub/sub、
+    // EventBridge はイベントバス、Kinesis はストリーム(取り出しても消えない)
+    q: 'メッセージを貯めて順に処理',
+    answer: 'SQS',
+    decoys: ['SNS', 'EventBridge', 'Kinesis'],
+  },
+  {
+    id: 'eventbus',
+    // AWSサービスが出すイベントをルールでマッチさせて配る仕組みは EventBridge
+    q: 'イベントをルールで振り分け',
+    answer: 'EventBridge',
+    decoys: ['SQS', 'SNS', 'Step Functions'],
+  },
+  {
+    id: 'workflow',
+    // ステートマシン(状態遷移)で処理をつなぐのは Step Functions。
+    // Lambda は関数1つ、Batch はジョブ実行、EventBridge はイベント配送
+    q: '処理の流れを状態遷移で組む',
+    answer: 'Step Functions',
+    decoys: ['Lambda', 'Batch', 'EventBridge'],
+  },
+  {
+    id: 'audit',
+    // 「誰がいつどのAPIを呼んだか」の証跡は CloudTrail。
+    // Config は構成の記録・評価で、API呼び出しそのものの記録ではない
+    q: '誰がAPIを呼んだか記録したい',
+    answer: 'CloudTrail',
+    decoys: ['CloudWatch', 'Config', 'X-Ray'],
+  },
+  {
+    id: 'trace',
+    // サービスをまたぐリクエストの分散トレースは X-Ray
+    q: 'サービス間の遅延を追跡したい',
+    answer: 'X-Ray',
+    decoys: ['CloudTrail', 'CloudWatch', 'Inspector'],
+  },
+  {
+    id: 'threat',
+    // GuardDuty は継続的な脅威検知。Inspector=脆弱性 / Macie=S3の機密データ /
+    // Security Hub=検出結果の集約 なので、検知そのものは GuardDuty だけ
+    q: '不審な挙動を継続的に検知',
+    answer: 'GuardDuty',
+    decoys: ['Inspector', 'Macie', 'Security Hub'],
+  },
+  {
+    id: 'asg',
+    // 台数(希望容量)を自動で増減させるのは Auto Scaling。
+    // ALB は分散するだけで台数は変えない
+    q: '負荷に応じてEC2を自動増減',
+    answer: 'Auto Scaling',
+    decoys: ['ALB', 'Lambda', 'Batch'],
+  },
+  {
+    id: 'multiaccount',
+    // 複数アカウントを組織にまとめ、一括請求(Consolidated Billing)を行うのは Organizations。
+    // Control Tower はその上でガードレールを敷く仕組みで、請求をまとめる主体ではない
+    q: '複数アカウントを一括請求',
+    answer: 'Organizations',
+    decoys: ['IAM', 'Control Tower', 'Cost Explorer'],
+  },
+  {
+    id: 'patch',
+    // Patch Manager を含む運用一元管理は Systems Manager。
+    // CodeDeploy はアプリのデプロイで OS のパッチ適用はしない
+    q: 'EC2のパッチ適用を一元管理',
+    answer: 'Systems Manager',
+    decoys: ['Config', 'CodeDeploy', 'Inspector'],
+  },
+  {
+    id: 'fargate',
+    // ECS / EKS の「サーバー(データプレーン)を持たない」実行方式が Fargate。
+    // ECR はイメージ置き場、Lambda は関数の実行環境でコンテナの起動先ではない
+    q: 'ECS/EKSのサーバー管理をなくす',
+    answer: 'Fargate',
+    decoys: ['EC2', 'Lambda', 'ECR'],
+  },
+  {
+    id: 'registry',
+    // コンテナ**イメージ**のレジストリは ECR。
+    // CodeArtifact は npm / Maven などのパッケージリポジトリ
+    q: 'コンテナイメージを保管したい',
+    answer: 'ECR',
+    decoys: ['ECS', 'S3', 'CodeArtifact'],
+  },
+  {
+    id: 'cicd',
+    // ビルド(CodeBuild)とデプロイ(CodeDeploy)を**つなぐ**パイプラインが CodePipeline
+    q: 'ビルドとデプロイをつなぐCI/CD',
+    answer: 'CodePipeline',
+    decoys: ['CodeBuild', 'CodeDeploy', 'CodeArtifact'],
+  },
+  {
+    id: 'restapi',
+    // API Gateway は REST/HTTP API の公開口で、認証・使用量プラン・スロットリングを持つ。
+    // AppSync は GraphQL 専用なので REST の窓口にはならない
+    q: 'REST APIを公開して流量制御',
+    answer: 'API Gateway',
+    decoys: ['ALB', 'CloudFront', 'AppSync'],
+  },
+  {
+    id: 'vision',
+    // 画像・動画の物体/顔検出は Rekognition。
+    // Textract は帳票の文字と表の抽出で、物体検出はしない
+    q: '画像から顔や物体を検出',
+    answer: 'Rekognition',
+    decoys: ['Textract', 'Comprehend', 'SageMaker'],
+  },
+  {
+    id: 'stt',
+    // 音声 → 文字は Transcribe。Polly はその逆(文字 → 音声)
+    q: '音声を文字に書き起こす',
+    answer: 'Transcribe',
+    decoys: ['Polly', 'Translate', 'Comprehend'],
+  },
+  {
+    id: 'ml',
+    /*
+     * 【2026-08-15 検証指摘 F11 で論点を差し替え】
+     * 旧: 「自社データでモデルを学習・配備」→ SageMaker(誤答に Bedrock)。
+     * 直後の foundation が「基盤モデルをAPIで呼びたい」→ Bedrock(誤答に SageMaker)で、
+     * **鏡写しのペア**になっていた(このファイルの条件③に自分で違反していた)。
+     * さらに Bedrock はカスタムモデルの学習もプロビジョンドスループットでの配備も
+     * できるので、旧設問は誤答側にも理があった(条件①にも触れる)。
+     * → 「学習ジョブとノートブックを1か所で管理する統合環境」という
+     *   SageMaker 固有の論点へずらした。Bedrock は学習ジョブの管理コンソールを
+     *   提供しないので、誤答から外しても設問として成立する。
+     */
+    q: '学習ジョブとノートブックを1か所で管理',
+    answer: 'SageMaker',
+    decoys: ['EMR', 'Batch', 'Glue'],
+  },
+  {
+    id: 'foundation',
+    // 「学習済みの基盤モデルをAPIで呼ぶ」のは Bedrock。
+    // Comprehend / Kendra は用途特化のAIサービスで、基盤モデルの提供口ではない
+    q: '基盤モデルをAPIで呼びたい',
+    answer: 'Bedrock',
+    decoys: ['SageMaker', 'Comprehend', 'Kendra'],
+  },
+  {
+    id: 'leaseline',
+    // 専用線(物理回線)での接続は Direct Connect。
+    // Site-to-Site VPN はインターネット経由の暗号化トンネル
+    q: 'オンプレとAWSを専用線で接続',
+    answer: 'Direct Connect',
+    decoys: ['Site-to-Site VPN', 'Transit Gateway', 'PrivateLink'],
+  },
+  {
+    id: 'egress',
+    /*
+     * 【2026-08-15 検証指摘 F10 で設問を限定】
+     * 旧: 「プライベートサブネットから外へ」。
+     * S3 / DynamoDB 宛なら VPC エンドポイントが正解なので、
+     * 誤答の「VPC Endpoint」が「言われてみればそれも正解」になっていた(条件①違反)。
+     * → 宛先を **インターネット** に限定すれば正解は NAT Gateway 一つに定まる
+     *   (VPC エンドポイントの宛先は AWS サービスだけでインターネットへは出られない)。
+     * 表記も他の選択肢(Internet Gateway / ALB)に合わせて英語のサービス名へ統一した。
+     * 文字数は既存の最長(21文字)に合わせてある(液晶の1行に収まる実績のある長さ)。
+     */
+    q: 'プライベートサブネットからインターネットへ',
+    answer: 'NAT Gateway',
+    decoys: ['Internet Gateway', 'ALB', 'VPC Endpoint'],
   },
 ];
 

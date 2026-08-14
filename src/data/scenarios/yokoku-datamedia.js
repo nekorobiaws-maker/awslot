@@ -35,13 +35,20 @@
  *     出た時点でそれなりに期待していい「本物寄り」)。
  *   - すべて mode:['FREE_TIER'] + weight:{FREE_TIER:N, default:0} を基本とし、
  *     RUSH中限定は ym_neptune_rush_fullmesh / ym_ivs_rush_viral の2本だけ
- *     (mode:['AS_RUSH'] + weight:{AS_RUSH:N, default:0})。
+ *     (mode: RUSH_MODES + weight: rushWeight(N))。
+ *     ※2026-08-14 修正: U11 で RUSH が4種になったので `AS_RUSH` 直書きをやめ、
+ *       data/rushes.js の RUSH_IDS から生成する形にした(RUSH追加に自動追従)。
  *   - ゲーム抽選RNGは一切使わない(chance は director.js の演出専用RNG)。
  *   - 「BONUS」を含む文言・STICKY_KEYWORDS(確定/突入/RUSH/昇格/継続/CONTINUE)は
  *     すべて予告であって当選保証ではないため一切使わない。
  *
  * index.js への登録はこのファイルの担当外(依頼者側で実施)。
  */
+
+import { RUSH_IDS, rushWeight } from '../rushes.js';
+
+/** RUSH 全種(when.mode 用)。data/rushes.js が正 */
+const RUSH_MODES = RUSH_IDS;
 
 export default [
   // ── A. MSK(Amazon Managed Streaming for Apache Kafka) ────────────
@@ -203,8 +210,8 @@ export default [
   {
     id: 'ym_neptune_rush_fullmesh',
     name: 'RUSH中: Neptuneフルメッシュ化(上乗せ濃厚)',
-    when: { event: 'leverOn', flag: ['STRONG_CHERRY', 'CHANCE', 'SHARK'], mode: ['AS_RUSH'] },
-    weight: { AS_RUSH: 90, default: 0 },
+    when: { event: 'leverOn', flag: ['STRONG_CHERRY', 'CHANCE', 'SHARK'], mode: RUSH_MODES },
+    weight: rushWeight(90),
     duration: 2600,
     cues: [
       { at: 0, layer: 'sfx', action: 'synth', params: { preset: 'charge_up' } },
@@ -371,8 +378,8 @@ export default [
   {
     id: 'ym_ivs_rush_viral',
     name: 'RUSH中: IVS同時視聴が爆伸び(上乗せ濃厚)',
-    when: { event: 'leverOn', flag: ['STRONG_CHERRY', 'CHANCE', 'SHARK'], mode: ['AS_RUSH'] },
-    weight: { AS_RUSH: 85, default: 0 },
+    when: { event: 'leverOn', flag: ['STRONG_CHERRY', 'CHANCE', 'SHARK'], mode: RUSH_MODES },
+    weight: rushWeight(85),
     duration: 2600,
     cues: [
       { at: 0, layer: 'sfx', action: 'synth', params: { preset: 'charge_up' } },

@@ -7,18 +7,49 @@
  * このファイルは描画・演出を一切知らない。状態変化は EventBus に流すだけ。
  */
 
-import { drawFlag } from './lottery.js';
+import { drawFlag, drawFreeze } from './lottery.js';
 import { judge } from './payout.js';
 import { BET_PER_GAME } from '../data/payouts.js';
-import { FLAG_BY_ID, isRare, DEFAULT_FLAG_TABLE } from '../data/flags.js';
+import { FLAG_BY_ID, DEFAULT_FLAG_TABLE } from '../data/flags.js';
+import { isRareRole } from '../data/rareroles.js';
 import { AUTO_INSERT } from './credit.js';
 import { ENDING } from '../data/modes.js';
 import { SESSION } from '../data/session.js';
+import { FREEZE } from '../data/freeze.js';
+import { RUSH_IDS } from '../data/rushes.js';
+
+/**
+ * ATモード(初当り集計の対象)。
+ * U11(2026-08-14)で RUSH が4種になったので、RUSH側は data/rushes.js から取る
+ * (種類を足したときに数え漏れないようにするため)。
+ */
+const AT_MODES = [...RUSH_IDS, 'SERVERLESS_RUSH', 'MULTI_REGION'];
+/**
+ * 「ATへ戻ってきただけ」の遷移元。
+ * 引き戻し層の成功は当選ではなく復帰なので、AT初当りには数えない。
+ *
+ * ── U32(引き戻しの作り直し)以降の位置づけ(2026-08-15 更新)────────────
+ * U32 で **ホットスタンバイ成功の復帰先は AT ではなく「復旧のボーナス」** になった
+ * (data/rushes.js の RECOVERY_BONUS)。したがって通常プレイでは
+ * 「HOT_STANDBY → AT」という遷移はもう発生せず、この配列は実質的に
+ *   ・`?mode=HOT_STANDBY` の直撃デバッグで resumeMode に RUSH を指定した場合
+ *   ・退役した ROUTE53_FAILOVER(?mode= でしか入れない)
+ * だけの保険になっている。**削除はしない**(復帰先を AT へ戻す調整を入れた瞬間に
+ * AT初当りが二重計上されるため)。
+ */
+const RESUME_SOURCES = ['HOT_STANDBY', 'ROUTE53_FAILOVER'];
 
 export const FLOW = {
   IDLE: 'IDLE',
   BET: 'BET',
   READY: 'READY',
+  /**
+   * レバーONフリーズ / リールロック(2026-08-14 追加)。
+   * READY と SPINNING の間に挟まる「リールが回らない間」。
+   * 必ず時間で抜ける(入力待ちにしない)。ヘッドレス試行 scripts/sim.mjs は
+   * 入力なしで DT を刻むだけなので、入力待ちにすると無限ループする。
+   */
+  FREEZE: 'FREEZE',
   SPINNING: 'SPINNING',
   JUDGE: 'JUDGE',
   PAYOUT: 'PAYOUT',
@@ -60,6 +91,22 @@ export class GameFlow {
     this.flagTable = DEFAULT_FLAG_TABLE;
     /** デバッグ用の強制成立フラグ */
     this.forcedFlag = null;
+    /**
+     * デバッグ用: 次の1レバーONで必ずフリーズさせる(F キー / ?freeze=1)。
+     * 強制でも drawFreeze() は同じだけ引くので、RNGの消費数は変わらない。
+     */
+    this._forcedFreeze = false;
+    /**
+     * フリーズで確定した恩恵。_enterPayout() で gctx.freeze としてモード層へ渡し、
+     * 渡したら null に戻す。恩恵の付与そのものは modes 側の責務(flow は運ぶだけ)。
+     * @type {{id:string, flag:string, kind:string, bonusId:string}|null}
+     */
+    this._freezeWin = null;
+    /**
+     * 次のレバーONで挟むリールロックの長さ(ms)。lockReels() が積み、
+     * レバーONで消費される。恩恵は無い(見た目の "間" だけ)。
+     */
+    this._lockMs = 0;
     /** 直近の判定結果 */
     this.lastResult = null;
     /** 画面に出す最新テロップ */
@@ -90,7 +137,7 @@ export class GameFlow {
     this.stats = this._freshStats();
 
     /**
-     * 50回転スコアアタックのセッション状態(data/session.js)。
+     * 100回転スコアアタックのセッション状態(data/session.js)。
      * 通常時・CZ・ボーナス・AT・ゾーンを問わず、レバーONを通算で数える。
      */
     this.session = {
@@ -114,6 +161,11 @@ export class GameFlow {
       at: 0,
       cz: 0,
       rare: 0,
+      /**
+       * オートスケーリングRUSH で到達した最大の EC2 台数(= 伸ばした残りゲーム数)。
+       * U11 以前は DC(純増段階)だったが、台数がゲーム数を表すようになったので
+       * 「どこまで伸ばせたか」の指標に意味が変わっている。名前は sim・HUD が参照するため据え置き。
+       */
       maxDc: 0,
       zones: 0,
       ending: 0,
@@ -183,15 +235,29 @@ export class GameFlow {
     this.flag = drawFlag(this.rng, this.forcedFlag, this.flagTable);
     const forced = Boolean(this.forcedFlag);
     this.forcedFlag = null;
+
+    /**
+     * レバーONフリーズの抽選(2026-08-14 追加。data/freeze.js)。
+     *
+     * ここで引く理由: フリーズは **レバーを叩いた瞬間に止まる** 演出なので、
+     * 成立役(= 出目)が確定した直後でなければタイミングが合わない。
+     * リールを回してから引くと「回り始めてから止まる」になり実機の作法と変わる。
+     *
+     * 【申し送り】ゲーム抽選RNGの消費が通常時だけ1つ増えるため、
+     * この変更以前の固定シードでの再現(同じ seed で同じ展開)は変わる。
+     * 抽選の期待値そのものは不変(フリーズ自身の当選ぶんだけが増える)。
+     */
+    const freezeHit = drawFreeze(this.rng, this.flag, this.modes.currentId) || this._forcedFreeze;
+    this._forcedFreeze = false;
     // 前のゲームのテロップ(「チャンス目 — 次に期待」等)はここで寿命が切れる。
     // 次のゲームが回った時点で古い情報は消し、必要な告知はこの後の
     // 抽選・モード処理が改めて設定する(2026-08-13 ユーザー指示)。
     this.telop = '';
 
     this.stats.games++;
-    if (isRare(this.flag)) this.stats.rare++;
+    if (isRareRole(this.flag)) this.stats.rare++;
 
-    // 50回転スコアアタック: どのモードにいても1回転として数える
+    // 100回転スコアアタック: どのモードにいても1回転として数える
     this.session.played++;
     this.session.remaining--;
     this.bus.emit('sessionTick', {
@@ -202,18 +268,63 @@ export class GameFlow {
       warn: this.session.remaining <= SESSION.warnAt,
     });
 
-    // モードが引き込み目標を差し替える場合がある(ボーナス入賞待ちのハズレゲーム)
-    this.reels.startAll(this.flag, this.modes.reelTargetFor(this.flag));
-    this._setState(FLOW.SPINNING);
+    if (freezeHit) {
+      // リールを回さずにフリーズへ。恩恵は _enterPayout() でモード層へ渡す
+      this._freezeWin = { id: 'LEVER_FREEZE', flag: this.flag, ...FREEZE.reward };
+      this.timer = FREEZE.durationMs;
+      this._setState(FLOW.FREEZE);
+    } else if (this._lockMs > 0) {
+      // 演出が要求したリールロック(恩恵なし。ただの "間")
+      this.timer = this._lockMs;
+      this._setState(FLOW.FREEZE);
+    } else {
+      // モードが引き込み目標を差し替える場合がある(ボーナス入賞待ちのハズレゲーム)
+      this.reels.startAll(this.flag, this.modes.reelTargetFor(this.flag));
+      this._setState(FLOW.SPINNING);
+    }
+    // ロックは1回きり。消費したらすぐ戻す
+    this._lockMs = 0;
     this.bus.emit('leverOn', {
       flag: this.flag,
       flagName: this.modes.flagLabelFor(this.flag) ?? FLAG_BY_ID[this.flag]?.name ?? this.flag,
-      rare: isRare(this.flag),
+      rare: isRareRole(this.flag),
       flagTable: this.flagTable,
       forced,
       mode: this.modes.currentId,
+      freeze: freezeHit,
     });
+    // フリーズの告知は leverOn より後に出す(leverOn 側の予告シナリオを
+    // 全部押しのけてから、exclusive のフリーズ演出が画面を占有する)
+    if (freezeHit) {
+      this.bus.emit('freeze', {
+        id: 'LEVER_FREEZE',
+        flag: this.flag,
+        ms: FREEZE.durationMs,
+        reward: FREEZE.reward.bonusId,
+      });
+    }
     return true;
+  }
+
+  /**
+   * 演出用のリールロック(2026-08-14 追加)。
+   *
+   * 【重要】これは「演出がゲーム状態を変えている」わけではない。
+   * 変えるのは **タイミングだけ**:
+   *   - RNGを一切消費しない
+   *   - 成立役(flag)も引き込み目標も変えない
+   *   - 当選内容(_freezeWin)にも触らない
+   * 次のレバーONでリールが動き出すのを ms だけ遅らせる、それだけの API。
+   * DESIGN.md 4.2「演出側からゲーム状態を変更しない」は保たれている。
+   *
+   * 内部状態は FLOW.FREEZE を使い回すが、恩恵が無いので当選は発生しない。
+   * @param {number} ms 遅らせる時間(FREEZE.maxLockMs でクランプ)
+   * @returns {number} 実際に設定した遅延(ms)
+   */
+  lockReels(ms = 400) {
+    const clamped = Math.max(0, Math.min(FREEZE.maxLockMs, Number(ms) || 0));
+    this._lockMs = clamped;
+    return clamped;
   }
 
   /**
@@ -254,6 +365,19 @@ export class GameFlow {
     this.bus.emit('debugForceFlag', { flag });
   }
 
+  /**
+   * デバッグ: 次の1レバーONで必ずフリーズさせる(F キー / ?freeze=1)。
+   * 強制でも drawFreeze() は通常どおり引くので、RNGの消費数は変わらない
+   * (= 強制フリーズを使っても以降の出目はズレない)。
+   * @returns {boolean} 予約できたか
+   */
+  forceFreeze() {
+    this._forcedFreeze = true;
+    this.telop = '[DEBUG] 次のレバーONでフリーズします';
+    this.bus.emit('debugForceFreeze', { armed: true });
+    return true;
+  }
+
   // ── 更新 ───────────────────────────────────
 
   update(dt) {
@@ -263,6 +387,21 @@ export class GameFlow {
         if (this.timer <= 0) {
           this._setState(FLOW.READY);
           this.bus.emit('betComplete', {});
+        }
+        break;
+
+      /**
+       * フリーズ / リールロック。
+       * **必ず時間で抜ける**(入力待ちにしない)。ヘッドレス試行は入力なしで
+       * DT を刻むだけなので、入力待ちにすると sim.mjs が無限ループする。
+       * canStop は state===SPINNING のときだけ true なので、
+       * この間の停止ボタンは自動的に効かない(入力封じを別途書く必要はない)。
+       */
+      case FLOW.FREEZE:
+        this.timer -= dt;
+        if (this.timer <= 0) {
+          this.reels.startAll(this.flag, this.modes.reelTargetFor(this.flag));
+          this._setState(FLOW.SPINNING);
         }
         break;
 
@@ -354,7 +493,16 @@ export class GameFlow {
       flag: this.flag,
       win: this.lastResult.win,
       payout: this.lastResult.payout,
+      /**
+       * レバーONフリーズの恩恵。**付与はモード層の責務**なので、
+       * flow は当選内容を運ぶだけにする(どの遷移になるかは通常時の事情次第)。
+       * ModeMachine#onGame は {...gctx} をそのままハンドラへ渡すので、
+       * modemachine.js 側に変更は要らない。
+       */
+      freeze: this._freezeWin,
     });
+    // 1ゲームに1回しか渡さない(渡した時点で消費済み)
+    this._freezeWin = null;
     this._transitioned = modeRes.transitioned;
     if (modeRes.telops.length > 0) this.telop = modeRes.telops[modeRes.telops.length - 1];
 
@@ -387,11 +535,11 @@ export class GameFlow {
 
     if (modeRes.transitioned) this._countTransition(prevMode, this.modes.currentId, prevDepth);
     if (this.modes.currentId === 'AS_RUSH') {
-      this.stats.maxDc = Math.max(this.stats.maxDc, this.modes.state.dc ?? 0);
+      this.stats.maxDc = Math.max(this.stats.maxDc, this.modes.state.units ?? 0);
     }
 
     this._checkEnding();
-    // エンディング判定より後に置く。50回転を使い切ったらリザルトが最優先で、
+    // エンディング判定より後に置く。100回転を使い切ったらリザルトが最優先で、
     // 直前に成立したエンディングも「残存価値」として買い取り対象に入る。
     if (this.session.remaining <= 0 && !this.session.ended) this._endSession();
 
@@ -417,7 +565,7 @@ export class GameFlow {
     this._transitioned = true;
     this._countTransition(src, this.modes.currentId, depth);
     if (this.modes.currentId === 'AS_RUSH') {
-      this.stats.maxDc = Math.max(this.stats.maxDc, this.modes.state.dc ?? 0);
+      this.stats.maxDc = Math.max(this.stats.maxDc, this.modes.state.units ?? 0);
     }
     // 遷移先のテロップ(「ゴースト7を揃えろ」など)はここで初めて出す
     this.telop = this.modes.state.telop ?? this.telop;
@@ -445,10 +593,29 @@ export class GameFlow {
   }
 
   _countTransition(from, to, prevDepth = this.modes.stack.length) {
-    const AT_MODES = ['AS_RUSH', 'SERVERLESS_RUSH', 'MULTI_REGION'];
     if (to === 'CZ') this.stats.cz++;
     if (to === 'BONUS') this.stats.bonus++;
-    if (AT_MODES.includes(to) && !AT_MODES.includes(from)) this.stats.at++;
+    /**
+     * AT初当りの数え方(2026-08-14 しおん指摘 S4)。
+     *
+     * 以前は「AT以外 → AT」だけを条件にしていたため、
+     *   ゾーン(SPOT/KINESIS…)からの pop 復帰
+     *   ホットスタンバイの引き戻し成功による復帰
+     *   Step Functions 全制覇による母体ATの置き換え(popThenTo)
+     * まで新規当選として数え、実際1回のRUSHが「AT 3」と表示されていた。
+     * 数えるのは「通常時・CZ・ボーナスから新しくATへ入った」ときだけにする。
+     *
+     * ※ U32 以降、引き戻し成功の復帰先はボーナスなので
+     *   「HOT_STANDBY → AT」は通常プレイでは起きない(RESUME_SOURCES の注記参照)。
+     *   引き戻しから復帰したボーナスで RUSH を引いた場合は
+     *   **BONUS → AT** の遷移として新規当選に数える(その回のレア役で当てているため)。
+     */
+    const isNewAt = AT_MODES.includes(to)
+      && !AT_MODES.includes(from)
+      && !RESUME_SOURCES.includes(from)
+      // スタックが浅くなる遷移(ゾーンからの pop / popThenTo)は「復帰」であって新規当選ではない
+      && this.modes.stack.length >= prevDepth;
+    if (isNewAt) this.stats.at++;
     // ゾーン突入 = モードスタックが1段深くなった遷移(= transition.push)。
     // 「スタック2段以上での AT/CZ/BONUS 以外への遷移」で数えると、
     // ゾーン滞在中に起きた別の遷移まで拾ってしまい突入回数にならない。
@@ -483,7 +650,8 @@ export class GameFlow {
       atSetCount: this.modes.atSetCount,
       carryWin,
     });
-    // 次のエンディングは「ここからさらに +2222 / 15セット」で判定する
+    // 次のエンディングは「ここからさらに ENDING.conditions ぶん」で判定する
+    // (差枚 / ATセット数の閾値は data/modes.js の ENDING が正。ここに数値を書き写さない)
     this.endingBaseDiff = this.credit.diff;
     this.modes.atSetCount = 0;
     this.stats.ending++;
@@ -491,7 +659,7 @@ export class GameFlow {
     this.telop = this.modes.state.telop ?? this.telop;
   }
 
-  // ── 50回転スコアアタック ────────────────────────
+  // ── 100回転スコアアタック ────────────────────────
 
   /**
    * セッション終了。docs/BACKLOG.md「M: メカニクス改修」
@@ -526,6 +694,11 @@ export class GameFlow {
       totalIn: this.credit.totalIn,
       totalOut: this.credit.totalOut,
       totalGames: this.session.played,
+      /**
+       * 甘スロ(U44 / ?ama=1)で遊んだセッションか。
+       * リザルトのバッジ用。設定はURLクエリで起動時に決まり、途中では変わらない。
+       */
+      ama: SESSION.ama,
       bonusCount: this.stats.bonus,
       atCount: this.stats.at,
       czCount: this.stats.cz,
@@ -541,7 +714,7 @@ export class GameFlow {
   }
 
   /**
-   * 新しい50回転セッションを開始する(リザルトからのリスタート)。
+   * 新しい100回転セッションを開始する(リザルトからのリスタート)。
    * クレジット・統計・モードスタックをすべて初期状態へ戻す。
    * @returns {boolean} 実際にリスタートしたか
    */
@@ -559,6 +732,10 @@ export class GameFlow {
     this._holdMs = 0;
     this._choiceWait = 0;
     this.timer = 0;
+    // フリーズ関連の持ち越しもここで落とす(前セッションの予約を持ち込まない)
+    this._forcedFreeze = false;
+    this._freezeWin = null;
+    this._lockMs = 0;
 
     this.session = {
       total: SESSION.totalGames,

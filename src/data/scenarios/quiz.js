@@ -29,9 +29,27 @@
  *     weight 45 で約 30%。「ガセは控えめ」の指示に合わせて正解版より薄くしてある。
  *
  *   前兆の結果告知 zn_result_entry_cz は `zencho_end` 側の別イベントなので、
- *   正解版と同時に走る。ただし出る場所が違う(あちらは lcd.text = y168〜236、
- *   クイズ盤面は y36〜162)うえ、あちらは 140ms から 800ms の短い一言なので、
- *   クイズが結果を出す 2.7 秒時点にはもう消えている。文字同士は取り合わない。
+ *   正解版と同時に走る。ただし読ませたい文字の場所が違ううえ、あちらは
+ *   140ms から 800ms の短い一言なので、クイズが結果を出す 2.7 秒時点にはもう消えている。
+ *
+ *   盤面の座席割り(正は staging/anims/lcdanims-extra.js の QUIZ_* 定数):
+ *     y   3〜  8 … 外枠
+ *     y   8〜 26 … 問題文(QUIZ_Q_TOP / QUIZ_Q_H)
+ *     y  36〜166 … 4択のマス(QUIZ_GRID_TOP + QUIZ_CELL_H×2 + QUIZ_ROW_GAP)
+ *     y 182      … 進行バー(QUIZ_BAR_Y)。**告知プレートの裏に回ってよい装飾**
+ *     y 250      … 判定ラベル CORRECT!! / MISS(QUIZ_LABEL_Y)
+ *     y 278      … 足元の見出し「AWS QUIZ / どのサービス?」(QUIZ_HEAD_Y)
+ *   lcd.text の帯は y152〜236 に出るので、**読ませる文字**(問題文・選択肢・判定)は
+ *   すべて帯の外に置いてある。帯と重なるのは 182 の装飾バーだけ。
+ *   compact:true(正解版)ではこの座標系が 0.74 倍へ縮み、下側がさらに空く。
+ *   ※ 選択肢の座標は U15(縦に広げた改修)で y36〜162 → y36〜166 になっている。
+ *
+ * ■ CZ盤面を潰さない(2026-08-14 検証指摘 V3)
+ *   CZ突入版は CZ の1ゲーム目に重なるため、全面を覆うと
+ *   「CZがどこまで進んだか」が見えなくなる。正解版のキューには compact:true を渡し、
+ *   盤面を 0.74 倍へ縮めて液晶の下側(結論の1行とテロップ帯)を空けてある。
+ *   前兆中に出る不正解版(qz_quiz_miss / qz_quiz_miss_idle)は通常ステージの上なので
+ *   隠して困る情報が無く、迫力を優先して全面のまま。
  *
  * ■ 進行はリール停止と完全同期(ユーザー要望「ボタンを止めるたびに進行する」)
  *   時間で勝手に進めず、waitFor キューで aws_quiz_roulette の phase を進める:
@@ -45,6 +63,17 @@
  *   つまり「結果が出たゲームで出題 → 次の1回転を自分のペースで消化しながら開ける」
  *   という流れで、当落の保証(上記)は一切変わらない。
  *
+ * ■ 背景の当落バレを止める(2026-08-14 ユーザー指摘 U42)
+ *   正解版は **CZ の modeEnter** で始まるので、出題した瞬間には既にモードが CZ。
+ *   何もしないと液晶の背景・ステージ名・盤面が先に CZ へ変わり、
+ *   回答する前に「これは正解する」が分かってしまう。
+ *   対策は render 側にあり、シナリオは今までどおりでよい:
+ *     staging/anims/lcdanims.js の STAGE_HOLD_ANIMS に aws_quiz_roulette を登録してあり、
+ *     phase が 'reveal' になるまで render/lcd.js が **1つ前の背景・ステージ名**を出し続ける
+ *     (盤面と液晶テロップもその間は伏せる)。
+ *   つまり「正解の発表」と「背景がCZへ変わる」が同じ瞬間に起きる。
+ *   不正解版はモードが変わらないので、この仕組みは何もしない(通常背景のまま)。
+ *
  * ■ modeEnter とキュー開始時刻
  *   main.js は modeEnter で lcdAnims.clear() を呼んでから director を動かす
  *   (登録順が保証されている)。したがって modeEnter 起点のこのシナリオは
@@ -54,6 +83,10 @@
 
 import { SESSION } from '../session.js';
 import { NORMAL_SUBSTATES } from '../modes.js';
+// U46b(2026-08-15): 出題の頭に出す「Bedrock が生成した1行」。
+// 文言は data/scenarios/yokoku-bedrock.js が持つ(生成演出の文言を1か所にまとめるため)。
+// ここで使うぶんには **必ずクイズが始まる場所** なので「クイズの時間です」が嘘にならない。
+import { BEDROCK_QUIZ_INTRO } from './yokoku-bedrock.js';
 
 /**
  * 天井(Auto Recovery)に当たらないゲームの `modeState.games` 一覧。
@@ -118,13 +151,15 @@ export default [
       // modeEnter 起点のこのシナリオは main.js の lcdAnims.clear() より後に走るので
       // at:0 から液晶アニメを出して問題ない(登録順が保証されている)。
       { at: 0,    layer: 'lcd',     action: 'anim',
-        params: { anim: 'aws_quiz_roulette', correct: true, phase: 'start' } },
+        params: { anim: 'aws_quiz_roulette', correct: true, phase: 'start', compact: true } },
+      // U46b: 出題の合図は「Bedrock が生成した1行」として出す(座布団つきの lcd.text)
+      { at: 40,   layer: 'lcd',     action: 'text', params: { ...BEDROCK_QUIZ_INTRO, ms: 1100 } },
       { at: 60,   layer: 'char',    action: 'show',  params: { char: 'kiro', pose: 'surprised' } },
       { at: 300,  layer: 'sfx',     action: 'synth', params: { preset: 'ui_select' } },
 
       // ② 第1停止 → 回転開始(次を押すまで回り続ける)
       { waitFor: 'stop1', layer: 'lcd', action: 'anim',
-        params: { anim: 'aws_quiz_roulette', correct: true, phase: 'spin' } },
+        params: { anim: 'aws_quiz_roulette', correct: true, phase: 'spin', compact: true } },
       { waitFor: 'stop1', layer: 'sfx', action: 'synth', params: { preset: 'charge_up' } },
       // 刻み音はアニメの回転速度(170ms/コマ)に合わせる。長回しされた場合は
       // 音は途切れるが、盤面のマーカーが回り続けるので進行は目で分かる
@@ -139,7 +174,7 @@ export default [
 
       // ③ 第2停止 → 減速して確定。正解/不正解はまだ伏せたまま点滅で待つ
       { waitFor: 'stop2', layer: 'lcd', action: 'anim',
-        params: { anim: 'aws_quiz_roulette', correct: true, phase: 'lock' } },
+        params: { anim: 'aws_quiz_roulette', correct: true, phase: 'lock', compact: true } },
       { waitFor: 'stop2', after: 55, layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
       { waitFor: 'stop2', after: 117, layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
       { waitFor: 'stop2', after: 186, layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
@@ -151,7 +186,7 @@ export default [
 
       // ④ 第3停止 → 正解発表(アニメは +260ms で判定を出す)
       { waitFor: 'stop3', after: 120, layer: 'lcd', action: 'anim',
-        params: { anim: 'aws_quiz_roulette', correct: true, phase: 'reveal', ms: 2800 } },
+        params: { anim: 'aws_quiz_roulette', correct: true, phase: 'reveal', ms: 2800, compact: true } },
       { waitFor: 'stop3', after: 380, layer: 'overlay', action: 'flash', params: { color: '#ffe066', ms: 340 } },
       { waitFor: 'stop3', after: 390, layer: 'overlay', action: 'shake', params: { power: 14, ms: 460 } },
       { waitFor: 'stop3', after: 400, layer: 'sfx',     action: 'synth', params: { preset: 'upgrade_chime' } },
@@ -184,6 +219,8 @@ export default [
       // ① 出題(理由は正解版のコメント参照。停止操作に追い越されないよう at:0)
       { at: 0,    layer: 'lcd',  action: 'anim',
         params: { anim: 'aws_quiz_roulette', correct: false, phase: 'start' } },
+      // U46b: 正解版と同じ導入。ここで出し分けると導入だけで当落がバレるため文言は共通
+      { at: 40,   layer: 'lcd',  action: 'text', params: { ...BEDROCK_QUIZ_INTRO, ms: 1100 } },
       { at: 60,   layer: 'char', action: 'show',  params: { char: 'kiro', pose: 'surprised' } },
       { at: 300,  layer: 'sfx',  action: 'synth', params: { preset: 'ui_select' } },
 
@@ -252,6 +289,8 @@ export default [
       { at: 0,    layer: 'sfx',  action: 'synth', params: { preset: 'announce' } },
       { at: 0,    layer: 'lcd',  action: 'anim',
         params: { anim: 'aws_quiz_roulette', correct: false, nearMiss: true, phase: 'start' } },
+      // U46b: 正解版と同じ導入(上2本と共通の文言)
+      { at: 40,   layer: 'lcd',  action: 'text', params: { ...BEDROCK_QUIZ_INTRO, ms: 1100 } },
       { at: 60,   layer: 'char', action: 'show',  params: { char: 'kiro', pose: 'surprised' } },
       { at: 300,  layer: 'sfx',  action: 'synth', params: { preset: 'ui_select' } },
 

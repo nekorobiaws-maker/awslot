@@ -23,6 +23,7 @@
  * @param {import('../render/reelview.js').ReelView} deps.reelView
  * @param {import('../engine/audio.js').AudioEngine} [deps.audio] 効果音/BGM(未指定なら無音)
  * @param {import('../engine/voice.js').VoicePlayer} [deps.voice] キャラ音声(未指定なら無音)
+ * @param {import('../game/flow.js').GameFlow} [deps.flow] リールロック要求の宛先(未指定なら no-op)
  * @returns {Record<string, (params:object, ctx:object)=>void>}
  */
 export function createActions({
@@ -36,12 +37,24 @@ export function createActions({
   reelView,
   audio = null,
   voice = null,
+  flow = null,
 }) {
   return {
     // ── 液晶 ────────────────────────────────
     'lcd.anim': (params) => lcdAnims.play(params.anim, params),
     'lcd.text': (params) => lcdAnims.showText(params),
     'lcd.particles': (params) => lcdParticles.emit(params.preset, params),
+    /**
+     * 再生中の液晶アニメを畳む(U8 の二重表示対策 / 2026-08-15 検証指摘 F12)。
+     *
+     * 途中経過のゲージ(cw_meter_swing など ms 1700)は、結果告知が出た後も
+     * **結果プレートの裏で生き続ける**。「ATTACK MITIGATED」の下に
+     * 途中の残バジェットが透けて、同じ意味の数字が別の値で同居していた。
+     * 結果告知シナリオの先頭でこれを呼べば、古い画だけが素早く消える。
+     *   params: { ms } … 残り時間の上限(既定 160ms。0 にはしない = ぶつ切りを避ける)
+     * テキスト帯には触らない(結果の1行を消してしまうため)。
+     */
+    'lcd.windDown': (params) => lcdAnims.windDown(Math.max(0, params?.ms ?? 160)),
 
     // ── キャラ ──────────────────────────────
     'char.show': (params) => chars.show(params.char, params.pose, params),
@@ -54,9 +67,33 @@ export function createActions({
     'overlay.cutin': (params) => cutins.play(params.id, params),
     'overlay.particles': (params) => overlayParticles.emit(params.preset, params),
     'overlay.shake': (params) => overlay.shake(params.power ?? 12, params.ms ?? 400),
-    // フリーズはゲーム進行を止める操作なので、演出側からは触らない方針。
-    // (DESIGN.md 4.2「演出側からゲーム状態を変更することは一切禁止」)
-    // Phase 4 以降で flow 側に freeze API を用意してから接続する。
+    /**
+     * 暗転(U21 / 2026-08-14)。フリーズの「溜め」用。
+     *   { alpha, holdMs, fadeInMs, fadeOutMs } … 暗転を張る(hold 中は減衰しない)
+     *   { release: true, fadeOutMs }           … 張ってある暗転を明転させる
+     * flash では上限0.55かつ線形減衰なので真っ暗を維持できない(render/overlay.js 参照)。
+     */
+    'overlay.blackout': (params) => {
+      if (params.release) {
+        overlay.releaseBlackout(params.fadeOutMs ?? params.ms ?? 200);
+        return;
+      }
+      overlay.blackout(
+        params.alpha ?? 0.97,
+        params.holdMs ?? params.ms ?? 800,
+        params.fadeInMs ?? 260,
+        params.fadeOutMs ?? 200,
+      );
+    },
+    /**
+     * 暗転の上に出す1行(U21 の「神の声」)。
+     * 液晶(z=2)はオーバーレイ(z=8)の下なので、暗転中の文言は lcd.text では読めない。
+     * **暗転中だけ**使うこと。通常の告知は今までどおり lcd.text を使う(U8 の役割分担を守るため)。
+     */
+    'overlay.text': (params) => overlay.showLine(params),
+    // フリーズはゲーム側 game/flow.js の FLOW.FREEZE が担当するようになったので、
+    // 演出側からのフリーズ要求は不要(恩恵つきのフリーズを演出が起こしてはいけない)。
+    // 演出データが古い書き方で 'overlay.freeze' を呼んでも壊れないよう受け口だけ残す。
     'overlay.freeze': () => {},
 
     // ── 筐体 ────────────────────────────────
@@ -64,8 +101,15 @@ export function createActions({
 
     // ── リール ──────────────────────────────
     'reelfx.highlight': (params) => reelView.highlight(params.ms ?? 600, params.color),
-    // リールロックは reelctrl の停止制御に介入するため、同じ理由で今は空実装。
-    'reelfx.lock': () => {},
+    /**
+     * リールロック(次のレバーONでリールが回り出すのを遅らせる "間")。
+     *
+     * これは DESIGN.md 4.2 の例外ではない。flow.lockReels() は
+     * **RNGを一切消費せず、成立役も引き込み目標も変えない**(変えるのはタイミングだけ)。
+     * 恩恵つきのフリーズは data/freeze.js のゲーム抽選が担当していて、
+     * 演出側からは絶対に起こせない。
+     */
+    'reelfx.lock': (params) => flow?.lockReels(params.ms ?? 400),
 
     // ── 音(Phase 4: 効果音/BGM、Phase 6: キャラ音声) ──
     // params をそのまま opts として渡すので、シナリオ側で

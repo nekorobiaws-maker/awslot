@@ -16,42 +16,60 @@
 import {
   ZONE_SPEC_BY_ID, AS_RUSH_CORE, UPPER_AT_SPEC_BY_ID,
 } from '../../data/modes.js';
-import { isRare } from '../../data/flags.js';
+import { isRushMode, RUSH_SPEC_BY_ID } from '../../data/rushes.js';
+import { isRareRole } from '../../data/rareroles.js';
 import { residualLine } from '../../data/session.js';
+import { addRushGames } from './rushes.js';
 import {
-  drawNestedZone, drawScaleOut, drawReservedContract,
+  drawNestedZone, drawReservedContract,
   drawKinesisShards, drawKinesisAddCoin, drawCloudFrontAddCoin,
 } from '../lottery.js';
+
+/** オートスケーリングRUSH の上乗せ表(RESERVED 契約中の上乗せもこれに揃える) */
+const AS_RUSH_ADD_UNITS = RUSH_SPEC_BY_ID.AS_RUSH.addUnitsByFlag;
 
 /**
  * 母体ATの1ゲームあたり純増。
  * 「純増は母体のRUSHに準じる」(DESIGN.md 3.10 RESERVED)をゾーン共通の規則として使う。
+ *
+ * U11(2026-08-14): RUSH 4種は DC を持たず、現在の純増を state.netPerGame で公開する
+ * (data/rushes.js の共通契約)。上位ATは従来どおり固定値。
  */
 export function hostPayout(host) {
   if (!host) return 1.0;
-  if (host.id === 'AS_RUSH') return AS_RUSH_CORE.payoutPerGame[host.state.dc] ?? 1.0;
+  if (isRushMode(host.id)) return host.state.netPerGame ?? 1.0;
   return UPPER_AT_SPEC_BY_ID[host.id]?.payoutPerGame ?? 1.0;
 }
 
-/** 母体ATへセット数を上乗せする。@returns 実際に積んだセット数 */
+/**
+ * 母体ATへ「1セットぶん」を上乗せする。
+ *
+ * U11 以降、母体が RUSH の場合はセットという単位が無いので
+ * **1セット = AS_RUSH_CORE.setGames ぶんのゲーム数上乗せ** へ読み替える
+ * (ゲーム数が軸でない CF / HERO では 0。上位ATは従来どおりストックに積む)。
+ * @returns {number} 実際に積んだセット数
+ */
 export function addSetToHost(host, n) {
   if (!host || !(n > 0)) return 0;
+  if (isRushMode(host.id)) {
+    const added = addRushGames(host.state, n * AS_RUSH_CORE.setGames);
+    return added > 0 ? n : 0;
+  }
   host.state.stock = (host.state.stock ?? 0) + n;
   return n;
 }
 
 /**
- * 母体ATの DC(純増ブースト)を1段上げる。
- * スコアアタック化(2026-08-13)で Step Functions の報酬をセット上乗せから
- * 純増ブーストへ変えたときに追加した。
- * @returns {number} 実際に上がった段数(上限に張り付いていれば0)
+ * 母体ATを1段ブーストする(Step Functions のタスク成功報酬)。
+ *
+ * U11 で DC が無くなったため、ゲーム数が軸のRUSH(AS / Aurora)では
+ * **ゲーム数の上乗せ**として効く。効かない母体では 0 を返し、
+ * 呼び出し側が枚数(coinPerTaskWhenNoDc)へフォールバックする。
+ * @returns {number} 実際に伸びたゲーム数
  */
 export function boostHostDc(host, n = 1) {
-  if (!host || host.id !== 'AS_RUSH') return 0;
-  const max = AS_RUSH_CORE.dcRange.max;
-  const before = host.state.dc ?? 1;
-  host.state.dc = Math.min(max, before + n);
-  return host.state.dc - before;
+  if (!host || !isRushMode(host.id)) return 0;
+  return addRushGames(host.state, n);
 }
 
 /**
@@ -60,7 +78,7 @@ export function boostHostDc(host, n = 1) {
 function hostSetValue(host) {
   if (!host) return 0;
   const per = hostPayout(host);
-  const games = host.id === 'AS_RUSH'
+  const games = isRushMode(host.id)
     ? AS_RUSH_CORE.setGames
     : (UPPER_AT_SPEC_BY_ID[host.id]?.setGames ?? AS_RUSH_CORE.setGames);
   return games * per;
@@ -68,7 +86,7 @@ function hostSetValue(host) {
 
 /** 滞在型ゾーン中の上乗せ特化ゾーン当選(DESIGN.md 6.3 の3段スタック) */
 function nestedZone(state, g) {
-  if (!isRare(g.flag)) return null;
+  if (!isRareRole(g.flag)) return null;
   const zone = drawNestedZone(g.rng, g.flag);
   if (!zone) return null;
   return { push: zone, params: {} };
@@ -91,7 +109,16 @@ export const spotZone = {
     state.notice = false;      // 中断通知(interruption notice)が出たか
     state.endAt = null;        // 強制終了するゲーム数
     state.minGames = spec.minGames;
-    state.telop = 'SPOT 起動 — 純増8枚。ただし、いつ止まるか分からない';
+    /**
+     * テロップに数字を書かない(2026-08-14 しおん指摘 S3 / ユーザー指摘 U8)。
+     *
+     * 旧テロップは「純増8枚」と直書きで、液晶が spec から出している
+     * 「純増 16 枚/G」と同じ画面で食い違っていた。
+     * 純増・最低保証Gは液晶パネル(render/lcd.js の _drawSpot)が常設で出しているので、
+     * ここは **パネルに無い情報**(中断通知が出てからの猶予)だけを持つ。
+     * こうすれば data/modes.js を触っても表示が嘘にならない。
+     */
+    state.telop = `SPOT 起動 — 中断通知が出たら ${spec.graceGames}G で強制終了`;
   },
 
   onGame(state, g) {
@@ -157,9 +184,17 @@ export const ec2Burst = {
     state.payoutPerGame = spec.payoutPerGame;
     state.credit = spec.creditInit;
     state.creditMax = spec.creditMax;
+    /** 毎ゲームの消費量(液晶の説明文がこの値を参照する) */
+    state.creditPerGame = spec.creditPerGame;
     state.games = 0;
     state.gained = 0;
-    state.telop = 'CPU クレジット 100 — 使い切るまで純増5枚';
+    /**
+     * 2026-08-14 しおん指摘 S15 / ユーザー指摘 U8。
+     * 旧テロップは「CPU クレジット 100 — 純増5枚」と直書きで、spec(60 / 11枚)と食い違っていた。
+     * クレジット残高と毎Gの消費は液晶パネル(_drawBurst)が常設で出しているので、
+     * テロップはパネルに無い「純増」と回復条件だけを spec から作って持つ。
+     */
+    state.telop = `バースト起動 — 純増${spec.payoutPerGame}枚。レア役でクレジット回復`;
   },
 
   onGame(state, g) {
@@ -225,7 +260,13 @@ export const graviton = {
     state.remaining = spec.setGames;
     state.setCount = 1;
     state.gained = 0;
-    state.telop = 'ARM は静かに強い — 継続率90%';
+    /**
+     * 2026-08-14 しおん指摘 S3 と同型 / ユーザー指摘 U8。
+     * 旧テロップ「ARM は静かに強い — 継続率90%」は spec(72%)と食い違ううえ、
+     * 「ARM は静かに強い」も継続率も液晶パネル(_drawGraviton)が常設で出していて丸ごと二重だった。
+     * テロップはパネルに無い「1セットの長さ」だけを持つ。
+     */
+    state.telop = `GRAVITON 起動 — 1セット ${spec.setGames}G のセット継続型`;
   },
 
   onGame(state, g) {
@@ -288,18 +329,22 @@ export const reserved = {
     const events = [];
     let telop = null;
 
-    // 契約中もスケールアウトは有効(母体がAS_RUSHのときだけDCが増える)
+    /**
+     * 契約中もオートスケールは有効。
+     * U11 で母体が「EC2の台数 = 残りゲーム数」になったので、
+     * 契約中に引いた子役はそのまま **母体のゲーム数上乗せ** になる
+     * (母体が AS_RUSH のときだけ効く。data/rushes.js の addUnitsByFlag と同じ表を使う)。
+     */
     if (host?.id === 'AS_RUSH') {
-      const up = drawScaleOut(g.rng, g.flag, host.state.dc);
-      const max = AS_RUSH_CORE.dcRange.max;
-      if (up > 0 && host.state.dc < max) {
-        const before = host.state.dc;
-        host.state.dc = Math.min(max, before + up);
-        const delta = host.state.dc - before;
-        telop = delta >= 2
-          ? `DOUBLE SCALE OUT!!! DC ${host.state.dc} 台`
-          : `SCALE OUT!! DC ${host.state.dc} 台`;
-        events.push({ name: 'paramChange', payload: { param: 'dc', value: host.state.dc, delta } });
+      const up = AS_RUSH_ADD_UNITS[g.flag] ?? 0;
+      const delta = addRushGames(host.state, up);
+      if (delta > 0) {
+        // 母体の「台数 = 残りゲーム数」の不変条件に合わせた書式(asrush.js と同じ言い回し)
+        telop = `SCALE OUT!! EC2 +${delta} 台 → 母体 ${host.state.units} 台(= 残り ${host.state.units} G)`;
+        events.push({
+          name: 'paramChange',
+          payload: { param: 'scale_out', value: host.state.units, delta, flag: g.flag },
+        });
       }
     }
 
@@ -527,16 +572,24 @@ export const stepFunctions = {
       state.stateIndex++;
       state.lastResult = 'SUCCEEDED';
 
-      // 報酬は「純増ブースト(DC+1)」。母体がDCを持たない上位ATなら枚数で代替する
+      /**
+       * 報酬は母体RUSHの上乗せ(U11 で DC+1 → **ゲーム数+1** へ読み替え)。
+       * ゲーム数が軸でない母体(CloudFront / ヒーロー / 上位AT)では枚数で代替する。
+       */
       const dcUp = boostHostDc(host, spec.dcPerTask);
       let bonusCoins = 0;
       let rewardLabel;
       if (dcUp > 0) {
         state.dcGained += dcUp;
-        rewardLabel = `DC +${dcUp}(${host.state.dc}台)`;
+        rewardLabel = `母体に +${dcUp}G`;
         events.push({
           name: 'paramChange',
-          payload: { param: 'dc', value: host.state.dc, delta: dcUp, source: 'STEP_FUNCTIONS' },
+          payload: {
+            param: 'scale_out',
+            value: host.state.units ?? host.state.remaining,
+            delta: dcUp,
+            source: 'STEP_FUNCTIONS',
+          },
         });
       } else {
         bonusCoins = spec.coinPerTaskWhenNoDc;
@@ -586,7 +639,7 @@ export const stepFunctions = {
         dcGained: state.dcGained, addedCoins: state.addedCoins,
       },
       transition: { pop: true },
-      telop: `Fail State に落ちた — DC +${state.dcGained} 獲得`,
+      telop: `Fail State に落ちた — 上乗せ +${state.dcGained}G 獲得`,
     };
   },
 

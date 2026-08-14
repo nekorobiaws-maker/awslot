@@ -11,6 +11,7 @@ import { cz } from './modes/cz.js';
 import { bonus } from './modes/bonus.js';
 import { bonusReady } from './modes/bonusready.js';
 import { asRush } from './modes/asrush.js';
+import { cfRush, auroraRush, heroRush } from './modes/rushes.js';
 import { hotStandby, route53Failover } from './modes/recovery.js';
 import {
   spotZone, ec2Burst, graviton, reserved,
@@ -27,7 +28,11 @@ export const MODE_HANDLERS = {
   CZ: cz,
   BONUS_READY: bonusReady,
   BONUS: bonus,
-  AS_RUSH: asRush,
+  // RUSH 4種(U11 / data/rushes.js)。伸びる軸が1本ずつ違う
+  AS_RUSH: asRush,          // ゲーム数(EC2の台数 = 残りG)
+  CF_RUSH: cfRush,          // 直接払い出し
+  AURORA_RUSH: auroraRush,  // 純増(ACU)
+  HERO_RUSH: heroRush,      // 5G固定のプレミア
   HOT_STANDBY: hotStandby,
   ROUTE53_FAILOVER: route53Failover,
   // 派生ゾーン(親モードの上に積まれる)
@@ -44,7 +49,7 @@ export const MODE_HANDLERS = {
   MULTI_REGION: multiRegion,
   // エンディング
   REINVENT_ED: reinventEd,
-  // 50回転スコアアタックのリザルト(終端状態)
+  // 100回転スコアアタックのリザルト(終端状態)
   RESULT: result,
 };
 
@@ -117,7 +122,7 @@ export class ModeMachine {
   /**
    * 現在モードで引くべき小役テーブルID(DESIGN.md 3.7)。
    * ハンドラが `flagTable` を宣言していればそれを使い、無ければ通常時。
-   * ボーナス中だけ「ベル約1/1.2 / 15枚」のテーブルに差し替わる。
+   * ボーナス中だけ「ベル約1/1.4 / 15枚」のテーブルに差し替わる(U22 でレア役を厚くした)。
    */
   get flagTableId() { return this.current?.handler?.flagTable ?? DEFAULT_FLAG_TABLE; }
 
@@ -144,7 +149,7 @@ export class ModeMachine {
   }
 
   /**
-   * 50回転を使い切った時点で残っている「所有ぶんの権利」を枚数へ換算する。
+   * 100回転を使い切った時点で残っている「所有ぶんの権利」を枚数へ換算する。
    * docs/BACKLOG.md「M: メカニクス改修」の残存価値の買い取り。
    *
    * モードスタックを下から順に舐め、各ハンドラの residualValue() を集める。

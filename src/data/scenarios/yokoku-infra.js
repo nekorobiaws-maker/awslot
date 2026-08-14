@@ -6,9 +6,10 @@
  * (lcdanims / lcdanims-extra / particles / sfx-presets / char)だけで組み立てる。
  * 新規アニメ・新規SFXプリセットの実装は一切なし。
  *
- * 対象サービス: Ground Station / Braket / Snowファミリー(Snowcone→Snowball→
+ * 対象サービス: Braket / Snowファミリー(Snowcone→Snowball→
  * Snowmobile) / IoT Core / Control Tower / Budgets / Batch / Elastic Beanstalk /
  * Greengrass / RoboMaker / Outposts / Lightsail / EKS / App Runner。
+ * ※ Ground Station(人工衛星)は U46a(2026-08-15)で削除済み。下の A. のコメント参照。
  *
  * ■ 語彙の使い回し方針
  *   既存アニメは「見た目は同じだが params(label/sub/text)で意味を変える」形で
@@ -19,7 +20,6 @@
  *     - reserved_sign(label可変)     … Outposts の設置契約サイン
  *     - cw_meter_swing(label/sub可変) … Braket の量子ビット確率ゲージ
  *     - deploy_progress               … Elastic Beanstalk / App Runner の自動デプロイ
- *     - kinesis_color_stream(caption:false) … Ground Station のテレメトリ受信
  *     - step_up(3灯)                  … IoT Core のセンサー数 / Snowファミリーの3段階
  *     - pillar_raise / checklist_green … Batch のジョブ進行 / EKS の Pod起立 /
  *                                        Control Tower のコントロール通過
@@ -33,10 +33,13 @@
  *     (=出た時点でそれなりに期待していい)。これが「強演出はガセ薄め」に対応する
  *     ペア構成(weak=薄いガセ / mid=レア役限定の本物寄り)。
  *   - すべて mode:['FREE_TIER'] + weight:{FREE_TIER:N, default:0} を基本とし、
- *     RUSH中限定は yi_groundstation_rush_downlink / yi_braket_rush_collapse の
- *     2本だけ(mode:['AS_RUSH'] + weight:{AS_RUSH:N, default:0})。
- *     cw_meter_swing / kinesis_color_stream は lcdanims-extra.js のコメントにある
- *     RUSH安全座標(cx:118/cy:224/r:40、y:250/x0:110)をそのまま使っている。
+ *     RUSH中限定は yi_braket_rush_collapse の1本だけ
+ *     (mode: RUSH_MODES + weight: rushWeight(N))。
+ *     ※U46a(2026-08-15)で yi_groundstation_rush_downlink を削除したため2本→1本。
+ *     ※2026-08-14 修正: U11 で RUSH が4種になったので `AS_RUSH` 直書きをやめ、
+ *       data/rushes.js の RUSH_IDS から生成する形にした(RUSH追加に自動追従)。
+ *     cw_meter_swing は lcdanims-extra.js のコメントにある
+ *     RUSH安全座標(cx:118/cy:224/r:40)をそのまま使っている。
  *   - ゲーム抽選RNGは一切使わない(chance は director.js の演出専用RNG)。
  *   - 「BONUS」を含む文言・「確定/突入/継続」等の当選確定を匂わせる語は使わない
  *     (すべて予告であって当選保証ではないため)。
@@ -44,57 +47,26 @@
  * index.js への登録はこのファイルの担当外(依頼者側で実施)。
  */
 
+import { RUSH_IDS, rushWeight } from '../rushes.js';
+
+/** RUSH 全種(when.mode 用)。data/rushes.js が正 */
+const RUSH_MODES = RUSH_IDS;
+
 export default [
-  // ── A. AWS Ground Station(人工衛星との交信) ─────────────────
-  {
-    id: 'yi_groundstation_weak',
-    name: '【弱】Ground Station予告(パス検出のみ)',
-    when: { event: 'leverOn', flag: ['LOSE', 'BELL', 'REPLAY'], mode: ['FREE_TIER'] },
-    weight: { FREE_TIER: 55, default: 0 },
-    chance: 0.32,
-    duration: 1300,
-    cues: [
-      { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'stream_flow', gain: 0.4 } },
-      { at: 0,   layer: 'lcd', action: 'anim',  params: { anim: 'az_failover' } },
-      { at: 500, layer: 'lcd', action: 'text',  params: { text: 'PASS DETECTED', sub: 'アンテナが衛星を捕捉した', color: '#8ad4ff', ms: 800 } },
-    ],
-  },
-  {
-    id: 'yi_groundstation_mid',
-    name: '【中】Ground Station予告(テレメトリ受信でロック)',
-    when: { event: 'leverOn', rare: true, mode: ['FREE_TIER'] },
-    weight: { FREE_TIER: 48, default: 0 },
-    duration: 2200,
-    cues: [
-      { at: 0,   layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
-      { at: 0,   layer: 'sfx',  action: 'synth', params: { preset: 'charge_up' } },
-      { at: 40,  layer: 'lcd',  action: 'anim',  params: { anim: 'az_failover' } },
-      { waitFor: 'stop2', layer: 'lcd', action: 'anim',
-        params: { anim: 'kinesis_color_stream', level: 1, caption: false } },
-      { waitFor: 'stop3', layer: 'sfx', action: 'synth', params: { preset: 'upgrade_chime' } },
-      { waitFor: 'stop3', after: 100, layer: 'overlay', action: 'flash', params: { color: '#7cf3ff', ms: 200 } },
-      { waitFor: 'stop3', after: 150, layer: 'lcd', action: 'text',
-        params: { text: 'TELEMETRY LOCK', sub: '受信データ: 大当り座標?', color: '#ffe066', ms: 1300 } },
-    ],
-  },
-  {
-    id: 'yi_groundstation_rush_downlink',
-    name: 'RUSH中: Ground Stationダウンリンク全開(上乗せ濃厚)',
-    when: { event: 'leverOn', flag: ['STRONG_CHERRY', 'CHANCE', 'SHARK'], mode: ['AS_RUSH'] },
-    weight: { AS_RUSH: 90, default: 0 },
-    duration: 2800,
-    cues: [
-      { at: 0, layer: 'sfx', action: 'synth', params: { preset: 'stream_flow' } },
-      { at: 0, layer: 'lcd', action: 'anim',
-        params: { anim: 'kinesis_color_stream', level: 1, y: 250, x0: 110, count: 18, caption: false } },
-      { waitFor: 'stop3', layer: 'sfx', action: 'synth', params: { preset: 'upgrade_chime' } },
-      { waitFor: 'stop3', layer: 'lcd', action: 'anim',
-        params: { anim: 'kinesis_color_stream', level: 2, y: 250, x0: 110, count: 26, ms: 1900, caption: false } },
-      { waitFor: 'stop3', after: 120, layer: 'overlay', action: 'flash', params: { color: '#7cf3ff', ms: 220 } },
-      { waitFor: 'stop3', after: 500, layer: 'lcd', action: 'text',
-        params: { text: 'DOWNLINK MAX', sub: '地上局がフル受信中', color: '#7cf3ff', ms: 1200 } },
-    ],
-  },
+  /* ── A.【削除済み】AWS Ground Station(人工衛星との交信)────────────
+   *
+   * 2026-08-15 ユーザー指示 U46a「アンテナ・衛星ネタはやめる」により
+   *   yi_groundstation_weak / yi_groundstation_mid / yi_groundstation_rush_downlink
+   * の3本を削除した(data/quiz.js の satellite 問題も同時に削除)。
+   *
+   * 【発火量への影響】director は候補の中から weight で1本を選ぶ(重みの取り合い)ので、
+   * 候補を減らしたぶんの重みは **同じプールの残りへ自動で按分** される。
+   *   弱プール    … 削除した55は残り候補へ配分。chance も同水準(0.28〜0.35)なので総量は据え置き
+   *   中(rare)   … 48ぶんが他の rare 予告へ回るだけ
+   *   RUSH中プール … rushWeight(90)ぶんが他のRUSH予告へ回るだけ
+   * したがって「予告が出る頻度」は変わらず、**衛星ネタが出なくなる**だけになる。
+   * 復活させたくなったら git 履歴(このコミットの1つ前)から戻せる。
+   */
 
   // ── B. Amazon Braket(量子コンピュータ・観測で当否が確定する) ──
   {
@@ -133,8 +105,8 @@ export default [
   {
     id: 'yi_braket_rush_collapse',
     name: 'RUSH中: Braket量子ビット収束(上乗せ濃厚)',
-    when: { event: 'leverOn', flag: ['STRONG_CHERRY', 'CHANCE', 'SHARK'], mode: ['AS_RUSH'] },
-    weight: { AS_RUSH: 85, default: 0 },
+    when: { event: 'leverOn', flag: ['STRONG_CHERRY', 'CHANCE', 'SHARK'], mode: RUSH_MODES },
+    weight: rushWeight(85),
     duration: 2800,
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'charge_up' } },
