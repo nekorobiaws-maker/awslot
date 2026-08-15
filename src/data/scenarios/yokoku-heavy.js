@@ -255,7 +255,7 @@ export default [
       { waitFor: 'stop3', after: 100, layer: 'lcd', action: 'anim',
         params: { anim: 'bedrock_typing', tier: 'gase', phase: 3, ms: 1800 } },
       { waitFor: 'stop3', after: 240, layer: 'lcd', action: 'text',
-        params: { text: '生成完了', sub: '……出力はここで終わった', ms: 1300, color: '#8ad4ff' } },
+        params: { text: 'Bedrock 生成完了', sub: '……出力はここで終わった', ms: 1300, color: '#8ad4ff' } },
     ],
   },
   /* ── Bedrock揃い(ALARM役)= LLM生成イベント ────────────────────────────
@@ -304,7 +304,7 @@ export default [
       { at: 220, layer: 'char',   action: 'show',  params: { char: 'kiro', pose: 'surprised' } },
       // 推論 → ストリーミング出力(リール停止に合わせて流れる)。
       // 生成パネルは起動ラベルの上へ被さるので、「受信しました」を読ませてから出す
-      { at: 880, layer: 'lcd',    action: 'anim', params: { anim: 'bedrock_typing', tier: 'alarm', phase: 0 } },
+      { waitFor: 'stop3', layer: 'lcd',    action: 'anim', params: { anim: 'bedrock_typing', tier: 'alarm', phase: 0 } },
       { waitFor: 'stop1', layer: 'lcd', action: 'anim', params: { anim: 'bedrock_typing', tier: 'alarm', phase: 1 } },
       { waitFor: 'stop2', layer: 'lcd', action: 'anim', params: { anim: 'bedrock_typing', tier: 'alarm', phase: 2 } },
       { waitFor: 'stop3', after: 80, layer: 'lcd', action: 'anim',
@@ -401,7 +401,7 @@ export default [
       { waitFor: 'stop2', layer: 'lcd', action: 'anim', params: { anim: 'pillar_raise', index: 4, count: 6 } },
       { waitFor: 'stop3', layer: 'lcd', action: 'anim', params: { anim: 'pillar_raise', index: 5, count: 6 } },
       { waitFor: 'stop3', after: 200, layer: 'lcd', action: 'text',
-        params: { text: '5 / 6 本', sub: '残り1本の是正待ち', color: '#ffd166', ms: 1400 } },
+        params: { text: '5 / 6 本', sub: 'Well-Architected — 残り1本の是正待ち', color: '#ffd166', ms: 1400 } },
       { waitFor: 'stop3', after: 250, layer: 'sfx', action: 'synth', params: { preset: 'pillar_up' } },
     ],
   },
@@ -419,7 +419,7 @@ export default [
       { waitFor: 'stop2', layer: 'lcd', action: 'anim', params: { anim: 'pillar_raise', index: 3, count: 6 } },
       // 「届かなかった」は結末の断言に読めるので、立った本数だけを述べる
       { waitFor: 'stop3', after: 100, layer: 'lcd', action: 'text',
-        params: { text: '3 / 6 本', sub: '3本目で止まっている', color: '#8ad4ff', ms: 1200 } },
+        params: { text: '3 / 6 本', sub: 'Well-Architected — 3本目で止まっている', color: '#8ad4ff', ms: 1200 } },
     ],
   },
 
@@ -461,7 +461,7 @@ export default [
       { at: 700,  layer: 'sfx',  action: 'synth', params: { preset: 'health_check' } },
       { at: 740,  layer: 'char', action: 'show', params: { char: 'kiro', pose: 'normal' } },
       { at: 800,  layer: 'lcd',  action: 'text',
-        params: { text: '5 / 6 本', sub: '最後の1本が立たなかった', color: '#8aa0b4', ms: 1300 } },
+        params: { text: '5 / 6 本', sub: 'Well-Architected — 最後の1本が立たなかった', color: '#8aa0b4', ms: 1300 } },
       { at: 1100, layer: 'lamp', action: 'pattern', params: { pattern: 'idle' } },
     ],
   },
@@ -569,7 +569,9 @@ export default [
      * そこで **ほぼ何も起きないゲーム** にも赤を少量だけ混ぜる:
      *   flag         … CZ_ENTRY.table に行が無い3役(成立役契機では当たらない)
      *   zenchoActive … false = 前兆も走っていない(保持中の当選も無い)
-     * パチンコの「赤保留のガセ」と同じ役割。
+     * 役割は「赤い予告が必ず当たるわけではない」を成立させる裏切り枠
+     * (U67-1: 旧コメントの「パチンコの赤保留のガセ」という喩えは、
+     *  この台に無い仕組みを持ち出していたので言い換えた)。
      *
      * 【2026-08-15 訂正】「必ず空振りする」ではない。
      * ステージの毎ゲームCZ抽選(高確・激アツ)とレバーONフリーズは

@@ -4,7 +4,7 @@
  * 「動きで魅せる」予告をまとめたファイル。ID はすべて yg_ プレフィックス。
  * 使用する lcd.anim は src/staging/anims/lcdanims-extra.js の LCD_ANIMS_EXTRA
  * (sqs_queue_hold / sfn_arrow_step / deploy_progress / asg_multiply /
- *  cw_meter_swing / kinesis_color_stream / deep_racer_run)。
+ *  cw_meter_swing / kinesis_color_stream / distmap_run)。
  *
  * データのみ。演出の実装(anims / sfx)には依存しない。
  *
@@ -15,17 +15,36 @@
  */
 
 import { RUSH_IDS, rushWeight } from '../rushes.js';
+import { COLOR_NEUTRAL_MID } from '../rolecolors.js';
 
 /** RUSH 全種(when.mode 用)。data/rushes.js が正 */
 const RUSH_MODES = RUSH_IDS;
+
+/* ══ パチンコ用語を持ち込まない(2026-08-15 ユーザー指示 U67-1)══════════
+ *
+ * この台は **パチスロ** なので、盤面・ポップアップに「保留」「保留変化」
+ * 「保留が赤に変化」といったパチンコ側の言い回しを出さない。
+ * 「保留が赤に変化」は台の仕組みとして存在しないものを指しており、
+ * プレイヤーには何が起きたのか一切伝わらなかった(ユーザー指摘)。
+ *
+ * 代わりに **AWS 側で実際に起きていること** をそのまま書く:
+ *   ×  「保留が赤に変化」
+ *   ○  「SQS — メッセージが4件たまった」
+ * サービス名は必ず入れる(何の画なのかが1行で分かるように)。
+ *
+ * 液晶の絵(lcdanims-extra.js の sqs_queue_hold)は封筒カードが積み上がり、
+ * 枚数と枠色(白→金→赤)で熱さを示す。**色は絵の熱さの表現であって
+ * 「保留の色」ではない**ので、文言側では色に言及しない。
+ */
 
 export default [
   // ── 通常時(FREE_TIER)のギミック予告 ─────────────────
 
   {
     id: 'yg_sqs_hold_gase',
-    name: '【ガセ】SQS保留予告(白のまま溜まって終わる)',
-    // IDEAS.md 2-6。保留変化型。ハズレ・小役でも稀に出して「保留が育つかも」と思わせる
+    name: '【ガセ】SQSキュー滞留予告(2件たまったまま終わる)',
+    // IDEAS.md 2-6。ハズレ・小役でも稀に出して「まだ増えるかも」と思わせる枠。
+    // U67-1: 旧名「SQS保留予告(白のまま溜まって終わる)」= パチンコ語だったので改名
     when: { event: 'leverOn', flag: ['LOSE', 'BELL', 'REPLAY'], mode: ['FREE_TIER'] },
     weight: { FREE_TIER: 55, default: 0 },
     chance: 0.40,  // 統合調律(2026-08-13): 非レア時の演出発火率30%に合わせて 0.05 → 0.40
@@ -37,15 +56,21 @@ export default [
       { waitFor: 'stop2', layer: 'lcd', action: 'anim', params: { anim: 'sqs_queue_hold', count: 2, level: 0 } },
       { waitFor: 'stop3', after: 120, layer: 'lcd', action: 'anim',
         params: { anim: 'sqs_queue_hold', count: 2, level: 0, ms: 1500 } },
+      /*
+       * U67-1: 「保留は白のまま…」→ 実態(キューに何件たまったか)へ。
+       * 色は結論行ではない **煽りの装飾色**(rolecolors.js の但し書き)。
+       * 役を1つも名乗っていないので役色は使わない。
+       */
       { waitFor: 'stop3', after: 260, layer: 'lcd', action: 'text',
-        params: { text: 'QUEUE 2', sub: '保留は白のまま…', color: '#e8f1ff', ms: 1000 } },
+        params: { text: 'QUEUE 2', sub: 'SQS — メッセージが2件たまったまま', color: '#e8f1ff', ms: 1000 } },
     ],
   },
 
   {
     id: 'yg_sqs_hold_hot',
-    name: 'SQS保留変化予告(白→金→赤まで育つ)',
-    // IDEAS.md 2-6。停止ごとに保留が増え、色が上がるほど期待度アップ
+    name: 'SQSキュー滞留予告(停止ごとに増えて4件まで積み上がる)',
+    // IDEAS.md 2-6。停止ごとにメッセージが増え、たまるほど期待度アップ。
+    // U67-1: 旧名「SQS保留変化予告(白→金→赤まで育つ)」= パチンコ語だったので改名
     when: { event: 'leverOn', rare: true, mode: ['FREE_TIER'] },
     weight: { FREE_TIER: 45, default: 0 },
     duration: 3000,
@@ -64,8 +89,18 @@ export default [
       { waitFor: 'stop3', after: 100, layer: 'lcd', action: 'particles',
         params: { preset: 'spark', x: 46, y: 150, count: 14 } },
       { waitFor: 'stop3', after: 160, layer: 'char', action: 'motion', params: { char: 'kiro', motion: 'bounce' } },
+      /*
+       * U67-1(ユーザー指摘の本丸): 旧「QUEUE 4 — RED / 保留が赤に変化」は
+       * この台に存在しない仕組みを指していて意味が通らなかった。
+       * 何件たまったのかという **実態** を出す。
+       *
+       * 色: when が rare:true = **成立役が1つに決まらない**ので役色は使えない
+       *     (U62)。中立色 COLOR_NEUTRAL_MID を明示する。旧 #ff8a8a は赤系で、
+       *     ROLE_COLORS のチェリー(赤)と読み違える余地があった。
+       *     絵(封筒カード)の赤い枠は熱さの表現なので、そのまま level:2 で残す。
+       */
       { waitFor: 'stop3', after: 300, layer: 'lcd', action: 'text',
-        params: { text: 'QUEUE 4 — RED', sub: '保留が赤に変化', color: '#ff8a8a', ms: 1300 } },
+        params: { text: 'QUEUE 4', sub: 'SQS — メッセージが4件たまった', color: COLOR_NEUTRAL_MID, ms: 1300 } },
     ],
   },
 
@@ -151,7 +186,7 @@ export default [
       { at: 860,  layer: 'lcd',     action: 'particles', params: { preset: 'spark', x: 220, y: 80, count: 18 } },
       // 「突入」を含むので可読性エンジンが自動で sticky にする
       { at: 940,  layer: 'lcd',     action: 'text',
-        params: { text: '調査を開始 — 突入', sub: '全ステート制覇。赤いトレースが消えた', color: '#ffe066', ms: 1900 } },
+        params: { text: '調査を開始 — 突入', sub: 'Step Functions 全ステート制覇 — X-Ray の赤いトレースが消えた', color: '#ffe066', ms: 1900 } },
       { at: 1200, layer: 'sfx',     action: 'synth', params: { preset: 'fanfare_reg' } },
     ],
   },
@@ -290,7 +325,7 @@ export default [
       { at: 1300, layer: 'sfx',   action: 'synth', params: { preset: 'error_buzz' } },
       { at: 1340, layer: 'char',  action: 'show',  params: { char: 'kiro', pose: 'normal' } },
       { at: 1380, layer: 'lcd',   action: 'text',
-        params: { text: '本番反映は取り消し', sub: 'デプロイは巻き戻されました', color: '#ff8a8a', ms: 1200 } },
+        params: { text: '本番反映は取り消し', sub: 'CodeDeploy — デプロイは巻き戻されました', color: '#ff8a8a', ms: 1200 } },
       { at: 1600, layer: 'lamp',  action: 'pattern', params: { pattern: 'idle' } },
     ],
   },
@@ -347,8 +382,13 @@ export default [
 
   {
     id: 'yg_deep_racer_run',
-    name: '【賑やかし】ミニDeepRacerが液晶下段を走り抜ける',
-    // IDEAS.md 2-35。期待度は持たせない“いるだけ”演出
+    name: '【賑やかし】分散マップの子の実行が液晶下段を走り抜ける',
+    /*
+     * IDEAS.md 2-35。期待度は持たせない“いるだけ”演出。
+     * 2026-08-15 U58: 題材を DeepRacer(2025-12 提供終了)から
+     * **Step Functions 分散マップの子の実行** へ差し替えた(絵の骨格はそのまま)。
+     * シナリオIDは他所からの参照を壊さないため据え置き。
+     */
     when: { event: 'leverOn', flag: ['LOSE', 'BELL', 'REPLAY'], mode: ['FREE_TIER'] },
     weight: { FREE_TIER: 45, default: 0 },
     chance: 0.20,  // 統合調律(2026-08-13): 非レア時の演出発火率30%に合わせて 0.02 → 0.20
@@ -356,16 +396,70 @@ export default [
     cues: [
       { waitFor: 'stop1', layer: 'sfx', action: 'synth', params: { preset: 'ui_select' } },
       { waitFor: 'stop1', layer: 'lcd', action: 'anim',
-        params: { anim: 'deep_racer_run', y: 244, dir: 1 } },
+        params: { anim: 'distmap_run', y: 244, dir: 1 } },
     ],
   },
 
-  // ── RUSH中(AS_RUSH)の上乗せ期待予告 ────────────────
+  /* ══ RUSH中の上乗せ期待予告 ══════════════════════════════════════════
+   *
+   * ── 【ルール】否定文言は、そのイベントが起きる回には構造的に出さない ──
+   *    (2026-08-15 ユーザー指摘 U67-2)
+   *
+   * 【何が起きていたか】
+   *   Aurora RUSH でスイカ(レア役)を引くと、同じゲームで
+   *     ・aurora_scale_up  「SCALE UP!! ACU が上がった」(rushes.js / 事実)
+   *     ・yg_rush_cw_meter_tease「まだスケールしません」(ここ / 否定)
+   *   が **同時に** 出て、画面が自分で自分を否定していた。
+   *
+   * 【なぜ起きたか】
+   *   RUSH の上乗せ契機は4種とも **レア役(data/rareroles.js の isRareRole)** で統一
+   *   されているのに、否定側の予告が `flag:['WEAK_CHERRY','MELON']`
+   *   = **レア役の一部** を条件にしていたため。弱いレア役でも上乗せは必ず走る。
+   *     AS_RUSH     addUnitsByFlag  … 台数(= 残りG)が増える
+   *     AURORA_RUSH acuUpByFlag     … ACU(純増)が上がる + 残りG +1
+   *     CF_RUSH     coinByFlag      … 確定クレジットが乗る
+   *     HERO_RUSH   coinByFlag      … +α が乗る
+   *   どれも「レア役なら必ず何かが乗る」ので、レア役のゲームに
+   *   「まだ〜しません / 起きません」系を出した時点で必ず嘘になる。
+   *
+   * 【これから守ること】
+   *   否定・待機系(「まだ〜」「届かない」「変わらない」)を書くときは、
+   *   **そのイベントが起きうる成立役を when から丸ごと外す**。
+   *   文言の言い回しでごまかさず、発火条件で構造的に交わらないようにする。
+   *     ・レア役契機のイベントを否定するなら `rare: false`
+   *       (data/rareroles.js が唯一の正なので、役が増減しても自動追従する)
+   *     ・payload で分かるものは match で外す
+   *       例) rushes.js の hero_rush_miss は `bonus:[0]` を条件に持ち、
+   *           レア役 +α が乗ったゲーム(hero_rush_bonus / _bonus_hit)とは
+   *           **絶対に重ならない**。これが正しい形。
+   *   `flag:[...]` に個別の役を並べる書き方は、役や契機が増えたときに
+   *   静かに穴が開く(今回の事故がまさにそれ)。
+   *
+   * 【点検結果(2026-08-15 / 4RUSH + 引き戻し層)】
+   *   AS   スケールアウト待ち … yg_rush_cw_meter_tease が穴だった → 下で修正
+   *   Aurora スケールアップ待ち … 同上(同じシナリオが両方を兼ねていた)
+   *   CF   ヒット待ち        … 否定ポップアップは存在しない(cf_rush_hit は
+   *                            ヒットした瞬間だけ。キャッシュミスは無言)= 穴なし
+   *   HERO +α待ち           … hero_rush_miss が bonus:[0] で除外済み、
+   *                            かつ文字を出さない(表情と音だけ)= 穴なし
+   *   HOT_STANDBY 切替待ち   … standby_progress はゲージの絵だけで文字なし。
+   *                            レア役の +1G(pf_standby_extend)とは競合しない = 穴なし
+   */
 
   {
     id: 'yg_rush_cw_meter_max',
-    name: 'RUSH中:CloudWatchメーターが振り切れる(上乗せ期待濃厚)',
-    // 針が THRESHOLD を超えると SCALE OUT 濃厚。振り切れは強レア役限定にして安売りしない
+    name: 'RUSH中:CloudWatchメーターが振り切れる(上位レア役)',
+    /*
+     * 針が THRESHOLD を超える強い版。振り切れは上位レア役限定にして安売りしない。
+     *
+     * U67-2: sub を「スケールアウト濃厚」から事実ベースへ変えた。
+     * スケール**アウト**(台数が横に増える)は AS_RUSH だけの現象で、
+     * Aurora はスケール**アップ**(ACU が上がる)、CF・HERO はそもそも
+     * スケールしない(コインが乗る)。RUSH 4種すべてで出る予告なので、
+     * 4種に共通して正しいことだけを言う = 「レア役ぶんの恩恵が乗る」。
+     * 何がどれだけ乗ったかは直後の結果告知(as_rush_scale_out /
+     * aurora_scale_up / cf_rush_win_coin / hero_rush_bonus*)が出す。
+     */
     when: { event: 'leverOn', flag: ['STRONG_CHERRY', 'CHANCE', 'SHARK'], mode: RUSH_MODES },
     weight: rushWeight(100),
     duration: 3000,
@@ -385,30 +479,59 @@ export default [
       { waitFor: 'stop3', after: 760, layer: 'lcd', action: 'particles',
         params: { preset: 'spark', x: 118, y: 190, count: 14 } },
       { waitFor: 'stop3', after: 1000, layer: 'lcd', action: 'text',
-        params: { text: 'THRESHOLD 超過', sub: 'スケールアウト濃厚', color: '#ff8a8a', ms: 1300 } },
+        params: { text: 'THRESHOLD 超過', sub: 'CloudWatch がアラーム — レア役ぶんの恩恵が乗る', color: '#ff8a8a', ms: 1300 } },
     ],
   },
 
   {
     id: 'yg_rush_cw_meter_tease',
-    name: '【ガセ】RUSH中:CloudWatchメーターが THRESHOLD 手前で止まる',
-    // 弱レア役版。針が黄色ゾーンまでは来るが赤を超えない
-    when: { event: 'leverOn', flag: ['WEAK_CHERRY', 'MELON'], mode: RUSH_MODES },
+    name: 'RUSH中:CloudWatchメーターが THRESHOLD 手前で止まる(非レア役)',
+    /*
+     * ── U67-2(ユーザー指摘の本丸)で発火条件を差し替えた ──────────────
+     *
+     * 旧: `flag: ['WEAK_CHERRY', 'MELON']`(= レア役の一部)
+     * 新: `rare: false`(= レア役以外すべて)
+     *
+     * 旧条件だと Aurora RUSH でスイカを引いたゲームに
+     *   「SCALE UP!! ACU 30 → 39」(aurora_scale_up)
+     *   「まだスケールしません」(この予告)
+     * が同時に出て矛盾していた。弱いレア役でも上乗せは必ず走るため、
+     * **レア役を1つでも when に残した時点で構造的に矛盾する**。
+     * このセクション冒頭のルールどおり、レア役を丸ごと外して交わらせない。
+     *
+     * `rare` は director が data/rareroles.js の isRareRole() から立てる値
+     * (game/flow.js の leverOn payload)。役や契機が増えても自動追従する。
+     *
+     * 文言も「まだスケールしません」= 否定の言い切りをやめ、
+     * **メーターが何を示しているか** だけを述べる形にした。
+     * これなら AS / Aurora(しきい値未達 = 増強は走らない)でも、
+     * そもそもスケールしない CF / HERO でも嘘にならない。
+     *
+     * chance: 非レア役はレア役より遥かに多いので、絞らないと出過ぎる。
+     * 200セッション(RUSH滞在 約820ゲーム)の実測で発火量を旧条件に合わせた:
+     *   旧 flag:['WEAK_CHERRY','MELON'] / chance なし … 60回(RUSH の約7.3%)
+     *   新 rare:false / chance 0.12                  … 57回(RUSH の約7.0%)
+     * ほぼ同じ量に収まるので、他の予告の見え方(重み配分)を動かさない。
+     * ついでに「レア役の結果告知と枠を奪い合う」形でもなくなったので、
+     * 静かなゲームの穴埋めとして働くようになった。
+     */
+    when: { event: 'leverOn', rare: false, mode: RUSH_MODES },
     weight: rushWeight(100),
+    chance: 0.12,
     duration: 2400,
     cues: [
       { at: 0, layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
       { waitFor: 'stop3', layer: 'lcd', action: 'anim',
         params: { anim: 'cw_meter_swing', to: 0.72, over: false, label: 'CPU UTIL', sub: 'THRESHOLD 85%', ms: 1800 } },
       { waitFor: 'stop3', after: 1100, layer: 'lcd', action: 'text',
-        params: { text: '72%', sub: 'まだスケールしません', color: '#ffd166', ms: 900 } },
+        params: { text: 'CPU 72%', sub: 'CloudWatch — しきい値 85% には届かず', color: '#ffd166', ms: 900 } },
     ],
   },
 
   {
     id: 'yg_rush_racer_cheer',
-    name: '【賑やかし】RUSH中:ミニDeepRacerが下段を走り抜ける',
-    // IDEAS.md 2-35。RUSH の小役でも稀に走らせて画面を寂しくしない
+    name: '【賑やかし】RUSH中:分散マップの子の実行が下段を走り抜ける',
+    // IDEAS.md 2-35。RUSH の小役でも稀に走らせて画面を寂しくしない(U58 で題材差し替え)
     when: { event: 'leverOn', flag: ['LOSE', 'BELL', 'REPLAY'], mode: RUSH_MODES },
     weight: rushWeight(100),
     chance: 0.03,
@@ -416,7 +539,7 @@ export default [
     cues: [
       { waitFor: 'stop1', layer: 'sfx', action: 'synth', params: { preset: 'ui_select' } },
       { waitFor: 'stop1', layer: 'lcd', action: 'anim',
-        params: { anim: 'deep_racer_run', y: 244, dir: -1, color: '#7bf7d0' } },
+        params: { anim: 'distmap_run', y: 244, dir: -1, color: '#7bf7d0' } },
     ],
   },
 

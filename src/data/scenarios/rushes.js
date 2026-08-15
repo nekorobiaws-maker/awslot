@@ -20,6 +20,26 @@
  * ■ 表示原則 U8(二重表示の禁止)
  *   液晶の常設パネル(render/lcd-rush.js)が「いまの状態」を出しているので、
  *   ここでは **瞬間の出来事** だけを短く出す。数字を繰り返さない。
+ *
+ * ■ 否定文言は、そのイベントが起きる回には構造的に出さない(2026-08-15 U67-2)
+ *   ここの結果告知は「起きた瞬間」にしか出ないので単体では安全だが、
+ *   **同じゲームに別ファイルの予告が「まだ起きません」と被せてくる**と
+ *   画面が自己矛盾する。実際 Aurora RUSH でスイカを引くと
+ *     aurora_scale_up(SCALE UP!! ACU が上がった)
+ *     + yokoku-gimmick.js の CloudWatch 予告(まだスケールしません)
+ *   が同時に出ていた(ユーザー指摘)。
+ *
+ *   RUSH 4種の上乗せ契機は **すべてレア役**(data/rareroles.js の isRareRole)で
+ *   統一されている:
+ *     AS_RUSH     addUnitsByFlag … 台数(= 残りG)が増える
+ *     AURORA_RUSH acuUpByFlag    … ACU(純増)が上がる + 残りG +1
+ *     CF_RUSH     coinByFlag     … 確定クレジットが乗る
+ *     HERO_RUSH   coinByFlag     … +α が乗る
+ *   したがって **レア役のゲームに否定・待機系の文言を出したら必ず嘘になる**。
+ *   否定側を書くときは when からレア役を丸ごと外す(`rare: false`)か、
+ *   payload で外す(下の hero_rush_miss の `bonus:[0]` が手本)。
+ *   ルールの全文と点検結果は data/scenarios/yokoku-gimmick.js の
+ *   「RUSH中の上乗せ期待予告」セクション冒頭。
  */
 
 import { RUSH_SPEC_BY_ID, heroHitLabel } from '../rushes.js';
@@ -312,6 +332,13 @@ export default [
   {
     id: 'hero_rush_miss',
     name: 'ヒーローRUSH 非当選(次のゲームへ)',
+    /*
+     * U67-2 の「否定文言は構造的に交わらせない」の手本。
+     *   bonus:[0] … レア役の +α が乗ったゲーム(hero_rush_bonus / _bonus_hit)を
+     *               payload の時点で除外している。
+     *   さらにこの画は **文字を出さない**(ヒーローの表情と音だけ)ので、
+     *   仮に条件が緩んでも「起きなかった」と言い切ってしまうことがない。
+     */
     when: {
       event: 'paramChange', mode: ['HERO_RUSH'],
       match: { param: ['hero_game'], hit: [false], bonus: [0] },
@@ -404,11 +431,17 @@ export default [
       { at: 1360, layer: 'lamp',    action: 'pattern', params: { pattern: 'rare' } },
       { at: 1380, layer: 'sfx',     action: 'synth', params: { preset: 'error_buzz' } },
       /*
-       * U17(2026-08-14): 「ホットスタンバイへ」はモード側のテロップが
-       * 種別ごとの言い回し(ディストリビューション終了… / クラスターが縮退… など)で
-       * 必ず出している。ポップアップは **終わった瞬間** だけを短く言う。
-       * 行き先は TEXT_CATEGORIES の 'standby' で束ねてあるので、
-       * このポップアップが出ている間はテロップが自動で黙る(消えたら戻る)。
+       * ── この1枚だけが「終わった」を言葉にする(2026-08-15 ユーザー指示 U64-7)──
+       *
+       * 以前は同じ瞬間に health_check_impact が 'UNHEALTHY' を y148 へ描いており、
+       * このポップアップ(プレートは y151〜236)と **2枚重なって**いた。
+       * 「同時に出す告知は1枚」に合わせ、**盤面側の文字を全部落とした**
+       * (向こうは赤い枠・止まった心電図・赤フラッシュだけで落ちたことを見せる)。
+       * したがって RUSH 終了の言葉はこの1本が唯一。**盤面へ文字を戻さないこと。**
+       *
+       * U17(2026-08-14): 行き先は TEXT_CATEGORIES の 'standby' で束ねてあるので、
+       * このポップアップが出ている間はモード側のテロップ
+       * (ディストリビューション終了… / クラスターが縮退… など)が自動で黙る。
        */
       { at: 1700, layer: 'lcd',     action: 'text',
         params: { text: 'RUSH 終了', sub: '引き戻しに期待', color: '#ff8a8a', ms: 1500 } },

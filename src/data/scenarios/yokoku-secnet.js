@@ -59,7 +59,7 @@ export default [
     cues: [
       { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'SCANNING…', sub: 'Macieが機密データを検索中', color: '#8ad4ff', ms: 650 } },
       { at: 20,  layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick', gain: 0.5 } },
-      { at: 650, layer: 'lcd', action: 'text',  params: { text: 'NO FINDING', sub: '該当データなし', color: '#8ad4ff', ms: 500 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: 'NO FINDING', sub: '該当データなし', color: '#8ad4ff', ms: 500 } },
     ],
   },
   {
@@ -72,9 +72,9 @@ export default [
       { at: 0,   layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
       { at: 0,   layer: 'lcd',  action: 'text',    params: { text: 'SCANNING…', sub: 'S3バケットを走査中', color: '#ffe066', ms: 600 } },
       { at: 40,  layer: 'sfx',  action: 'synth',   params: { preset: 'countdown_tick' } },
-      { at: 700, layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 200, y: 200, count: 14 } },
-      { at: 720, layer: 'sfx',  action: 'synth',   params: { preset: 'alarm_beep' } },
-      { at: 900, layer: 'lcd',  action: 'text',    params: { text: 'SENSITIVE DATA FOUND', sub: '機密情報を検出した', color: '#ff8a00', ms: 1000 } },
+      { waitFor: 'stop3', layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 200, y: 200, count: 14 } },
+      { waitFor: 'stop3', after: 20, layer: 'sfx',  action: 'synth',   params: { preset: 'alarm_beep' } },
+      { waitFor: 'stop3', after: 200, layer: 'lcd',  action: 'text',    params: { text: 'SENSITIVE DATA FOUND', sub: '機密情報を検出した', color: '#ff8a00', ms: 1000 } },
     ],
   },
 
@@ -90,7 +90,7 @@ export default [
     cues: [
       { at: 0,   layer: 'lcd', action: 'anim',  params: { anim: 'step_up', step: 1 } },
       { at: 30,  layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.5 } },
-      { at: 600, layer: 'lcd', action: 'text',  params: { text: 'FINDINGS 3', sub: 'Security Hub 検出結果', color: '#8ad4ff', ms: 500 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: 'FINDINGS 3', sub: 'Security Hub 検出結果', color: '#8ad4ff', ms: 500 } },
     ],
   },
   {
@@ -124,9 +124,9 @@ export default [
       { at: 0,   layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
       { at: 0,   layer: 'lcd',  action: 'text',    params: { text: 'SCANNING…', sub: 'Inspectorが脆弱性を検査中', color: '#ffe066', ms: 600 } },
       { at: 40,  layer: 'sfx',  action: 'synth',   params: { preset: 'countdown_tick' } },
-      { at: 650, layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 220, y: 200, count: 14 } },
-      { at: 680, layer: 'sfx',  action: 'synth',   params: { preset: 'error_buzz' } },
-      { at: 850, layer: 'lcd',  action: 'text',    params: { text: 'CRITICAL FINDING', sub: '重大な脆弱性を検出', color: '#ff5a5a', ms: 1000 } },
+      { waitFor: 'stop3', layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 220, y: 200, count: 14 } },
+      { waitFor: 'stop3', after: 30, layer: 'sfx',  action: 'synth',   params: { preset: 'error_buzz' } },
+      { waitFor: 'stop3', after: 200, layer: 'lcd',  action: 'text',    params: { text: 'CRITICAL FINDING', sub: '重大な脆弱性を検出', color: '#ff5a5a', ms: 1000 } },
     ],
   },
 
@@ -220,9 +220,9 @@ export default [
       { at: 0,    layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
       { at: 0,    layer: 'lcd',  action: 'anim',    params: { anim: 'health_check', ok: false, label: 'THROTTLED' } },
       { at: 40,   layer: 'sfx',  action: 'synth',   params: { preset: 'health_check' } },
-      { at: 800,  layer: 'lcd',  action: 'anim',    params: { anim: 'health_check', ok: true, label: '200 OK' } },
-      { at: 840,  layer: 'sfx',  action: 'synth',   params: { preset: 'checklist_ok' } },
-      { at: 1200, layer: 'lcd',  action: 'text',    params: { text: 'RATE LIMIT解除', sub: 'API Gatewayが通過を許可した', color: '#ffe066', ms: 900 } },
+      { waitFor: 'stop1',  layer: 'lcd',  action: 'anim',    params: { anim: 'health_check', ok: true, label: '200 OK' } },
+      { waitFor: 'stop1', after: 40,  layer: 'sfx',  action: 'synth',   params: { preset: 'checklist_ok' } },
+      { waitFor: 'stop3', layer: 'lcd',  action: 'text',    params: { text: 'RATE LIMIT解除', sub: 'API Gatewayが通過を許可した', color: '#ffe066', ms: 900 } },
     ],
   },
 
@@ -291,7 +291,7 @@ export default [
       { at: 0,   layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
       { at: 0,   layer: 'lcd',  action: 'anim',    params: { anim: 'health_check', ok: true, label: 'CONNECTED' } },
       { at: 40,  layer: 'sfx',  action: 'synth',   params: { preset: 'health_check' } },
-      { at: 700, layer: 'lcd',  action: 'text',    params: { text: 'PRIVATE接続', sub: 'インターネットを経由せず繋がった', color: '#ffe066', ms: 1000 } },
+      { waitFor: 'stop3', layer: 'lcd',  action: 'text',    params: { text: 'PRIVATE接続', sub: 'インターネットを経由せず繋がった', color: '#ffe066', ms: 1000 } },
     ],
   },
 
@@ -306,7 +306,7 @@ export default [
     cues: [
       { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'INSPECTING…', sub: 'パケットを検査中', color: '#8ad4ff', ms: 600 } },
       { at: 40,  layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick', gain: 0.5 } },
-      { at: 600, layer: 'lcd', action: 'text',  params: { text: 'PASS', sub: '異常なし', color: '#8ad4ff', ms: 500 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: 'PASS', sub: '異常なし', color: '#8ad4ff', ms: 500 } },
     ],
   },
   {
@@ -319,10 +319,10 @@ export default [
       { at: 0,   layer: 'lamp',    action: 'pattern', params: { pattern: 'rare' } },
       { at: 0,   layer: 'lcd',     action: 'text',    params: { text: 'INSPECTING…', sub: 'パケットを検査中', color: '#ffe066', ms: 600 } },
       { at: 40,  layer: 'sfx',     action: 'synth',   params: { preset: 'countdown_tick' } },
-      { at: 650, layer: 'overlay', action: 'shake',   params: { power: 8, ms: 220 } },
-      { at: 660, layer: 'sfx',     action: 'synth',   params: { preset: 'error_buzz' } },
-      { at: 700, layer: 'lcd',     action: 'particles', params: { preset: 'spark', x: 200, y: 200, count: 16 } },
-      { at: 850, layer: 'lcd',     action: 'text',    params: { text: 'BLOCKED', sub: '不審な通信を大量に遮断', color: '#ff8a00', ms: 1000 } },
+      { waitFor: 'stop3', layer: 'overlay', action: 'shake',   params: { power: 8, ms: 220 } },
+      { waitFor: 'stop3', after: 10, layer: 'sfx',     action: 'synth',   params: { preset: 'error_buzz' } },
+      { waitFor: 'stop3', after: 50, layer: 'lcd',     action: 'particles', params: { preset: 'spark', x: 200, y: 200, count: 16 } },
+      { waitFor: 'stop3', after: 200, layer: 'lcd',     action: 'text',    params: { text: 'BLOCKED', sub: '不審な通信を大量に遮断', color: '#ff8a00', ms: 1000 } },
     ],
   },
 
@@ -337,9 +337,9 @@ export default [
       { at: 0,    layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
       { at: 0,    layer: 'lcd',  action: 'anim',    params: { anim: 'health_check', ok: false, label: 'HANDSHAKE' } },
       { at: 40,   layer: 'sfx',  action: 'synth',   params: { preset: 'countdown_tick' } },
-      { at: 800,  layer: 'lcd',  action: 'anim',    params: { anim: 'health_check', ok: true, label: 'TUNNEL UP' } },
-      { at: 840,  layer: 'sfx',  action: 'synth',   params: { preset: 'health_check' } },
-      { at: 1200, layer: 'lcd',  action: 'text',    params: { text: 'VPN TUNNEL確立', sub: '2本の経路が繋がった', color: '#ffe066', ms: 900 } },
+      { waitFor: 'stop1',  layer: 'lcd',  action: 'anim',    params: { anim: 'health_check', ok: true, label: 'TUNNEL UP' } },
+      { waitFor: 'stop1', after: 40,  layer: 'sfx',  action: 'synth',   params: { preset: 'health_check' } },
+      { waitFor: 'stop3', layer: 'lcd',  action: 'text',    params: { text: 'VPN TUNNEL確立', sub: '2本の経路が繋がった', color: '#ffe066', ms: 900 } },
     ],
   },
 
@@ -362,34 +362,43 @@ export default [
     ],
   },
 
-  // ── M. ACM 証明書期限予告 ─────────────────────────────────────────
-  // 証明書の有効期限が切れそう→更新成功で復活(IDEAS.md 2章)。
+  /* ── M. ACM 証明書の自動更新予告 ───────────────────────────────────
+   *
+   * ── 2026-08-15 ユーザー指示 U64-5「ACM前兆を前向きに」──────────────
+   * 旧: 「証明書 残り3日 / 有効期限が近づいている」「このままでは失効する」
+   *   → 失効の不安を煽る画だった。ACM の実際の値打ちは
+   *     **黙っていても自動で更新してくれる**ところにあるので、
+   *     「危ない」ではなく「ACM が更新してくれた」= 片付いた画へ作り替えた。
+   * 弱 = 更新が1本走った / 中 = 更新が全部片付いた、という濃さの差だけを持たせる。
+   * data/scenarios/yokoku-batch5.js の yb5_acm_renew_weak と
+   * data/quiz.js の豆知識(AWS Certificate Manager)も同じ「自動更新」の話に揃えてある。
+   */
   {
     id: 'ys_acm_cert_weak',
-    name: '【弱】ACM証明書期限予告(様子見で終わる)',
+    name: '【弱】ACM証明書予告(自動更新が1本走った)',
     when: { event: 'leverOn', flag: ['LOSE', 'REPLAY'], mode: ['FREE_TIER'], match: { 'modeState.zenchoActive': [false] } },
     weight: { FREE_TIER: 55, default: 0 },
     chance: 0.35,
     duration: 1200,
     cues: [
-      { at: 0,   layer: 'lcd', action: 'text',  params: { text: '証明書 残り3日', sub: '有効期限が近づいている', color: '#8ad4ff', ms: 700 } },
-      { at: 40,  layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick', gain: 0.5 } },
-      { at: 700, layer: 'lcd', action: 'text',  params: { text: '様子見', sub: '今回は動きなし', color: '#8ad4ff', ms: 500 } },
+      { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'ACM 自動更新', sub: 'HTTPS 証明書を ACM が更新した', color: '#8ad4ff', ms: 700 } },
+      { at: 40,  layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.5 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: '更新は1本だけ', sub: 'ACM — 自動更新は1枚で終わった', color: '#8ad4ff', ms: 500 } },
     ],
   },
   {
     id: 'ys_acm_cert_mid',
-    name: '【中】ACM証明書期限予告(ぎりぎりで更新成功)',
+    name: '【中】ACM証明書予告(自動更新がまとめて完了)',
     when: { event: 'leverOn', rare: true, mode: ['FREE_TIER'] },
     weight: { FREE_TIER: 50, default: 0 },
     duration: 1900,
     cues: [
       { at: 0,   layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
-      { at: 0,   layer: 'lcd',  action: 'text',    params: { text: '証明書 DNS検証 未完了', sub: 'このままでは失効する', color: '#ffe066', ms: 600 } },
-      { at: 40,  layer: 'sfx',  action: 'synth',   params: { preset: 'countdown_tick' } },
-      { at: 700, layer: 'sfx',  action: 'synth',   params: { preset: 'contract_sign' } },
-      { at: 750, layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 200, y: 200, count: 14 } },
-      { at: 900, layer: 'lcd',  action: 'text',    params: { text: '証明書更新完了', sub: 'ぎりぎりで復活した', color: '#ffe066', ms: 1000 } },
+      { at: 0,   layer: 'lcd',  action: 'text',    params: { text: 'ACM DNS検証 完了', sub: '更新の手続きが自動で進んでいる', color: '#ffe066', ms: 600 } },
+      { at: 40,  layer: 'sfx',  action: 'synth',   params: { preset: 'ui_select' } },
+      { waitFor: 'stop3', layer: 'sfx',  action: 'synth',   params: { preset: 'contract_sign' } },
+      { waitFor: 'stop3', after: 50, layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 200, y: 200, count: 14 } },
+      { waitFor: 'stop3', after: 200, layer: 'lcd',  action: 'text',    params: { text: '証明書更新完了', sub: 'ACM が全部まとめて差し替えた', color: '#ffe066', ms: 1000 } },
     ],
   },
 
@@ -405,9 +414,9 @@ export default [
       { at: 0,   layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
       { at: 0,   layer: 'lcd',  action: 'text',    params: { text: 'ROTATING KEY…', sub: '鍵を自動ローテーション中', color: '#ffe066', ms: 650 } },
       { at: 40,  layer: 'sfx',  action: 'synth',   params: { preset: 'countdown_tick' } },
-      { at: 750, layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 200, y: 200, count: 14 } },
-      { at: 780, layer: 'sfx',  action: 'synth',   params: { preset: 'upgrade_chime' } },
-      { at: 900, layer: 'lcd',  action: 'text',    params: { text: '鍵交換完了', sub: '新しい鍵に切り替わった', color: '#ffe066', ms: 1000 } },
+      { waitFor: 'stop3', layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 200, y: 200, count: 14 } },
+      { waitFor: 'stop3', after: 30, layer: 'sfx',  action: 'synth',   params: { preset: 'upgrade_chime' } },
+      { waitFor: 'stop3', after: 150, layer: 'lcd',  action: 'text',    params: { text: '鍵交換完了', sub: 'Secrets Manager — 新しい鍵に切り替わった', color: '#ffe066', ms: 1000 } },
     ],
   },
 ];

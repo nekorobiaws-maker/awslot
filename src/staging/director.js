@@ -19,7 +19,7 @@ import {
 } from './anims/lcdanims.js';
 // 暗転(overlay.blackout)は時間経過でしか消えないため、仕切り直しの経路から明示的に落とす。
 // 依存方向は staging → render で、既に staging/anims/cutins.js が render/chars を参照している。
-import { clearAllBlackouts } from '../render/overlay.js';
+import { clearAllBlackouts, clearAllOverlayLines } from '../render/overlay.js';
 
 /** シナリオが購読するイベント */
 export const STAGING_EVENTS = [
@@ -46,6 +46,20 @@ const WAIT_EVENTS = ['stop1', 'stop2', 'stop3', 'judge', 'payoutStart', 'payoutE
  * シナリオの再生とは別に「次のゲームが始まった」ことを伝える必要がある。
  */
 const TEXT_BAND_EVENTS = ['leverOn'];
+
+/**
+ * オーバーレイの1行(render/overlay.js の showLine)を落とすイベント(2026-08-15 U57)。
+ *
+ * この1行はフリーズの「神の声」と結末に使う専用の表示物で、
+ * 液晶テキスト帯とは別実装なので sticky の解除(notifyStageEvent)が届かない。
+ * U60 で結末の余韻を 4.2秒まで伸ばしたぶん、放っておくと
+ * **次のゲームや次の画面へ食い込む**ので、テキスト帯の sticky と同じ寿命に揃える:
+ *   leverOn   … 次のゲームが始まった(sticky と同じ区切り)
+ *   modeEnter … 画面ごと切り替わった(lcdAnims.clear と同じ区切り)。
+ *               ここで消しておかないと、入場告知(「BONUS 確定」)が
+ *               オーバーレイの申告(U8)に食われて出なくなる。
+ */
+const OVERLAY_LINE_CLEAR_EVENTS = ['leverOn', 'modeEnter'];
 
 /* ══ 演出の交通整理 ═══════════════════════════════════════
  *
@@ -323,7 +337,11 @@ export class StagingDirector {
      * (フリーズ中にセッションが終わる → リザルト → リスタート、の順で起こりうる)
      * シナリオ抽選とは無関係なので STAGING_EVENTS には足さず、ここだけで購読する。
      */
-    this._unsubs.push(this.bus.on('sessionStart', () => clearAllBlackouts()));
+    this._unsubs.push(this.bus.on('sessionStart', () => {
+      clearAllBlackouts();
+      // 余韻を長く取ったオーバーレイの1行(フリーズの結末)も同じ理由で落とす
+      clearAllOverlayLines();
+    }));
     return this;
   }
 
@@ -339,6 +357,8 @@ export class StagingDirector {
     }
     // 暗転も同じ理由で落とす。演出を外したのに画面が真っ暗、が一番たちが悪い
     clearAllBlackouts();
+    // オーバーレイの1行も残さない(演出を外したのに文字だけ居座るのを防ぐ)
+    clearAllOverlayLines();
   }
 
   /** シナリオが終わったときの後始末(全面占有の解除) */
@@ -353,12 +373,17 @@ export class StagingDirector {
    * @param {object} payload
    */
   onEvent(eventName, payload) {
-    // 進行中の演出へイベントを通知(waitFor キューの解放)
-    if (WAIT_EVENTS.includes(eventName)) this.timeline.notify(eventName);
+    // 進行中の演出へイベントを通知(waitFor キューの解放)。
+    // payload も渡す = 待っていたキューが "$stop1.index"(実際に最初に止めたリール)を読める。
+    // 渡すのは読み取り専用の控えで、ここからゲーム状態を書き換えることは無い。
+    if (WAIT_EVENTS.includes(eventName)) this.timeline.notify(eventName, payload);
     // 液晶テキスト帯へ通知(sticky 告知の解除)。
     // このシナリオ抽選より先に行う。ここで解除しておかないと、
     // レバーONで出した新しい告知を自分で消してしまう。
     if (TEXT_BAND_EVENTS.includes(eventName)) notifyStageEvent(eventName);
+    // オーバーレイの1行も同じ寿命に揃える(U57。理由は上の定義のコメント)。
+    // sticky 解除と同じくシナリオ抽選より先に行う = この後の入場告知を邪魔しない
+    if (OVERLAY_LINE_CLEAR_EVENTS.includes(eventName)) clearAllOverlayLines();
     // ゲーム/モードの区切りで1ゲームぶんの演出予算を戻す
     if (BUDGET_RESET_EVENTS.includes(eventName)) this.resetGameBudget();
 

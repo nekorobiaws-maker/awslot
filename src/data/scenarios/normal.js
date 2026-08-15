@@ -10,6 +10,8 @@
  */
 
 import { NOT_NORMAL_MODES } from '../rushes.js';
+// 結論行(U57)/ 役色(U62)の唯一の正。ハズレを言い切る行はこれを通す
+import { conclusionCue } from '../rolecolors.js';
 
 export default [
   {
@@ -157,8 +159,21 @@ export default [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'stream_flow' } },
       { at: 0,   layer: 'lcd', action: 'particles', params: { preset: 'stream', x: 60, y: 200, count: 20 } },
       { waitFor: 'stop2', layer: 'lcd', action: 'particles', params: { preset: 'stream', x: 220, y: 210, count: 14 } },
-      { waitFor: 'stop3', after: 200, layer: 'lcd', action: 'text',
-        params: { text: 'blue…', sub: 'データは青いまま流れていった', color: '#8ad4ff', ms: 900 } },
+      /*
+       * 2026-08-15 ユーザー指示 U66-3: 結果が分かる文言へ。
+       * 旧「blue…」/「データは青いまま流れていった」は **見た目の説明** で、
+       * このゲームがどうなったのかを一言も言っていなかった
+       * (粒が金にならない = 何も乗らなかった、が伝わらない)。
+       * 結論行(conclusionCue)へ寄せて「何も起きなかった」を言い切る。
+       * ハズレなので役色は白 = 何も成立していない(U62)。
+       */
+      conclusionCue({
+        flag: 'LOSE',
+        text: '金の粒は流れてこなかった…',
+        sub: 'Kinesis — データは青いまま流れていった',
+        after: 200,
+        ms: 900,
+      }),
     ],
   },
 
@@ -198,6 +213,27 @@ export default [
    * ここは「切り替わる瞬間」を光らせる役に徹する。
    *
    * weight は upper.js の汎用 substate_up(weight 100)を押しのけるため高くしてある。
+   *
+   * ══ U55(2026-08-15): 突入ポップアップは **1ゲームに1回だけ** ═══════════
+   *
+   * 【指摘】Invent会場へ入ったあとポップアップが2回出る。
+   * 【原因】このシナリオが lcd.text を2本持っていた:
+   *           at:200  「re:Invent — 遠くの会場のライトが光り始めた」
+   *           at:1000 「Invent会場に到着 — 照明が入った」
+   *         テキスト帯は1件ずつ順送りするので、2本積むと
+   *         **同じ出来事の告知が続けて2回出る**(前半は後半の前置きでしかない)。
+   *         別シナリオとの競合ではないので、director の調停では止められない。
+   * 【対処】前置きの1本を削除し、告知は到着の1本だけにした。
+   *         「遠くのライトが光り始めた」は文字ではなく
+   *         直前の lcd_flash + spark(照明が入る画)で表現する。
+   * 【寿命】到着の告知は sticky:true = **次のゲームのレバーONで消える**
+   *         (U57 の共通ルール。lcdanims.js の onStageEvent が解除する)。
+   *         ステージ名そのものは液晶左上のタイトル帯が常設で出しているので、
+   *         告知が消えても「いまどのステージか」は分からなくならない。
+   *
+   * サミット会場(下の stage_up_warm)と汎用版(upper.js の substate_up)も
+   * 同じルールに揃えてある。ステージ突入系を足すときは
+   * **告知は1本 + sticky:true** を守ること。
    */
   {
     id: 'stage_up_provisioned',
@@ -214,8 +250,8 @@ export default [
       { at: 0,    layer: 'lamp',    action: 'pattern', params: { pattern: 'bonus' } },
       { at: 0,    layer: 'lcd',     action: 'anim',  params: { anim: 'lcd_flash', color: '#7b5cff', strength: 0.35 } },
       { at: 120,  layer: 'lcd',     action: 'particles', params: { preset: 'spark', x: 360, y: 250, count: 14 } },
-      { at: 200,  layer: 'lcd',     action: 'text',
-        params: { text: 're:Invent', sub: '遠くの会場のライトが光り始めた', color: '#a78bfa', ms: 1300 } },
+      // U55: ここにあった前置きの告知(「re:Invent — 遠くの会場のライトが光り始めた」)は
+      // 削除した。同じ出来事の告知が2回出る原因だったため(上のブロックを参照)。
       // 照明が入る → ステージ切替
       { at: 700,  layer: 'overlay', action: 'flash', params: { color: '#7b5cff', ms: 320 } },
       { at: 720,  layer: 'overlay', action: 'shake', params: { power: 10, ms: 380 } },
@@ -223,9 +259,13 @@ export default [
       { at: 800,  layer: 'char',    action: 'show',   params: { char: 'kiro', pose: 'premium' } },
       { at: 840,  layer: 'char',    action: 'motion', params: { char: 'kiro', motion: 'zoom' } },
       { at: 900,  layer: 'lcd',     action: 'particles', params: { preset: 'spark', x: 200, y: 150, count: 20 } },
-      // U6 と同じ理由で「到着した」に揃える(移動は既に完了している)
+      // U6 と同じ理由で「到着した」に揃える(移動は既に完了している)。
+      // U55: このシナリオで唯一の告知。sticky = 次のゲームのレバーONで消える
       { at: 1000, layer: 'lcd',     action: 'text',
-        params: { text: 'Invent会場に到着', sub: '照明が入った — 激アツステージ', color: '#e0b3ff', ms: 1800 } },
+        params: {
+          text: 'Invent会場に到着', sub: '照明が入った — 激アツステージ',
+          color: '#e0b3ff', ms: 1800, sticky: true,
+        } },
       { at: 1400, layer: 'overlay', action: 'particles', params: { preset: 'rainbow', x: 360, y: 380, count: 18 } },
       { at: 2400, layer: 'char',    action: 'pose',   params: { char: 'kiro', pose: 'happy' } },
     ],
@@ -250,9 +290,13 @@ export default [
       { at: 240, layer: 'char',    action: 'show',   params: { char: 'kiro', pose: 'happy' } },
       { at: 240, layer: 'char',    action: 'motion', params: { char: 'kiro', motion: 'bounce' } },
       // 2026-08-14 ユーザー指摘 U6:
-      // 実際には「もう移動した(高確に居る)」ので、近づいてきた表現は嘘だった
+      // 実際には「もう移動した(高確に居る)」ので、近づいてきた表現は嘘だった。
+      // U55: 告知は1本だけ / sticky = 次のゲームのレバーONで消える
       { at: 400, layer: 'lcd',     action: 'text',
-        params: { text: 'サミット会場に到着', sub: 'ここから高確 — チャンスが近い', color: '#ffb04a', ms: 1400 } },
+        params: {
+          text: 'サミット会場に到着', sub: 'ここから高確 — チャンスが近い',
+          color: '#ffb04a', ms: 1400, sticky: true,
+        } },
     ],
   },
 
@@ -339,10 +383,10 @@ export default [
       { at: 0,   layer: 'overlay', action: 'flash', params: { color: '#ffb46a', ms: 180 } },
       { at: 100, layer: 'lcd',     action: 'anim',
         params: { anim: 'symbol_fly_in', symbol: 'LAMBDA', dir: 1, y: 132, scale: 1.18 } },
-      { at: 700, layer: 'char',    action: 'show',  params: { char: 'kiro', pose: 'surprised' } },
-      { at: 900, layer: 'lcd',     action: 'particles', params: { preset: 'spark', x: 260, y: 132, count: 14 } },
-      { at: 1200, layer: 'lcd',    action: 'text',
-        params: { text: 'λ が舞い込んだ', sub: '風に乗って絵柄が飛んできた', color: '#ffb46a', ms: 1200 } },
+      { waitFor: 'stop1', layer: 'char',    action: 'show',  params: { char: 'kiro', pose: 'surprised' } },
+      { waitFor: 'stop1', after: 200, layer: 'lcd',     action: 'particles', params: { preset: 'spark', x: 260, y: 132, count: 14 } },
+      { waitFor: 'stop3', layer: 'lcd',    action: 'text',
+        params: { text: 'λ が舞い込んだ', sub: 'AWS Lambda — 風に乗って絵柄が飛んできた', color: '#ffb46a', ms: 1200 } },
     ],
   },
 ];

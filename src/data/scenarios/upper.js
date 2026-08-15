@@ -278,8 +278,13 @@ export default [
       { at: 100, layer: 'char',    action: 'show',  params: { char: 'kiro', pose: 'happy' } },
       { at: 100, layer: 'char',    action: 'motion', params: { char: 'kiro', motion: 'bounce' } },
       { at: 300, layer: 'lcd',     action: 'particles', params: { preset: 'spark', x: 220, y: 150, count: 18 } },
+      // U55: ステージ突入の告知は **1本だけ + sticky**(次のゲームのレバーONで消える)。
+      // 専用版(scenarios/normal.js の stage_up_provisioned / stage_up_warm)と同じルール
       { at: 400, layer: 'lcd',     action: 'text',
-        params: { text: 'STAGE UP', sub: 'コンテナが温まってきた', color: '#ffb04a', ms: 1400 } },
+        params: {
+          text: 'STAGE UP', sub: 'コンテナが温まってきた',
+          color: '#ffb04a', ms: 1400, sticky: true,
+        } },
     ],
   },
 

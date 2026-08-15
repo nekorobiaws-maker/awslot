@@ -14,6 +14,8 @@
  */
 
 import { SESSION } from '../../data/session.js';
+// 称号(U56)。刻みと名前は data/titles.js が唯一の正で、ここは引くだけ
+import { titleOf } from '../../data/titles.js';
 
 export const result = {
   id: 'RESULT',
@@ -67,6 +69,17 @@ export const result = {
     state.rank = rankOf(state.score, state.ama);
 
     /**
+     * 称号(2026-08-15 ユーザー指示 U56)。
+     *
+     * RANK が「スコア帯の格付け」なのに対して、称号は「その回の打ち手の呼び名」。
+     * AWS コミュニティの肩書を低→高に7段(Certified 〜 Heroes)並べてある。
+     * **刻みも名前も data/titles.js が唯一の正**で、ここは引くだけ。
+     * 甘スロは amaMin(別の刻み)で解決される。
+     * 表示は render/resultpanel.js が RANK 行とは別の行で静かに出す。
+     */
+    state.honor = titleOf(state.score, state.ama);
+
+    /**
      * リザルト直前のテロップ(2026-08-14 ユーザー指摘 U7)。
      *
      * 以前はここでスコアを先に言ってしまっていたため、
@@ -116,12 +129,21 @@ export const result = {
  * (sim は毎回この表を出すので、ズレていればすぐ気づける)。
  */
 /*
- * rate / amaRate の実測(2026-08-15 / **U50(分布そろえ)の着地後**)。
+ * rate / amaRate の実測(2026-08-15 / **U63(レア役さらに2倍)の着地後**)。
  * `node scripts/sim.mjs --session=20000 777` と `--session=20000 555` の平均を丸めた値。
  *
+ *   通常設定  REINVENT 0.44% / S 2.57% / A 8.28% / B 24.3% / C 18.0% / D 25.8% / E 20.6%
+ *   甘スロ    REINVENT 1.99% / S 7.29% / A 13.4% / B 24.4% / C 16.7% / D 33.4% / E  2.9%
+ *             (同じコマンドに `--ama` を付けて測る)
+ *
+ * 【U63 で甘スロの下位ランクが大きく動いた】
+ * 甘スロはレア役が **通常設定の2倍 = 従来比8倍**(1/3.1)になり、
+ * 初当り 1/62・プラス収支率 97% なので **マイナスで終わる回がほぼ消えた**。
+ * THROTTLED(E)は 9.3% → **2.9%**、COLD START(D)が 29.3% → **33.4%** へ。
+ *
+ * 【U50 後の値(U63 の直前値)】
  *   通常設定  REINVENT 0.46% / S 2.82% / A 8.71% / B 24.9% / C 17.3% / D 25.2% / E 20.8%
  *   甘スロ    REINVENT 2.00% / S 6.48% / A 13.4% / B 23.6% / C 15.9% / D 29.3% / E  9.3%
- *             (同じコマンドに `--ama` を付けて測る)
  *
  * 【U50 前の値(更新し忘れの実例として残す)】
  *   通常設定  REINVENT 0.30% / S 3.80% / A 7.05% / B 22.6% / C 19.3% / D 26.2% / E 20.8%
@@ -155,13 +177,23 @@ export const result = {
  * ここだけ動かすと「RANK re:INVENT なのにキーノートを見ていない」が起きる。
  */
 export const RANKS = [
-  { id: 'REINVENT', min: 1500, label: 're:INVENT KEYNOTE', color: '#ff2fa0', rate: '0.5%', amaRate: '2%' },
-  { id: 'S',        min: 1000, label: 'MULTI-REGION',      color: '#ffd166', rate: '3%',   amaRate: '6%' },
-  { id: 'A',        min: 600,  label: 'AUTO SCALING',      color: '#7bf7d0', rate: '9%',   amaRate: '13%' },
-  { id: 'B',        min: 300,  label: 'STEADY STATE',      color: '#8ab4ff', rate: '25%',  amaRate: '24%' },
-  { id: 'C',        min: 100,  label: 'WARM POOL',         color: '#c8d2e8', rate: '17%',  amaRate: '16%' },
-  { id: 'D',        min: 1,    label: 'COLD START',        color: '#9aa6bf', rate: '25%',  amaRate: '29%' },
-  { id: 'E',        min: -Infinity, label: 'THROTTLED',    color: '#7a8399', rate: '21%',  amaRate: '9%' },
+  { id: 'REINVENT', min: 1500, label: 're:INVENT KEYNOTE', color: '#ff2fa0', rate: '0.4%', amaRate: '2%' },
+  { id: 'S',        min: 1000, label: 'MULTI-REGION',      color: '#ffd166', rate: '3%',   amaRate: '7%' },
+  { id: 'A',        min: 600,  label: 'AUTO SCALING',      color: '#7bf7d0', rate: '8%',   amaRate: '13%' },
+  { id: 'B',        min: 300,  label: 'STEADY STATE',      color: '#8ab4ff', rate: '24%',  amaRate: '24%' },
+  { id: 'C',        min: 100,  label: 'WARM POOL',         color: '#c8d2e8', rate: '18%',  amaRate: '17%' },
+  { id: 'D',        min: 1,    label: 'COLD START',        color: '#9aa6bf', rate: '26%',  amaRate: '33%' },
+  { id: 'E',        min: -Infinity, label: 'THROTTLED',    color: '#7a8399', rate: '21%',  amaRate: '3%' },
+];
+/** U63(レア役さらに2倍)の直前の到達率。刻み(min)は据え置きで表示だけが変わった */
+export const PREVIOUS_RANK_RATES_U50 = [
+  { id: 'REINVENT', rate: '0.5%', amaRate: '2%' },
+  { id: 'S', rate: '3%', amaRate: '6%' },
+  { id: 'A', rate: '9%', amaRate: '13%' },
+  { id: 'B', rate: '25%', amaRate: '24%' },
+  { id: 'C', rate: '17%', amaRate: '16%' },
+  { id: 'D', rate: '25%', amaRate: '29%' },
+  { id: 'E', rate: '21%', amaRate: '9%' },
 ];
 /** U50(分布の圧縮)の直前の刻み。戻すときの基準として保持 */
 export const PREVIOUS_RANKS_U49 = [

@@ -27,7 +27,10 @@
  *   y  34〜176 … 盤面
  *   y 178〜230 … lcd.text(演出テキスト帯)と取り合いになるので文字を置かない
  *   y 232〜262 … 結論・合計の1行
- *   y 266〜300 … テロップ帯
+ *   y 266〜300 … **遊び方の常設行**(view._drawRuleLine)。
+ *                2026-08-15 U66-5 で説明テロップ帯を廃止した跡地。
+ *                4種とも「このRUSHで何が起きると伸びるか」をここに1行だけ置く
+ *                (旧実装は y176 に置いていたので、ポップアップが出るたびに消えていた)
  */
 
 import { RUSH_SPEC_BY_ID, heroHitLabel } from '../data/rushes.js';
@@ -224,15 +227,15 @@ export function drawAsRush(ctx, state, textActive, view) {
     }
   }
 
-  if (!textActive) {
-    ctx.font = `700 13px ${FONT}`;
-    ctx.fillStyle = '#ffd75e';
-    ctx.fillText(`純増 ${state?.netPerGame ?? AS.payoutPerGame} 枚/G 固定 — レア役でオートスケール`, view.w / 2, 176);
-  }
-
   // 上乗せ合計は「このRUSHでどれだけ伸ばせたか」= 持続する状態情報
   drawFooterLeft(ctx, `上乗せ +${added} G`, added > 0 ? '#9affd8' : 'rgba(255,255,255,0.55)');
   drawGained(ctx, state, view);
+  // 遊び方(持続情報)は旧テロップ帯の跡地へ。帯が出ても消えない(U66-5)
+  view._drawRuleLine(
+    ctx,
+    `純増 ${state?.netPerGame ?? AS.payoutPerGame} 枚/G 固定 — レア役でオートスケール(EC2 が増える)`,
+    { color: '#ffd75e' },
+  );
 }
 
 // ── ② CloudFront RUSH ────────────────────────
@@ -296,6 +299,14 @@ export function drawCfRush(ctx, state, textActive, view) {
 
   drawFooterLeft(ctx, `HIT ${state?.hits ?? 0} / ${state?.playedGames ?? 0} G`, '#8fb4ff');
   drawGained(ctx, state, view);
+  /*
+   * 遊び方の常設行(U66-5 の移行先)。
+   * 旧実装ではモード入場時のテロップ
+   *   「エッジでキャッシュヒットするたびにコインが飛んでくる」
+   * が説明テロップ帯にしか出ておらず、帯を畳むと **このRUSHの遊び方がどこにも無い**
+   * 状態になっていた(盤面はエッジ名と枚数しか出していない)。ここで引き取る。
+   */
+  view._drawRuleLine(ctx, 'エッジでキャッシュヒットするたびに枚数が飛んでくる', { color: '#bcd4ff' });
 }
 
 // ── ③ Aurora RUSH ────────────────────────────
@@ -341,14 +352,9 @@ export function drawAuroraRush(ctx, state, textActive, view) {
   // ── ACU(純増)の大きい数字 ──
   heavyText(ctx, `${acu} 枚/G`, view.w / 2, 128, 40, '#b48bff');
 
-  if (!textActive) {
-    ctx.font = `700 13px ${FONT}`;
-    ctx.fillStyle = '#7be3ff';
-    ctx.fillText('レア役でスケールアップ — 純増UP + 残り+1G', view.w / 2, 172);
-  }
-
   drawFooterLeft(ctx, `延長 +${state?.extended ?? 0} G`, '#7be3ff');
   drawGained(ctx, state, view);
+  view._drawRuleLine(ctx, 'レア役でスケールアップ — 純増UP + 残り +1G', { color: '#7be3ff' });
 }
 
 // ── ④ ヒーローRUSH ───────────────────────────
@@ -410,12 +416,7 @@ export function drawHeroRush(ctx, state, textActive, view) {
   // ロゴと補足はヒーローの立ち位置(x300〜)を避けて左寄せの中心へ
   heavyText(ctx, 'HERO RUSH', midX, 152, 27, '#ffd166');
 
-  if (!textActive) {
-    ctx.font = `700 12px ${FONT}`;
-    ctx.fillStyle = 'rgba(255,255,255,0.75)';
-    ctx.fillText('レア役成立でさらに上乗せ', midX, 176);
-  }
-
   drawFooterLeft(ctx, `HIT ${hits} / ${played} G`, '#ffd166');
   drawGained(ctx, state, view);
+  view._drawRuleLine(ctx, 'レア役成立でさらに上乗せ', { color: 'rgba(255,255,255,0.8)' });
 }

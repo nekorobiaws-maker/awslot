@@ -6,9 +6,32 @@
  *   { waitFor: "stop2", ... }        … 指定イベントが来たら発火
  *   { waitFor: "stop3", after: 200 } … 指定イベントから after ms 後に発火
  *
+ * ══ 【厳守】内容の切替はゲームイベント駆動(2026-08-15 ユーザー指示 U66-8)══
+ *
+ * ポップアップ(lcd.text)や盤面アニメの **中身が別のものへ切り替わる** タイミングは
+ * **レバーON / stop1 / stop2 / stop3 のときだけ** にする。
+ * 「解析中…」→「結果」のような2枚組みを at: の時間差で送ってはいけない
+ * (プレイヤーの操作と無関係に画面が進んでしまい、押した手応えが消える)。
+ *   NG: { at: 0, text:'MATCHING…' } / { at: 650, text:'MATCH TIMEOUT' }
+ *   OK: { at: 0, text:'MATCHING…' } / { waitFor:'stop3', text:'MATCH TIMEOUT' }
+ *
+ * 時間で動かしてよいもの:
+ *   ・1枚の中のアニメーション(ゲージが伸びる・文字がタイプされる・フェード)
+ *   ・**そのゲームにもうリール停止が残っていない演出**
+ *     = judge / payoutStart / paramChange / modeEnter / setEnd / sessionEnd 起点のもの
+ *       (前兆の結果告知などはここに入る。待っても次のイベントは来ない)
+ *   ・フリーズ(リールが止まらない時間そのものが演出)
+ *
  * params の値に "$result.cz" のように書くと実行時のコンテキストから解決される(遅延バインド)。
  * "$result.cz ? 'a' : 'b'" の三項形式もサポートする。
  * テロップのように文字列の一部へ差し込みたい場合は "${value} GAMES LEFT" と書く。
+ *
+ * ■ waitFor で待っていたイベントの中身も参照できる(U53 / 2026-08-15)
+ *   notify() に渡された payload を **イベント名のキー** で ctx へ控えるので、
+ *     { waitFor: 'stop1', params: { pick: '$stop1.index' } }
+ *   と書けば「実際に最初に止めたリール」が演出へ届く。
+ *   ctx への書き込みは再生中のシナリオごとに閉じており(Playing.ctx は play() 時の
+ *   使い捨てオブジェクト)、**ゲーム状態へは一切書き戻さない**(DESIGN.md 4.2)。
  */
 
 /** "$path.to.value" / "$path ? 'a' : 'b'" / "…${path}…" を解決する */
@@ -103,7 +126,16 @@ class Playing {
     return allFired && this.elapsed >= this.duration;
   }
 
-  notify(eventName) {
+  /**
+   * @param {string} eventName
+   * @param {object|null} [payload] イベントの中身。"$stop1.index" で参照できるよう ctx へ控える
+   */
+  notify(eventName, payload = null) {
+    // 後から発火するキューが「待っていたイベントの中身」を読めるようにする。
+    // 上書きは同名イベントの再発火時のみで、常に最新が正(第1停止は1ゲームに1回)。
+    if (payload != null && typeof payload === 'object' && !Array.isArray(payload)) {
+      this.ctx[eventName] = payload;
+    }
     for (const c of this.cues) {
       if (!c.fired && c.cue.waitFor === eventName && c.releasedAt === null) {
         c.releasedAt = this.elapsed;
@@ -215,9 +247,13 @@ export class Timeline {
     if (wasActive) this._emitFinish(playing);
   }
 
-  /** リール停止などのイベントを待機キューへ通知する */
-  notify(eventName) {
-    for (const p of this.playing) p.notify(eventName);
+  /**
+   * リール停止などのイベントを待機キューへ通知する。
+   * @param {string} eventName
+   * @param {object|null} [payload] イベントの中身(例: stop1 なら { index, slip, symbol, order })
+   */
+  notify(eventName, payload = null) {
+    for (const p of this.playing) p.notify(eventName, payload);
     for (const fn of this._notifyListeners) {
       try {
         fn(eventName);

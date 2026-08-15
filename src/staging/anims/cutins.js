@@ -4,6 +4,17 @@
  * IDEAS.md のカットインネタを、キャラのプロシージャル描画を流用して実装する。
  * DESIGN.md 注意事項8 のとおり全画面でキャラを使う場合はオフスクリーンに
  * 1回描いてから拡大表示する。
+ *
+ * ══ 液晶からはみ出してよいのは「告知級」だけ(2026-08-15 ユーザー指示 U66-4)══
+ *
+ * この Canvas は筐体全体(720×1080)を覆っているが、**そこへ絵を出してよいのは
+ * ボーナス・RUSH の当選告知だけ**(下の FULLSCREEN_CUTINS)。
+ * 予告・煽りの類(WAF プロテクト等)は液晶の窓の中で完結させる:
+ *   ・台の画面で起きていることは画面の中で見せる、という筐体の約束を守る
+ *   ・「画面の外まで暴れた = 大当たり」という強弱の階段を作る
+ * 実装は Cutins.draw() が液晶矩形でクリップして担保する(はみ出しは描かれない)。
+ * **クリップに頼って画面外へ絵を置いたままにしないこと**。見えなくなるだけなので、
+ * 新しいカットインは lcdSpot() / lcdCharSpot() / lcdTextSpot() で液晶内に置く。
  */
 
 import { getLayerRect } from '../../engine/layers.js';
@@ -71,6 +82,44 @@ function lcdCharSpot(srcW, srcH, { hRatio = 0.5, wRatio = 0.66, cyRatio = 0.32 }
     right: r.x + r.w,
   };
 }
+
+/**
+ * 液晶の中へ **図形** を置くための基準点(U66-4)。
+ * 文字は lcdTextSpot、キャラは lcdCharSpot、それ以外の絵はこれを使う。
+ * @param {number} [cyRatio] 液晶の高さに対する縦位置(0=上端 1=下端)
+ * @param {number} [cxRatio] 同・横位置
+ * @returns {{x:number, y:number, w:number, h:number, top:number, bottom:number}}
+ */
+export function lcdSpot(cyRatio = 0.44, cxRatio = 0.5) {
+  const r = getLayerRect('lcd');
+  return {
+    x: r.x + r.w * cxRatio,
+    y: r.y + r.h * cyRatio,
+    w: r.w,
+    h: r.h,
+    top: r.y,
+    bottom: r.y + r.h,
+  };
+}
+
+/**
+ * 液晶の外へ出てよいカットイン = **ボーナス・RUSH の告知級**(U66-4)。
+ *
+ * ここに無いカットインは Cutins.draw() が液晶矩形でクリップする。
+ * 足すときの基準は「当選が確定した瞬間の告知かどうか」だけ。
+ * 予告・煽り・キャラのカメオは **絶対に足さない**(足すと強弱の階段が壊れる)。
+ */
+export const FULLSCREEN_CUTINS = new Set([
+  'shark_bite_bar',      // ボーナス当選(サメがBARに噛みつく)
+  'ghost_seven_don',     // ゴースト7揃い = ボーナス確定
+  'big_bonus_logo',      // BIG BONUS 告知
+  'rush_entry',          // RUSH 突入
+  'rush_slam',           // RUSH 突入(強)
+  'serverless_up',       // 上位AT(SERVERLESS RUSH)昇格
+  'multi_region_entry',  // 上位AT(MULTI-REGION)昇格
+  'reinvent_keynote',    // エンディング(完走)
+  'spot_entry',          // RUSH 派生ゾーンの突入告知(RUSH系の当選告知として扱う)
+]);
 
 const clamp01 = (x) => Math.max(0, Math.min(1, x));
 const easeOutCubic = (x) => 1 - (1 - x) ** 3;
@@ -366,12 +415,17 @@ export const CUTINS = {
   mini_ghost_peek: {
     ms: 1200,
     draw(ctx, p, params, w, h) {
-      // リール窓の脇(論理座標 180..540, 440..620)にふわっと出る
+      /*
+       * U66-4: 以前はリール窓の脇(論理 x150/570, y520)に出していたが、
+       * そこは **液晶の外**(リールと筐体の領域)。告知級ではないので液晶の中へ移す。
+       * 左右どちらから覗くかはそのままに、液晶の左右端を基準点にする。
+       */
       const side = params.side === 'right' ? 1 : -1;
-      const baseX = side < 0 ? 150 : 570;
+      const spot = lcdSpot(0.78, side < 0 ? 0.16 : 0.84);
+      const baseX = spot.x;
       const peek = Math.sin(clamp01(p) * Math.PI);
       const x = baseX + side * -34 * peek;
-      const y = 520 + Math.sin(p * 12) * 8;
+      const y = spot.y + Math.sin(p * 12) * 8;
 
       // 「ひょっこり覗き」ポーズ。下から顔だけ出すのでそのまま使える
       const cache = charCache.get(`kiro_mini_peek_${side}`, 140, 140, (cx) => {
@@ -613,10 +667,12 @@ export const CUTINS = {
     ms: 1100,
     draw(ctx, p, params, w, h) {
       const peek = Math.sin(clamp01(p) * Math.PI);
-      const y = h - 150 + (1 - peek) * 90;
+      // U66-4: 旧実装は y = h-150(画面下端の筐体側)だった。煽りなので液晶の中で泳がせる
+      const spot = lcdSpot(0.82, 0.24);
+      const y = spot.y + (1 - peek) * 90;
       ctx.save();
       ctx.globalAlpha = peek;
-      ctx.translate(w * 0.24 + p * 90, y);
+      ctx.translate(spot.x + p * 90, y);
       ctx.beginPath();
       ctx.moveTo(-30, 46);
       ctx.quadraticCurveTo(-6, 10, 6, -52);
@@ -747,6 +803,18 @@ export class Cutins {
     for (const a of this.active) {
       const p = Math.max(0, Math.min(1, 1 - a.left / a.ms));
       ctx.save();
+      /*
+       * U66-4: 告知級(FULLSCREEN_CUTINS)以外は液晶の窓の中だけに描く。
+       * 集中線・フラッシュ・キャラも含めて丸ごとクリップするので、
+       * 予告カットインが筐体やリールの上へはみ出すことは構造的に起きない。
+       * 液晶の位置は筐体アートで動く(setLayerViews)ため毎フレーム引き直す。
+       */
+      if (!FULLSCREEN_CUTINS.has(a.id)) {
+        const r = getLayerRect('lcd');
+        ctx.beginPath();
+        ctx.rect(r.x, r.y, r.w, r.h);
+        ctx.clip();
+      }
       try {
         a.def.draw(ctx, p, a.params, w, h);
       } catch (e) {

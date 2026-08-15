@@ -602,7 +602,17 @@ export class CabinetView {
     el.setAttribute('aria-disabled', enabled ? 'false' : 'true');
   }
 
-  /** 下部パネルのテロップ */
+  /**
+   * 下部パネルの1行(#panel-telop)。
+   *
+   * ── 2026-08-15 ユーザー指示 U66-5 で用途を限定した ────────────────
+   * ここは **システム通知と操作案内の専用枠**。ゲームの表示チャネルは
+   *   盤面(液晶の常設表示) + ポップアップ(lcd.text)
+   * の2系統だけと決めたので、モードの状態・そのゲームの出来事をここへ書かない
+   * (書くと同じ文言が画面に2〜3か所並ぶ。U8 の二重表示がまさにこれだった)。
+   * 出してよいのは「デバッグキーの結果」「ミュート切替」「リザルト中の操作案内」。
+   * role="status" aria-live="polite" が付いているので、読み上げにも乗る。
+   */
   setTelop(text) {
     if (this.telopEl && this.telopEl.textContent !== text) {
       this.telopEl.textContent = text ?? '';

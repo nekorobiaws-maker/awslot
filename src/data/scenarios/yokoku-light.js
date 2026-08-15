@@ -31,7 +31,7 @@ export default [
     cues: [
       { at: 0,   layer: 'lcd', action: 'particles', params: { preset: 'scale', x: 200, y: 200, count: 8 } },
       { at: 50,  layer: 'sfx', action: 'synth', params: { preset: 'scale_out', gain: 0.6 } },
-      { at: 400, layer: 'lcd', action: 'text', params: { text: 'x2', sub: 'インスタンスが少し増えた', color: '#8ad4ff', ms: 800 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text', params: { text: 'x2 どまり', sub: 'Auto Scaling — インスタンスは少ししか増えなかった', color: '#8ad4ff', ms: 800 } },
     ],
   },
   {
@@ -60,7 +60,7 @@ export default [
     cues: [
       { at: 0,   layer: 'lcd', action: 'particles', params: { preset: 'scale', x: 260, y: 220, count: 6 } },
       { at: 50,  layer: 'sfx', action: 'synth', params: { preset: 'dynamo_scale', gain: 0.5 } },
-      { at: 350, layer: 'lcd', action: 'text', params: { text: 'TASK x1', sub: 'コンテナが1個起動', color: '#8ad4ff', ms: 700 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text', params: { text: 'TASK x1', sub: 'Amazon ECS — コンテナは1個だけ起動した', color: '#8ad4ff', ms: 700 } },
     ],
   },
   {
@@ -155,8 +155,8 @@ export default [
     chance: 0.35,  // 統合調律(2026-08-13): 非レア時の演出発火率30%に合わせて 0.04 → 0.35
     duration: 900,
     cues: [
-      { at: 0, layer: 'lcd', action: 'text',  params: { text: 'Cache HIT', color: '#8ad4ff', ms: 700 } },
-      { at: 0, layer: 'sfx', action: 'synth', params: { preset: 'edge_hit', gain: 0.5 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: 'Cache HIT', sub: 'CloudFront — 拠点は分からずじまい', color: '#8ad4ff', ms: 700 } },
+      { waitFor: 'stop3', layer: 'sfx', action: 'synth', params: { preset: 'edge_hit', gain: 0.5 } },
     ],
   },
   {
@@ -182,7 +182,7 @@ export default [
     duration: 900,
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'announce', gain: 0.5 } },
-      { at: 100, layer: 'lcd', action: 'text', params: { text: 'SNAPSHOT', sub: 'バックアップを1件作成', color: '#8ad4ff', ms: 700 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text', params: { text: 'SNAPSHOT', sub: 'Amazon RDS — バックアップを1件だけ作成', color: '#8ad4ff', ms: 700 } },
     ],
   },
   {
@@ -194,8 +194,8 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'announce' } },
       { at: 100, layer: 'lcd', action: 'text', params: { text: 'SNAPSHOT ×1', sub: 'バックアップを作成中…', color: '#ffe066', ms: 700 } },
-      { waitFor: 'stop2', layer: 'sfx', action: 'synth', params: { preset: 'announce' } },
-      { waitFor: 'stop2', after: 50, layer: 'lcd', action: 'text', params: { text: 'SNAPSHOT ×2', sub: '2件連続でバックアップ完了', color: '#ffe066', ms: 900 } },
+      { waitFor: 'stop3', layer: 'sfx', action: 'synth', params: { preset: 'announce' } },
+      { waitFor: 'stop3', after: 50, layer: 'lcd', action: 'text', params: { text: 'SNAPSHOT ×2', sub: '2件連続でバックアップ完了', color: '#ffe066', ms: 900 } },
     ],
   },
 
@@ -267,7 +267,8 @@ export default [
     ],
   },
 
-  // ── L. Lambda保留変化予告(IDEAS 2-33) ───────────────────────────
+  // ── L. Lambda呼び出し予告(IDEAS 2-33) ──────────────────────────
+  // U67-1: 節タイトルの「保留変化」= パチンコ語だったので実態(呼び出し)へ改名
   {
     id: 'yl_lambda_invoke_weak',
     name: '【弱】Lambda呼び出し予告(コールドスタートのまま終わる)',

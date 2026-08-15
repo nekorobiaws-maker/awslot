@@ -47,7 +47,7 @@
  *   → 下の「重みと発火率の設計」を参照。既存の予告シナリオの取り分を
  *      相対的に下げるだけで、1ゲームあたりの予告発火率は据え置きにしてある。
  *
- * ══ 色のルール(U9 の続き)═══════════════════════════════════════
+ * ══ 色のルール(U9 → U62 で1か所に集約)═══════════════════════════
  *
  * data/zencho.js の ZENCHO_TEXT_COLORS が定めた
  *   「文字だけ色が付いている = 対応役のサイン」「脈打つ赤帯(tone:'hot') = 信頼度」
@@ -55,42 +55,23 @@
  * (= 赤帯は出さない)ので、信頼度示唆の赤と混ざることはない。
  *
  *   導入セリフ … 中立の白(#e6ecf5)。まだ何も確定していない
- *   ハズレ    … 灰(#96a3b3)。役色が付かない = 何も成立していない、を色でも言う
- *   成立      … 成立役の色(下の FLAG_COLOR)
+ *   ハズレ    … **白**(ROLE_COLORS.LOSE)。役色が付かない = 何も成立していない
+ *   成立      … 成立役の色(data/rolecolors.js)
  *
- * FLAG_COLOR はスイカ=緑 / チェリー=赤 の既定義(ZENCHO_TEXT_COLORS.SYMBOL)を起点に、
- * 他の役は data/symbols.js の絵柄色から、暗い液晶の上で読める明度へ寄せて決めた。
- * data/*.js を import できないディレクトリなので値は直書きしている(既存シナリオと同じ作法)。
+ * 【U62】以前はこのファイルが FLAG_COLOR という色表を自前で持っていたが、
+ * 同じ写しが4ファイルに散って値がズレ始めたので **data/rolecolors.js へ集約**した。
+ * 色を変えたくなったらあちらだけを直すこと(ここに16進を書かない)。
+ * ハズレの色も U62 で灰(#96a3b3)から白へ変わっている。
+ *
+ * ══ 結論のライフサイクル(U57)═══════════════════════════════════
+ * アンチパターン(ハズレ)もベストプラクティス(成立)も conclusionCue() で作る。
+ * = **第3停止で出て、次のゲームのレバーONで消える**。
  */
 
-/**
- * 成立役 → 文字色。「その色が出た = その役が成立した」を意味する。
- *
- * U24 以降、実際に使うのは **レア役の色だけ**(CHERRY / MELON / LAMBDA / SHARK)。
- * BELL / REPLAY / BEDROCK は成立側を出さなくなったので現在は未使用だが、
- * 色の対応表としては正しいので、ネタを足すときの参照用に残してある。
- */
-const FLAG_COLOR = {
-  /** チェリー(IAM)。ZENCHO_TEXT_COLORS.SYMBOL.CHERRY と同値 */
-  CHERRY: '#ff4d4d',
-  /** スイカ(S3)。ZENCHO_TEXT_COLORS.SYMBOL.MELON と同値 */
-  MELON: '#4ce0a0',
-  /** ベル(EC2)。絵柄の金 #f0a500 を液晶で読める明度へ */
-  BELL: '#ffab2e',
-  /** チャンス目(Lambda)。絵柄タイルの地色 #ffd95e と同色 */
-  LAMBDA: '#ffd95e',
-  /** リプレイ(DynamoDB)。絵柄の青 #5b8ef5 を一段明るく */
-  REPLAY: '#7aa8ff',
-  /** Bedrock(特殊役)。絵柄の accent #38e8c8 と同色 */
-  BEDROCK: '#38e8c8',
-  /** サメ揃い(BAR)。絵柄の accent #8ad4ff と同色 */
-  SHARK: '#8ad4ff',
-};
+import { colorForFlag, conclusionCue } from '../rolecolors.js';
 
-/** 導入セリフの色(中立) */
+/** 導入セリフの色(中立。まだ何も言い切っていないので役色ではない) */
 const COLOR_INTRO = '#e6ecf5';
-/** ハズレのセリフの色(役色なし = 何も成立していない) */
-const COLOR_MISS = '#96a3b3';
 
 /* ══ 重みと発火率の設計(U5)═════════════════════════════════════
  *
@@ -184,7 +165,7 @@ const FORCE_WEIGHT = 200000;
  * bad      … ハズレ確定で出るアンチパターン(笑いどころ)
  * good     … 成立で出るベストプラクティス
  * flags    … 成立側を出してよい成立役。ここに書いた役の色で good を表示する
- * color    … FLAG_COLOR のキー。flags と必ず対応させること
+ * color    … data/rolecolors.js のキー(役ID または別名)。flags と必ず対応させること
  * weight   … 成立側の weight(WEIGHT のキー)
  * chance   … 成立側に間引きが要るか(ベル・リプレイのような高頻度役だけ true)
  * emphasis … 成立側で電飾とフラッシュを足すか(レア役・特殊役のネタだけ)
@@ -276,7 +257,8 @@ const TOPICS = [
   // ── 8. 監視とアラート(サメ揃い = 最上位クラスのご褒美)────────
   {
     id: 'alert_flood',
-    intro: '監視を入れておこう', introSub: '通知はどこまで出す?',
+    // U66-1: どのサービスの話か名乗る(旧「監視を入れておこう」だけでは主語が無かった)
+    intro: 'CloudWatch アラームを入れよう', introSub: '通知はどこまで出す?',
     bad: '全メトリクスで通知を飛ばす', badSub: '鳴りすぎて誰も見なくなる',
     good: '対応が要る閾値だけ通知', goodSub: '人を起こすアラートを絞る',
     flags: ['SHARK'], color: 'SHARK',
@@ -343,7 +325,10 @@ function introCues(t) {
   ];
 }
 
-/** ハズレ側(アンチパターン + ブッブー)。当落確定の stop3 でだけ出す */
+/**
+ * ハズレ側(アンチパターン + ブッブー)。当落確定の stop3 でだけ出す。
+ * 結論行は conclusionCue = stop3 + sticky(次のレバーONで消える / U57)。
+ */
 function badScenario(t) {
   const forced = isForced(t.id);
   return {
@@ -363,13 +348,8 @@ function badScenario(t) {
       ...introCues(t),
       { waitFor: 'stop3', after: 120, layer: 'sfx', action: 'synth', params: { preset: 'buzzer_wrong' } },
       { waitFor: 'stop3', after: 140, layer: 'overlay', action: 'shake', params: { power: 6, ms: 180 } },
-      {
-        waitFor: 'stop3',
-        after: 140,
-        layer: 'lcd',
-        action: 'text',
-        params: { text: t.bad, sub: t.badSub, color: COLOR_MISS, ms: 1300 },
-      },
+      // ハズレ = 何も成立していない → 白(U62)
+      conclusionCue({ flag: 'LOSE', text: t.bad, sub: t.badSub, ms: 1300 }),
     ],
   };
 }
@@ -377,17 +357,11 @@ function badScenario(t) {
 /** 成立側(ベストプラクティスを成立役の色で)。当落確定の stop3 でだけ出す */
 function goodScenario(t) {
   const forced = isForced(t.id);
-  const color = FLAG_COLOR[t.color];
+  const color = colorForFlag(t.color);
   const cues = [
     ...introCues(t),
     { waitFor: 'stop3', after: 120, layer: 'sfx', action: 'synth', params: { preset: 'checklist_ok' } },
-    {
-      waitFor: 'stop3',
-      after: 140,
-      layer: 'lcd',
-      action: 'text',
-      params: { text: t.good, sub: t.goodSub, color, ms: 1400 },
-    },
+    conclusionCue({ flag: t.color, text: t.good, sub: t.goodSub, ms: 1400 }),
   ];
   if (t.emphasis) {
     // レア役・特殊役のときだけ、確定後に電飾と一瞬のフラッシュを足す。

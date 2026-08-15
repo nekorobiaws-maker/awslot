@@ -34,17 +34,35 @@
  *   加えて発火イベントが stop3 で、ここに他のシナリオは1本も居ないため、
  *   重み付き抽選で他の演出の枠を奪うこともない。
  *
- * ■ 頻度(FREE_TIER の実測ベース。data/flags.js の denom より)
- *   役の出現率 × ここの chance = カメオの発生率
- *     スイカ       1/100  × 0.040 = 1/2500
- *     弱チェリー   1/50   × 0.030 = 1/1667
- *     強チェリー   1/250  × 0.060 = 1/4167
- *     チャンス目   1/180  × 0.045 = 1/4000
- *     サメ揃い     1/1200 × 0.350 = 1/3429
- *     ゴースト揃い 1/6000 × 0.350 = 1/17143
- *   合計 ≒ **1/540ゲーム**(100ゲーム1セットなら5〜6セットに1回)。
- *   確定役だけ 35% と高いのは、役自体が超低確率なので
- *   全体の頻度をほとんど動かさないまま「確定役の日にはルナも出る」を作れるから。
+ * ■ 頻度(2026-08-15 U58 でバランス担当の指示により **一律 1/4** へ)
+ *   役の出現率 × ここの chance = カメオの発生率。
+ *
+ *   ── なぜ下げたか ────────────────────────────────────────
+ *   設計当初の狙いは「数百ゲームに1回だけ」= 実測 **1/540ゲーム** だった。
+ *   ところが U63 でレア役の出現率そのものを倍増させたため、
+ *   chance を1つも触っていないのに カメオが **1/136ゲーム** まで軽くなり、
+ *   「たまに出るから嬉しい」枠が「よく見る枠」になっていた。
+ *   役の出現率は台のバランスそのものなので触れない → **こちら側を 1/4 にする**。
+ *
+ *   ── 机上計算(data/flags.js の FREE_TIER 側 denom で算出)──────
+ *     旧 chance … 1/136ゲーム(軽すぎる)
+ *     新 chance … **1/545ゲーム**(狙いの 1/400〜600 帯 / 設計当初は 1/540)
+ *   内訳(役の出現率 × chance):
+ *     スイカ       1/25    × 0.010  = 1/2500
+ *     弱チェリー   1/12.5  × 0.0075 = 1/1667
+ *     強チェリー   1/62.5  × 0.015  = 1/4167
+ *     チャンス目   1/45    × 0.011  = 1/4091
+ *     サメ揃い     1/300   × 0.088  = 1/3409
+ *     ゴースト揃い 1/1500  × 0.088  = 1/17045
+ *
+ *   ── 内訳(chance は旧値 × 0.25。役の出現率は U63 後の実測ではなく設計値)──
+ *     スイカ       0.040 → 0.010
+ *     弱チェリー   0.030 → 0.0075
+ *     強チェリー   0.060 → 0.015
+ *     チャンス目   0.045 → 0.011
+ *     確定役       0.350 → 0.088
+ *   **6本の chance をまとめて 1/4 にしているので、役どうしの相対的な出やすさ
+ *   (確定役の日にはルナも出やすい)は変えていない。**
  *
  * ■ scaleChance:false の理由
  *   director の YOKOKU_CHANCE_SCALE は予告の総量ノブ(値は staging/director.js が正)。
@@ -126,7 +144,8 @@ export default [
     name: '【プレミア】ルナがひょっこり(スイカ / 神アプデ看板)',
     when: { event: 'stop3', flag: ['MELON'], mode: STAGE },
     weight: { FREE_TIER: 100, default: 0 },
-    get chance() { return rate(0.040); },
+    // U58: 0.040 → 0.010(一律 1/4)
+    get chance() { return rate(0.010); },
     scaleChance: false,
     duration: 2600,
     cues: cameoCues({ pose: 'sign', chime: 'upgrade_chime', chimeGain: 0.5 }),
@@ -137,7 +156,8 @@ export default [
     name: '【プレミア】ルナがひょっこり(弱チェリー / ニヤリ指差し)',
     when: { event: 'stop3', flag: ['WEAK_CHERRY'], mode: STAGE },
     weight: { FREE_TIER: 100, default: 0 },
-    get chance() { return rate(0.030); },
+    // U58: 0.030 → 0.0075(一律 1/4)
+    get chance() { return rate(0.0075); },
     scaleChance: false,
     duration: 2600,
     cues: cameoCues({ pose: 'point', chime: 'ui_select', chimeGain: 0.6 }),
@@ -148,7 +168,8 @@ export default [
     name: '【プレミア】ルナがひょっこり(強チェリー / 炎オーラ)',
     when: { event: 'stop3', flag: ['STRONG_CHERRY'], mode: STAGE },
     weight: { FREE_TIER: 100, default: 0 },
-    get chance() { return rate(0.060); },
+    // U58: 0.060 → 0.015(一律 1/4)
+    get chance() { return rate(0.015); },
     scaleChance: false,
     duration: 2600,
     cues: cameoCues({ pose: 'fire', chime: 'charge_up', chimeGain: 0.5 }),
@@ -159,7 +180,8 @@ export default [
     name: '【プレミア】ルナがひょっこり(チャンス目 / ペンライト)',
     when: { event: 'stop3', flag: ['CHANCE'], mode: STAGE },
     weight: { FREE_TIER: 100, default: 0 },
-    get chance() { return rate(0.045); },
+    // U58: 0.045 → 0.011(一律 1/4)
+    get chance() { return rate(0.011); },
     scaleChance: false,
     duration: 2600,
     cues: cameoCues({ pose: 'penlight', chime: 'upgrade_chime', chimeGain: 0.45 }),
@@ -167,15 +189,17 @@ export default [
 
   {
     /*
-     * 確定役(サメ揃い 1/1200 / ゴースト揃い 1/6000)。
-     * 役そのものが激レアなので、ここだけ 35% と大盤振る舞いにしても
-     * カメオ全体の頻度は 1/540 → 1/540 のまま(誤差)。
+     * 確定役(サメ揃い / ゴースト揃い)。
+     * 役そのものが激レアなので、ここだけ厚くしても
+     * カメオ全体の頻度はほとんど動かない(誤差)。
+     * U58 で他と同じく 1/4 にして相対関係を保っている。
      */
     id: 'lc_luna_premium',
     name: '【プレミア】ルナがひょっこり(確定役 / クラッカーでお祝い)',
     when: { event: 'stop3', flag: ['SHARK', 'GHOST'], mode: STAGE },
     weight: { FREE_TIER: 100, default: 0 },
-    get chance() { return rate(0.350); },
+    // U58: 0.350 → 0.088(一律 1/4)
+    get chance() { return rate(0.088); },
     scaleChance: false,
     duration: 2800,
     cues: cameoCues({

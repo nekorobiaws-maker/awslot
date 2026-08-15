@@ -27,7 +27,10 @@ import yokokuAruaru from './yokoku-aruaru.js';
 import lunaCameo from './yokoku-luna.js';
 import yokokuBatch3 from './yokoku-batch3.js';
 import yokokuBatch4 from './yokoku-batch4.js';
+import yokokuBatch5 from './yokoku-batch5.js';
 import yokokuBedrock from './yokoku-bedrock.js';
+import yokokuPolly from './yokoku-polly.js';
+import trivia from './trivia.js';
 import paramFx from './paramfx.js';
 import session from './session.js';
 import freeze from './freeze.js';
@@ -53,9 +56,11 @@ export const SCENARIOS = [
   ...yokokuLight,
   ...yokokuHeavy,
   ...yokokuGimmick,
-  // P: AWSクイズルーレット。正解版は CZ の modeEnter(= 突入確定)、
-  // 不正解版は前兆のガセ終了(= 非当選確定)にしか貼っていないので、
-  // 「正解に止まった = 当選」が when 条件だけで保証される。
+  // U53(2026-08-15): 「最初に止めるリール」3択(qz_reelpick_*)。
+  // クイズルーレットの発生枠をそのまま置き換えたもの。正解版は CZ の modeEnter
+  // (= 突入確定)、不正解版は非当選が構造的に確定するイベントにしか貼っていないので、
+  // 「正解 = 当選」が when 条件だけで保証される(当落は後決め / 出目は不変)。
+  // ※ クイズの46問データと盤面描画は休止中のまま保全してある(quiz.js 冒頭を参照)。
   ...quiz,
   // 予告 第2弾(未登場サービス3カテゴリ): AI分析(ya_) / セキュリティNW(ys_) / インフラ・ロマン(yi_)
   ...yokokuAi,
@@ -92,12 +97,31 @@ export const SCENARIOS = [
   // 弱はハズレ寄りプールと同じ chance を持たせてあるので総発火量は変わらない。
   // 文字はすべて lcd.text(座布団つき)で出す = V31-08 の再発防止。
   ...yokokuBatch4,
+  // U58(2026-08-15): 予告 第7弾(yb5_)。予兆+50個のうち通常時予告ぶん32本。
+  //   弱14(ガセ) / 中13(レア役限定) / 熱5(上位レア役限定)
+  // 既出サービスを使うものは必ず別の機能・別の側面を題材にしてある
+  //   (かぶり回避の対応表は yokoku-batch5.js の冒頭)。
+  // 弱はハズレ寄りプールと同じ chance を持たせてあるので総発火量は変わらない。
+  ...yokokuBatch5,
   // U46b(2026-08-15): Bedrock 生成予告(ybr_)。生成された1行がそのまま結果を表す。
   //   IAM が設定されます=チェリー / スイカの美味しい季節ですね=スイカ /
   //   チャンスかもしれません=チャンス目 / サメの群れが…=サメ揃い /
   //   文字化け・空出力=ハズレ(構造的に当たらないゲーム限定)
   // 「クイズの時間です」だけは出題シナリオ(quiz.js)側の導入として出している。
   ...yokokuBedrock,
+  // U61(2026-08-15): Polly マイクテスト予兆(yp_)。
+  //   レバーONの入りは全部同じ「マイクテスト中…」で、第3停止で読み上げ文が割れる:
+  //     「本日は晴天なり」= ハズレ(白)/「本日はスイカなり」= スイカ成立(緑)/
+  //     「本日はチェリーなり」= チェリー成立(赤)/「本日はLambdaなり」= チャンス目(黄)/
+  //     「本日はサメなり」= サメ揃い(水色)
+  //   同じ Polly ネタだった ya_polly_readout_weak(yokoku-ai.js)を退役させた
+  //   **入れ替え**なので、予告の総発火量は変わらない。
+  ...yokokuPolly,
+  // U59(2026-08-15): ボーナス中の AWS豆知識カード(tv_)。
+  //   1ゲームおきに「サービス名 + 1行概要」を1枚出し、次のレバーONで消える。
+  //   RUSH中は出さない(見なければいけない情報が毎ゲーム動くため)。
+  //   priority:'ambient' なので演出枠を1つも奪わない。
+  ...trivia,
   // 受け手のいなかった paramChange(aurora_addgame / standby_extend)を拾う演出
   ...paramFx,
   // U7: 100ゲーム終了 → リザルトの間に挟むワンクッション

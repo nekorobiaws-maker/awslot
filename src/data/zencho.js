@@ -124,45 +124,88 @@ export const ZENCHO = {
    *   演出データ(data/scenarios/zencho.js)は import を書けないので、
    *   ここは「どの色を使うべきか」の台帳として持ち、色そのものはシナリオに直書きする。
    */
+  /* ══ U58(2026-08-15)/ 予兆パターンを +18 したときの重みの配り方 ═══════
+   *
+   * 【守ったこと】
+   *   1. **擬似連(deepracer / codepipeline)の重みは1も動かさない**。
+   *      擬似連だけは「擬似連自身が当選を生む」(step3 の CZ移行 / step4 のボーナス確定)
+   *      ので、選ばれる確率が動くと初当りがそのまま動く。
+   *   2. **minStrength のグループごとに合計を据え置く**。
+   *      drawPattern は `minStrength <= strength` で候補を絞ってから重み抽選するため、
+   *      強度1/2/3のどの帯で見ても「擬似連が選ばれる確率」が変わらないようにするには、
+   *      グループ合計そのものを固定するのが唯一確実な方法になる。
+   *        グループA(minStrength 1・擬似連以外) real 112 / fake 172
+   *        グループB(minStrength 2)            real 156 / fake  96
+   *        グループC(minStrength 3)            real 124 / fake  24
+   *      新規18本はこの枠の**内側**へ入れ、既存を同じ量だけ削ってある。
+   *   3. **赤文字予兆(zn_hot_*)の出現割合も据え置く**。
+   *      赤は「strength 2以上 かつ step 2以降」で、hot 版を持つパターンを引いたときだけ出る。
+   *      グループB/Cの hot 保有分の重み比を変えないよう、
+   *      新規の中(7本)と熱(3本)は **全部 hot 版つき** にしたうえで、
+   *      hot を持つ既存(xray / health / guardduty / region_evacuation / cloudtrail)から
+   *      その分をきっちり差し引いた(hot を持たない chatops_incident は据え置き)。
+   *
+   * 【変わること】前兆が始まったときに見える「絵の種類」が 14 → 32 になる。
+   *   前兆そのものの発生量(ZENCHO.fake.denom と当選契機)は**1回も増えない**。
+   */
   patterns: [
     {
       id: 'deepracer',
-      name: 'DeepRacer 試走',
+      /*
+       * 【2026-08-15 U58 / 廃止サービスの差し替え】
+       * AWS DeepRacer は 2025-12-15 にサービス終了したため、**画と文言を
+       * AWS Step Functions の分散マップ(Distributed Map)へ差し替えた**。
+       * 「1本 → 2本 → 4本 → 大量の子の実行が同時に走り出す」という絵は
+       * 擬似連の骨格(1台 → 2台 → 4台 → 大量走行)にそのまま乗る。
+       *
+       * 【id / chainParam は 'deepracer' のまま残す(意図的)】
+       *   ・game/modes/freetier.js は CHAIN_SPEC_BY_PATTERN[pattern] を引くだけなので
+       *     改名しても動くが、**scripts/sim.mjs が paramChange の param 名
+       *     'deepracer' で擬似連の統計を集計している**(scripts/ は変更禁止)。
+       *     改名した瞬間、統計が黙って0件になりバランス確認の目が1つ潰れる。
+       *   ・プレイヤーが目にするのは name / telop / 演出テキストだけなので、
+       *     内部の契約キーは旧名のまま「内部ID」として扱う。
+       */
+      name: 'Distributed Map 分散実行',
       minStrength: 1,
       /**
        * 擬似連の総量は据え置き(2026-08-14)。
        * CodePipeline 擬似連を足すにあたって新規の重みを追加すると
        * 「擬似連自身が生む当選」が増えて初当りが動くため、
-       * 旧 { real: 10, fake: 42 } を DeepRacer と CodePipeline で分け合う形にした。
+       * 旧 { real: 10, fake: 42 } を 分散マップ と CodePipeline で分け合う形にした。
        *   deepracer    { real: 6, fake: 25 }
        *   codepipeline { real: 4, fake: 17 }
        *   合計          { real:10, fake: 42 }  ← 変更前と同じ
+       * **U58 の +18 でもここは1も動かしていない**(上のグループ合計固定の理由)。
        */
       weight: { real: 6, fake: 25 },
       symbolHint: null,
-      telop: 'DeepRacer がコースを試走している',
+      telop: '子の実行が並列に走り出している',
     },
     {
       id: 'codepipeline',
       name: 'CodePipeline デプロイ進行',
       minStrength: 1,
-      // DeepRacer から分けた重み(上のコメント参照)。擬似連の総量は変えない
+      // 分散マップ側から分けた重み(上のコメント参照)。擬似連の総量は変えない
       weight: { real: 4, fake: 17 },
       symbolHint: null,
       telop: 'パイプラインが動き出した',
     },
     {
       id: 'sqs_backlog',
-      name: 'SQS 保留メッセージ滞留',
+      // U67-1: 「保留」はパチンコ語なので「未処理」へ。telop は元から実態表現
+      name: 'SQS 未処理メッセージ滞留',
       minStrength: 1,
-      weight: { real: 26, fake: 34 },
+      // U58: グループA(real 112 / fake 172)を新規8本と分け合った。旧 { real:26, fake:34 }
+      weight: { real: 17, fake: 22 },
       telop: 'SQS のキューが捌けていない',
     },
     {
       id: 'canary',
       name: 'カナリアリリース',
       minStrength: 1,
-      weight: { real: 32, fake: 26 },
+      // U58 再配分。旧 { real:32, fake:26 }
+      weight: { real: 21, fake: 17 },
       telop: 'カナリアへトラフィックを流し始めた',
     },
     {
@@ -170,7 +213,8 @@ export const ZENCHO = {
       name: 'X-Ray 赤トレース',
       minStrength: 2,
       // reinvent を外したぶんの再配分(real +8 / fake +1)
-      weight: { real: 42, fake: 25 },
+      // U58: 新規の中7本(全部 hot 版つき)へ分けたぶんを差し引いた。旧 { real:42, fake:25 }
+      weight: { real: 27, fake: 16 },
       telop: 'X-Ray に赤いトレースが混ざり始めた',
     },
     {
@@ -179,7 +223,8 @@ export const ZENCHO = {
       minStrength: 2,
       // 再配分(real +4 / fake +6)。fake を厚めにしたのは、この前兆の顛末を受け持つ
       // Well-Architected の失敗側(yh_wa_result_short)が出る機会を確保するため
-      weight: { real: 38, fake: 26 },
+      // U58 再配分。旧 { real:38, fake:26 }
+      weight: { real: 24, fake: 17 },
       telop: 'AWS Health Dashboard に通知',
     },
     {
@@ -187,7 +232,8 @@ export const ZENCHO = {
       name: 'GuardDuty 不審アクセス検知',
       minStrength: 2,
       // 再配分(real +6 / fake +1)
-      weight: { real: 36, fake: 23 },
+      // U58 再配分。旧 { real:36, fake:23 }
+      weight: { real: 23, fake: 15 },
       telop: 'GuardDuty が不審なアクセスを検知',
     },
     /* ── 2026-08-14 追加(U5 と同時。総量は fake.denom で下げ、絵の種類だけ増やす)── */
@@ -195,7 +241,8 @@ export const ZENCHO = {
       id: 'bill_shock',
       name: '請求アラート急上昇',
       minStrength: 1,
-      weight: { real: 22, fake: 38 },
+      // U58 再配分。旧 { real:22, fake:38 }
+      weight: { real: 14, fake: 25 },
       symbolHint: null,
       telop: '今月の請求額が跳ね上がっている',
     },
@@ -203,7 +250,8 @@ export const ZENCHO = {
       id: 'glacier_restore',
       name: 'Glacier 復元待ち',
       minStrength: 1,
-      weight: { real: 24, fake: 30 },
+      // U58 再配分。旧 { real:24, fake:30 }
+      weight: { real: 15, fake: 19 },
       // S3 系(スイカ)の話なので U9 の緑
       symbolHint: 'MELON',
       telop: 'Glacier からの復元が進んでいる…あと数時間',
@@ -213,7 +261,8 @@ export const ZENCHO = {
       name: 'コールドスタート',
       minStrength: 1,
       // ガセ専用に近い枠。引っ張るだけで何も起きない役回り
-      weight: { real: 8, fake: 44 },
+      // U58 再配分。旧 { real:8, fake:44 }
+      weight: { real: 5, fake: 29 },
       symbolHint: null,
       telop: 'コールドスタートで少し待たされている',
     },
@@ -221,6 +270,8 @@ export const ZENCHO = {
       id: 'chatops_incident',
       name: '#incident チャンネル発生',
       minStrength: 2,
+      // U58: **据え置き**。hot 版を持たない唯一の中パターンなので、ここを削ると
+      // 「赤文字予兆が出る割合」が動いてしまう(削るのは hot 持ちの3本だけ)
       weight: { real: 40, fake: 22 },
       symbolHint: null,
       telop: 'Slack に #incident チャンネルが立った',
@@ -229,7 +280,8 @@ export const ZENCHO = {
       id: 'region_evacuation',
       name: '別リージョンへの退避開始',
       minStrength: 3,
-      weight: { real: 56, fake: 10 },
+      // U58: グループC(real 124 / fake 24)を新規の熱3本と分け合った。旧 { real:56, fake:10 }
+      weight: { real: 42, fake: 8 },
       symbolHint: null,
       telop: '別リージョンへの退避が始まった',
     },
@@ -240,8 +292,186 @@ export const ZENCHO = {
       // Root ユーザー = IAM(チェリー)の話なので U9 の赤。tone:'hot' とは併用しない
       symbolHint: 'CHERRY',
       // 再配分(real +22)。強度3で選ばれる唯一の専用パターンになったので厚くする
-      weight: { real: 68, fake: 14 },
+      // U58 再配分。旧 { real:68, fake:14 }
+      weight: { real: 52, fake: 10 },
       telop: 'CloudTrail にログが流れ続けている',
+    },
+
+    /* ══ 2026-08-15 U58 追加(+18本)══════════════════════════════════
+     *
+     * 前兆の「絵の引き出し」を 14 → 32 へ増やす。上のグループ合計固定のとおり
+     * **前兆の発生回数も擬似連の発生回数も1回も増えていない**。
+     * 題材はすべて現役サービス(提供終了・メンテモード入りは全部除外済み)。
+     *
+     * 内訳: 弱(minStrength 1)8本 / 中(2)7本 / 熱(3)3本。
+     * 中と熱には data/scenarios/zencho.js に zn_hot_* を必ず1本ずつ用意してある
+     * (赤文字予兆の出現割合を据え置くため。理由は patterns 冒頭のコメント)。
+     */
+
+    /* ── 弱(minStrength 1)8本 / 合計 real 40・fake 60 ─────────────── */
+    {
+      id: 'ec2_mac',
+      name: 'EC2 Mac インスタンス 占有中',
+      minStrength: 1,
+      weight: { real: 5, fake: 8 },
+      symbolHint: null,
+      /*
+       * 実在の制約: 専有ホスト(Mac の実機)は割り当てから最低24時間は解放できない。
+       *
+       * 2026-08-15 ユーザー指摘 U64-1「文言が意味不明」対応。
+       * 旧: 「Mac ホストが24時間の最低確保に入った」
+       *   → 「最低確保」は社内語で、何が起きたのかも良い事なのかも伝わらなかった。
+       * 新: 借りた(確保した)という **出来事** を先に言い、制約は補足として添える。
+       * 専門用語を使わず、24時間の縛りが「返せない」ことだと分かる書き方にしてある。
+       */
+      telop: 'Mac の実機を借りた — 返却できるのは24時間後',
+    },
+    {
+      id: 'device_farm',
+      name: 'Device Farm 実機ラック点灯',
+      minStrength: 1,
+      weight: { real: 5, fake: 8 },
+      symbolHint: null,
+      telop: '実機ラックのスマホが一斉に画面点灯した',
+    },
+    {
+      id: 'session_manager',
+      name: 'Session Manager セッション開始',
+      minStrength: 1,
+      weight: { real: 5, fake: 8 },
+      // 鍵も踏み台も無しで入れる = 権限(IAM)の話なので U9 の赤
+      symbolHint: 'CHERRY',
+      telop: '踏み台なしでシェルが1本開いた',
+    },
+    {
+      id: 'logs_insights',
+      name: 'CloudWatch Logs Insights 検索',
+      minStrength: 1,
+      weight: { real: 5, fake: 8 },
+      symbolHint: null,
+      telop: 'ログを大量になめて、3件だけ返ってきた',
+    },
+    {
+      id: 'datasync_night',
+      name: 'DataSync 夜間転送',
+      minStrength: 1,
+      weight: { real: 5, fake: 7 },
+      // オンプレ → S3 へ「ためる」話なので U9 の緑
+      symbolHint: 'MELON',
+      telop: 'オンプレのファイルが夜間に少しずつ渡っている',
+    },
+    {
+      id: 'transfer_sftp',
+      name: 'Transfer Family SFTP 接続',
+      minStrength: 1,
+      weight: { real: 5, fake: 7 },
+      // SFTP の向こう側は S3。スイカ対応
+      symbolHint: 'MELON',
+      telop: 'まだ SFTP で1本つながっている',
+    },
+    {
+      id: 'route53_resolver',
+      name: 'Route 53 Resolver 名前解決',
+      minStrength: 1,
+      weight: { real: 5, fake: 7 },
+      symbolHint: null,
+      telop: 'VPC の中で名前解決が1回だけ外を向いた',
+    },
+    {
+      id: 'cost_anomaly',
+      name: 'Cost Anomaly Detection 違和感検知',
+      minStrength: 1,
+      weight: { real: 5, fake: 7 },
+      symbolHint: null,
+      telop: '機械が今月の使い方に違和感を覚えている',
+    },
+
+    /* ── 中(minStrength 2)7本 / 合計 real 42・fake 26 ───────────────
+     * **全部 zn_hot_* を持つ**(xray / health / guardduty から重みを分けた見返り) */
+    {
+      id: 'vpc_lattice',
+      name: 'VPC Lattice サービス結線',
+      minStrength: 2,
+      weight: { real: 6, fake: 4 },
+      symbolHint: null,
+      telop: 'サービス同士が名前だけで結線された',
+    },
+    {
+      id: 'clean_rooms',
+      name: 'Clean Rooms 重なり検出',
+      minStrength: 2,
+      weight: { real: 6, fake: 4 },
+      symbolHint: null,
+      telop: '相手の生データを見ずに、重なりだけが分かった',
+    },
+    {
+      id: 'entity_resolution',
+      name: 'Entity Resolution 名寄せ一致',
+      minStrength: 2,
+      weight: { real: 6, fake: 4 },
+      symbolHint: null,
+      telop: '別々の顧客レコードが同一人物と判定された',
+    },
+    {
+      id: 'ram_share',
+      name: 'Resource Access Manager 共有',
+      minStrength: 2,
+      weight: { real: 6, fake: 4 },
+      // アカウントをまたぐ権限の話なので U9 の赤
+      symbolHint: 'CHERRY',
+      telop: '隣のアカウントへサブネットが1つ共有された',
+    },
+    {
+      id: 'kb_citation',
+      name: 'Bedrock Knowledge Bases 根拠引用',
+      minStrength: 2,
+      weight: { real: 6, fake: 4 },
+      symbolHint: null,
+      telop: '社内文書から根拠が1件、引かれてきた',
+    },
+    {
+      id: 'mwaa_dag',
+      name: 'MWAA DAG 起動',
+      minStrength: 2,
+      weight: { real: 6, fake: 3 },
+      symbolHint: null,
+      telop: 'DAG の依存が解けて、タスクが走り出した',
+    },
+    {
+      id: 'local_zones',
+      name: 'Local Zones 出島へ寄せる',
+      minStrength: 2,
+      weight: { real: 6, fake: 3 },
+      symbolHint: null,
+      telop: '大都市の出島側へ、処理が寄っていった',
+    },
+
+    /* ── 熱(minStrength 3)3本 / 合計 real 30・fake 6 ───────────────
+     * region_evacuation / cloudtrail と同じく **全部 zn_hot_* つき** */
+    {
+      id: 'fis_az_down',
+      name: 'Fault Injection Service AZ 全電源断',
+      minStrength: 3,
+      weight: { real: 10, fake: 2 },
+      symbolHint: null,
+      // FIS の AZ 可用性シナリオは実在(障害30分 + 復旧30分の構成)
+      telop: 'AZ 全電源断のシナリオが投入された',
+    },
+    {
+      id: 'trainium_cluster',
+      name: 'Trainium 学習クラスタ点火',
+      minStrength: 3,
+      weight: { real: 10, fake: 2 },
+      symbolHint: null,
+      telop: '学習専用チップのクラスタに一斉に火が入った',
+    },
+    {
+      id: 'dtt_ingest',
+      name: 'Data Transfer Terminal 吸い上げ',
+      minStrength: 3,
+      weight: { real: 10, fake: 2 },
+      symbolHint: null,
+      telop: '持ち込んだディスクが一気に吸い上げられている',
     },
     {
       id: 'reinvent',
@@ -277,13 +507,21 @@ export const ZENCHO = {
 };
 
 /**
- * DeepRacer 擬似連(2026-08-13 ユーザー仕様)
+ * 分散マップ擬似連(2026-08-13 ユーザー仕様 / 2026-08-15 U58 で題材を差し替え)
  *
- * DeepRacer は「賑やかしの1コマ」から **擬似連イベント** へ昇格した。
- * 突入時に到達step(1〜4)を抽選し、毎ゲーム1stepずつ車が走る。
- *   step1・2 … 車が走るだけ。ここでは何も起きない
+ * ■ 題材の差し替え(U58)
+ *   もとは AWS DeepRacer の試走だったが、**DeepRacer は 2025-12-15 に提供終了**した。
+ *   骨格(1 → 2 → 4 → 大量)をそのまま活かせる現役ネタとして
+ *   **AWS Step Functions の分散マップ(Distributed Map)** へ差し替えている。
+ *   分散マップは1つの Map ステートから子の実行を最大1万並列で走らせる機能で、
+ *   「走る本数が増えるほど熱い」がそのまま成立する。
+ *   **内部ID(deepracer / chainParam)は旧名のまま**(上の patterns のコメント参照)。
+ *
+ * 擬似連は「賑やかしの1コマ」から **擬似連イベント** へ昇格した枠。
+ * 突入時に到達step(1〜4)を抽選し、毎ゲーム1stepずつ子の実行が走る。
+ *   step1・2 … 実行が走るだけ。ここでは何も起きない
  *   step3    … 到達したら **確率でCZ移行**(外れたらそこで終了、または step4 へ)
- *   step4    … 車が大量に走る激アツ = **ボーナス確定**
+ *   step4    … 大量の子の実行が同時に走る激アツ = **ボーナス確定**
  * さらに **擬似連中にレア役を引いたらボーナス確定**(格上げ)。
  *
  * 実装は前兆(zencho)の特別パターンとして乗せている。当選の保持・格上げ・
@@ -293,11 +531,15 @@ export const ZENCHO = {
  */
 export const DEEPRACER = {
   id: 'deepracer_chain',
-  /** この擬似連を起動する演出パターンID(ZENCHO.patterns の id) */
+  /** この擬似連を起動する演出パターンID(ZENCHO.patterns の id。旧名を内部IDとして維持) */
   patternId: 'deepracer',
-  /** 演出契約の param 名。シナリオ側は match:{ param:['deepracer'] } で拾う */
+  /**
+   * 演出契約の param 名。シナリオ側は match:{ param:['deepracer'] } で拾う。
+   * **改名しないこと**: scripts/sim.mjs がこの文字列で擬似連の統計を集計している
+   * (scripts/ は変更禁止なので、改名すると統計が黙って0件になる)。
+   */
   chainParam: 'deepracer',
-  /** step ごとに演出へ渡す追加値のキーと値(DeepRacer は走る台数) */
+  /** step ごとに演出へ渡す追加値のキーと値(分散マップは同時に走る子の実行の本数) */
   stepField: 'cars',
   /**
    * 到達step の振り分け。step3以上(何かが起きる可能性のある帯)は約3割。
@@ -311,7 +553,7 @@ export const DEEPRACER = {
   czRateAtStep3: 0.50,
   /** この step まで伸びたらボーナス確定 */
   bonusStep: 4,
-  /** 各stepで走る車の台数(演出契約の cars) */
+  /** 各stepで同時に走る子の実行の本数(演出契約の cars。キー名は内部IDのまま) */
   carsByStep: { 1: 1, 2: 2, 3: 4, 4: 12 },
   /** stepField の実体(汎用の advanceChain から参照する。carsByStep と同じ表) */
   get stepValues() { return this.carsByStep; },
@@ -324,29 +566,29 @@ export const DEEPRACER = {
   rareUpgradesToBonus: true,
   /** 各stepのテロップ */
   telops: {
-    1: 'DeepRacer が走り出した',
-    2: '2台目が追いついてきた',
-    3: '4台が並んで最終コーナーへ!',
-    4: '大量の DeepRacer がコースを埋め尽くした!!',
+    1: '子の実行が1本、走り出した',
+    2: '2本目の実行が並んで走り出した',
+    3: '4本が同時に走っている!',
+    4: '大量の子の実行が一斉に走り出した!!',
   },
 };
 
 /**
  * CodePipeline 擬似連(2026-08-14 追加)
  *
- * DeepRacer と同じ「擬似連」の骨格を、開発現場のデプロイパイプラインに置き換えたもの。
+ * 分散マップ擬似連(DEEPRACER)と同じ「擬似連」の骨格を、開発現場のデプロイパイプラインに置き換えたもの。
  *   step1 Source … リポジトリからソースを取得しただけ
  *   step2 Build  … ビルドが走り出す
  *   step3 Test   … テスト通過。ここで **確率でCZ移行**
  *   step4 Deploy … 本番反映まで到達 = **ボーナス確定**
  *
- * DeepRacer と同居させる意味は「同じ絵ばかり見ない」ことで、
+ * 分散マップと同居させる意味は「同じ絵ばかり見ない」ことで、
  * **擬似連そのものの発生量は増やしていない**(ZENCHO.patterns の weight を
- * DeepRacer から分け合っている)。擬似連は当選を生むイベントなので、
+ * 分散マップ側から分け合っている)。擬似連は当選を生むイベントなので、
  * 総量を増やすと初当りがそのまま動いてしまうため。
  *
- * czRateAtStep3 を DeepRacer(0.50)より少し渋い 0.45 にしてあるのは、
- * step4 の絵(本番反映)を DeepRacer の大量走行より格上に見せたいから。
+ * czRateAtStep3 を分散マップ(0.50)より少し渋い 0.45 にしてあるのは、
+ * step4 の絵(本番反映)を分散マップの大量並列より格上に見せたいから。
  * 到達分布も step4 を薄くしてある。
  */
 export const CODEPIPELINE = {

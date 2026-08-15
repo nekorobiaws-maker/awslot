@@ -6,10 +6,13 @@
  * (lcdanims / lcdanims-extra / particles / sfx-presets / char)だけで組み立てる。
  * 新規アニメ・新規SFXプリセットの実装は一切なし。
  *
- * 対象サービス: Braket / Snowファミリー(Snowcone→Snowball→
- * Snowmobile) / IoT Core / Control Tower / Budgets / Batch / Elastic Beanstalk /
- * Greengrass / RoboMaker / Outposts / Lightsail / EKS / App Runner。
+ * 対象サービス: Braket / Outposts(搬入〜接続 と 設置契約の2側面) /
+ * IoT Core / Control Tower / Budgets / Batch / Elastic Beanstalk /
+ * Greengrass / Fault Injection Service / Lightsail / EKS / App Runner。
+ * ※ RoboMaker(2025-09-10 提供終了)は U58 で Fault Injection Service へ差し替え済み(下の J.)。
  * ※ Ground Station(人工衛星)は U46a(2026-08-15)で削除済み。下の A. のコメント参照。
+ * ※ Snowファミリー(Snowball Edge は 2025-11-07 新規受付停止 → 2026-12-31 全廃)は
+ *   2026-08-15 椿レビュー #3 で Outposts の搬入へ差し替え済み。下の C. のコメント参照。
  *
  * ■ 語彙の使い回し方針
  *   既存アニメは「見た目は同じだが params(label/sub/text)で意味を変える」形で
@@ -17,10 +20,11 @@
  *   reserved_sign の label 差し替え、deploy_progress / cw_meter_swing の汎用ゲージ化で
  *   既にやっている流儀と同じ(1つのアニメが複数サービスの演出を兼務する)。
  *     - health_check(label可変)      … IoT Core / Greengrass のオンライン確認
- *     - reserved_sign(label可変)     … Outposts の設置契約サイン
+ *     - reserved_sign(label可変)     … Outposts の設置契約サイン(K.)
  *     - cw_meter_swing(label/sub可変) … Braket の量子ビット確率ゲージ
  *     - deploy_progress               … Elastic Beanstalk / App Runner の自動デプロイ
- *     - step_up(3灯)                  … IoT Core のセンサー数 / Snowファミリーの3段階
+ *     - step_up(3灯)                  … IoT Core のセンサー数 /
+ *                                        Outposts の搬入→設置→接続の3段階(C.)
  *     - pillar_raise / checklist_green … Batch のジョブ進行 / EKS の Pod起立 /
  *                                        Control Tower のコントロール通過
  *       (index は1始まり。index:1→1本目。0始まりで渡すと1本ズレるので注意)
@@ -48,6 +52,8 @@
  */
 
 import { RUSH_IDS, rushWeight } from '../rushes.js';
+// 結論行(U57)と役色(U62)は data/rolecolors.js が唯一の正。16進をここに書かない
+import { conclusionCue, colorForFlag } from '../rolecolors.js';
 
 /** RUSH 全種(when.mode 用)。data/rushes.js が正 */
 const RUSH_MODES = RUSH_IDS;
@@ -80,7 +86,19 @@ export default [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.5 } },
       { at: 0,   layer: 'lcd', action: 'anim',
         params: { anim: 'cw_meter_swing', to: 0.4, over: false, label: 'QUBIT P(1)', sub: '重ね合わせ中' } },
-      { at: 500, layer: 'lcd', action: 'text', params: { text: '未観測', sub: 'まだ確定していない', color: '#8ad4ff', ms: 700 } },
+      /*
+       * 【U57 で見つかった sticky 残置】
+       * サブ行の「まだ確定していない」が lcdanims.js の STICKY_KEYWORDS の
+       * 「確定」を踏むため、**弱予告なのに次のレバーONまで残る告知** になっていた
+       * (isStickyText はメイン行だけでなくサブ行の判定にも使われる経路がある)。
+       * 弱予告は結論を出さない煽りなので、sticky:false を明示して打ち消す。
+       * 文言側も「確定」を避けて「収束していない」(量子の言い回し)に直した。
+       */
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',
+        params: {
+          text: '未観測', sub: 'Amazon Braket — 量子ビットはまだ収束していない',
+          color: '#8ad4ff', ms: 700, sticky: false,
+        } },
     ],
   },
   {
@@ -99,7 +117,7 @@ export default [
       { waitFor: 'stop3', layer: 'sfx', action: 'synth', params: { preset: 'upgrade_chime' } },
       { waitFor: 'stop3', after: 100, layer: 'overlay', action: 'flash', params: { color: '#c8b0ff', ms: 220 } },
       { waitFor: 'stop3', after: 150, layer: 'lcd', action: 'text',
-        params: { text: '観測完了', sub: '状態が収束した', color: '#ffe066', ms: 1300 } },
+        params: { text: '観測完了', sub: 'Amazon Braket — 状態が収束した', color: '#ffe066', ms: 1300 } },
     ],
   },
   {
@@ -121,10 +139,31 @@ export default [
     ],
   },
 
-  // ── C. Snowファミリー(Snowcone→Snowball→Snowmobileの3段階) ──
+  /* ── C. AWS Outposts の搬入(ラックが届いて、リージョンと繋がるまで)──
+   *
+   * ══ 【差し替え】2026-08-15 椿レビュー #3 ═══════════════════════════
+   * ここは元は Snowファミリー(Snowcone→Snowball→Snowmobile の3段階)だった。
+   * Snowball Edge は 2025-11-07 に新規受付を停止し 2026-12-31 で全廃、
+   * Snowmobile に至ってはすでに提供が無い。**もう届かない箱**を「到着した」と
+   * 出すのは U25 の条件③(事実に反しない)を踏むので、丸ごと差し替えた。
+   *
+   * 【なぜ Outposts か】
+   *   ・元の画は step_up の3灯で「**モノが届いて、だんだん大きくなる**」を見せていた。
+   *     Outposts は AWS がラックを持ってきて設置し、親リージョンへ繋いで初めて使える
+   *     ので、「搬入 → 設置 → 接続」の段取りがそのまま同じ絵に乗る
+   *   ・「AWSのハードが自分の建物に来る」という**Snowファミリーと同じ驚き**を残せる
+   *
+   * 【下の K. の Outposts と画がかぶらないこと】
+   *   K. yi_outposts_mid … reserved_sign(**契約書にサイン**する紙の絵)。まだ何も来ていない
+   *   ここ              … step_up(**現物が来てからの段取り**)。契約の先の話
+   *   同じサービスを別の側面で出すのはこのファイルの流儀(冒頭「語彙の使い回し方針」)。
+   *
+   * 【発火量】weight(55 / 50)・chance(0.32)・尺・アニメ・SFX はすべて据え置き。
+   *   差し替えであって増減ではないので、予告の総量は1も動かない。
+   */
   {
-    id: 'yi_snowfamily_weak',
-    name: '【弱】Snowファミリー予告(Snowballどまり)',
+    id: 'yi_outposts_deliver_weak',
+    name: '【弱】Outposts予告(ラックは届いたが設置はこれから)',
     when: { event: 'leverOn', flag: ['LOSE', 'BELL', 'REPLAY'], mode: ['FREE_TIER'] },
     weight: { FREE_TIER: 55, default: 0 },
     chance: 0.32,
@@ -132,12 +171,12 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'ui_select' } },
       { at: 0,   layer: 'lcd', action: 'anim',  params: { anim: 'step_up', step: 2 } },
-      { at: 500, layer: 'lcd', action: 'text',  params: { text: 'SNOWBALL 到着', sub: 'まだ増えるかも…', color: '#8ad4ff', ms: 700 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: 'RACK 搬入', sub: 'まだ設置はこれから…', color: '#8ad4ff', ms: 700 } },
     ],
   },
   {
-    id: 'yi_snowfamily_mid',
-    name: '【中】Snowファミリー予告(Snowmobileが来た)',
+    id: 'yi_outposts_link_mid',
+    name: '【中】Outposts予告(ラックがリージョンと繋がった)',
     when: { event: 'leverOn', rare: true, mode: ['FREE_TIER'] },
     weight: { FREE_TIER: 50, default: 0 },
     duration: 1900,
@@ -148,8 +187,9 @@ export default [
       { waitFor: 'stop3', layer: 'sfx', action: 'synth', params: { preset: 'upgrade_chime' } },
       { waitFor: 'stop3', layer: 'overlay', action: 'flash', params: { color: '#ffe066', ms: 220 } },
       { waitFor: 'stop3', after: 60, layer: 'overlay', action: 'particles', params: { preset: 'coin', x: 360, y: 380, count: 20 } },
+      // 「サービスリンク」は Outposts が親リージョンへ張る接続の呼び名(公式用語)
       { waitFor: 'stop3', after: 150, layer: 'lcd', action: 'text',
-        params: { text: 'SNOWMOBILE 到着', sub: 'トラックごと運んできた', color: '#ffe066', ms: 1300 } },
+        params: { text: 'SERVICE LINK 確立', sub: 'ラックがリージョンと繋がった', color: '#ffe066', ms: 1300 } },
     ],
   },
 
@@ -164,7 +204,7 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'ui_select' } },
       { at: 0,   layer: 'lcd', action: 'anim',  params: { anim: 'step_up', step: 1 } },
-      { at: 400, layer: 'lcd', action: 'text', params: { text: 'DEVICE ONLINE ×1', color: '#8ad4ff', ms: 600 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text', params: { text: 'DEVICE ONLINE ×1', color: '#8ad4ff', ms: 600 } },
     ],
   },
   {
@@ -196,7 +236,7 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'checklist_ok', gain: 0.6 } },
       { at: 0,   layer: 'lcd', action: 'anim',  params: { anim: 'checklist_green', index: 1 } },
-      { at: 400, layer: 'lcd', action: 'text', params: { text: 'CONTROL 1/3', color: '#8ad4ff', ms: 600 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text', params: { text: 'CONTROL 1/3', color: '#8ad4ff', ms: 600 } },
     ],
   },
   {
@@ -229,7 +269,7 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'ui_select' } },
       { at: 0,   layer: 'lcd', action: 'anim',  params: { anim: 'cw_graph_rise', step: 2 } },
-      { at: 400, layer: 'lcd', action: 'text', params: { text: '支出 微増', color: '#8ad4ff', ms: 600 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text', params: { text: '支出 微増', sub: 'AWS Budgets — 予算の内側で収まっている', color: '#8ad4ff', ms: 600 } },
     ],
   },
   {
@@ -248,7 +288,7 @@ export default [
       { waitFor: 'stop3', layer: 'lcd', action: 'anim', params: { anim: 'ttl_zero' } },
       { waitFor: 'stop3', after: 150, layer: 'overlay', action: 'flash', params: { color: '#ff8a00', ms: 220 } },
       { waitFor: 'stop3', after: 200, layer: 'lcd', action: 'text',
-        params: { text: '予算超過見込み', sub: '今月の運勢、オーバーラン', color: '#ffd166', ms: 1300 } },
+        params: { text: '予算超過見込み', sub: 'AWS Budgets — 今月の運勢、オーバーラン', color: '#ffd166', ms: 1300 } },
     ],
   },
 
@@ -263,7 +303,7 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.5 } },
       { at: 0,   layer: 'lcd', action: 'anim',  params: { anim: 'pillar_raise', index: 1, count: 5 } },
-      { at: 350, layer: 'lcd', action: 'text', params: { text: 'JOB #1 完了', color: '#8ad4ff', ms: 600 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text', params: { text: 'JOB #1 完了', color: '#8ad4ff', ms: 600 } },
     ],
   },
   {
@@ -297,7 +337,7 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'ui_select' } },
       { at: 0,   layer: 'lcd', action: 'anim', params: { anim: 'deploy_progress', from: 0, to: 0.4 } },
-      { at: 400, layer: 'lcd', action: 'text', params: { text: 'DEPLOYING…', color: '#8ad4ff', ms: 600 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text', params: { text: 'DEPLOYING…', color: '#8ad4ff', ms: 600 } },
     ],
   },
   {
@@ -334,10 +374,22 @@ export default [
     ],
   },
 
-  // ── J. AWS RoboMaker(ロボットのシミュレーションが成功) ───────
+  /* ── J. AWS Fault Injection Service(障害注入の実験が実行中)───────
+   *
+   * 【2026-08-15 U58 / 廃止サービスの差し替え】
+   * ここは元 AWS RoboMaker(ロボットのシミュレーション)だったが、
+   * **RoboMaker は 2025-09-10 に提供終了**したため、現役サービスへ差し替えた。
+   * 「実行中の箱がひとつ動いている」という演出の骨格(sfn_task の running)は
+   * そのまま使えるので、cues の構成は1行も変えていない。
+   *
+   * 【前兆側の FIS とのすみ分け】
+   *   前兆(data/zencho.js の fis_az_down)… **AZ 全電源断のシナリオを投入した**話
+   *   ここ                              … **実験(Experiment)が実行中**という話
+   * 同じサービスだが見せている場面が違う(投入の瞬間 / 走っている最中)。
+   */
   {
-    id: 'yi_robomaker_mid',
-    name: 'RoboMaker予告(シミュレーション実行中)',
+    id: 'yi_fis_experiment_mid',
+    name: 'Fault Injection Service予告(障害注入の実験が実行中)',
     // 旧実装は sfn_task に ok:true を渡して「SUCCEEDED」と断言していた。
     // レバーON時点では当落が未確定なので、結論は出さず実行中表示に留める
     when: { event: 'leverOn', flag: ['STRONG_CHERRY', 'CHANCE'], mode: ['FREE_TIER'] },
@@ -350,7 +402,7 @@ export default [
       { waitFor: 'stop3', layer: 'lcd', action: 'anim', params: { anim: 'sfn_task', result: 'running' } },
       { waitFor: 'stop3', layer: 'sfx', action: 'synth', params: { preset: 'sfn_choice' } },
       { waitFor: 'stop3', after: 150, layer: 'lcd', action: 'text',
-        params: { text: 'ROBOMAKER', sub: 'シミュレーションを実行中', color: '#ffe066', ms: 1400 } },
+        params: { text: 'EXPERIMENT RUNNING', sub: '本番にわざと故障を起こして耐性を試している', color: '#ffe066', ms: 1400 } },
     ],
   },
 
@@ -371,18 +423,60 @@ export default [
     ],
   },
 
-  // ── L. Amazon Lightsail(ワンクリックでお手軽に起動) ──────────
+  /* ── L. Amazon Lightsail(ワンクリックでお手軽に起動) ──────────
+   *
+   * ══ 2026-08-15 ユーザー指示 U66-6: 煽りだけで終わらせない ═══════════
+   * 旧実装は「LIGHTSAIL / ワンクリックで起動」と出して**それきり**で、
+   * 結局そのゲームで何が起きたのか(起動できたのか)を一度も言わなかった。
+   * 起動ボタンを押す絵なのだから、**押した結果**まで見せるのが筋。
+   *
+   * 弱(ハズレ帯)  … 第3停止で「起動しなかった…」= ハズレ(役色は白)
+   * 中(レア役帯)  … 第3停止で「起動した!」= 成立(役色。ここは色 = 成立役)
+   *
+   * 結論は conclusionCue(U57)で出す:
+   *   出す = 第3停止(当落の確定点)/ 消える = 次のレバーON(sticky)
+   * 見た目(煽りの1枚目)は弱・中で共通にしてあるので、入りでは当落は読めない。 */
   {
     id: 'yi_lightsail_weak',
-    name: '【弱】Lightsail予告(お手軽インスタンス起動)',
+    name: '【弱】Lightsail予告(起動ボタンを押したが立ち上がらない)',
     when: { event: 'leverOn', flag: ['LOSE', 'BELL', 'REPLAY'], mode: ['FREE_TIER'] },
     weight: { FREE_TIER: 45, default: 0 },
     chance: 0.28,
-    duration: 900,
+    duration: 1400,
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'ui_select' } },
       { at: 0,   layer: 'lcd', action: 'particles', params: { preset: 'spark', x: 220, y: 150, count: 8 } },
-      { at: 300, layer: 'lcd', action: 'text', params: { text: 'LIGHTSAIL', sub: 'ワンクリックで起動', color: '#8ad4ff', ms: 600 } },
+      { at: 300, layer: 'lcd', action: 'text', params: { text: 'Lightsail 起動中…', sub: 'ワンクリックでインスタンスを立ち上げる', color: '#8ad4ff', ms: 600 } },
+      conclusionCue({
+        flag: 'LOSE',
+        text: '起動しなかった…',
+        sub: 'Lightsail — インスタンスは立ち上がらないまま終わった',
+        ms: 900,
+      }),
+    ],
+  },
+  {
+    id: 'yi_lightsail_mid',
+    name: '【中】Lightsail予告(ワンクリックで本当に起動した)',
+    // レア役全般で出るが、結論は「起動した = 何かが成立した」なので中立色は使わず、
+    // 役が1つに決まるチャンス目(Lambda = ワンクリック起動と相性がよい)に絞る
+    when: { event: 'leverOn', flag: ['CHANCE'], mode: ['FREE_TIER'] },
+    weight: { FREE_TIER: 45, default: 0 },
+    duration: 2000,
+    cues: [
+      { at: 0,   layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
+      { at: 0,   layer: 'sfx',  action: 'synth', params: { preset: 'ui_select' } },
+      { at: 0,   layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 220, y: 150, count: 8 } },
+      { at: 300, layer: 'lcd',  action: 'text', params: { text: 'Lightsail 起動中…', sub: 'ワンクリックでインスタンスを立ち上げる', color: '#8ad4ff', ms: 600 } },
+      { waitFor: 'stop3', layer: 'sfx', action: 'synth', params: { preset: 'upgrade_chime' } },
+      { waitFor: 'stop3', after: 80, layer: 'overlay', action: 'flash', params: { color: colorForFlag('CHANCE'), ms: 200 } },
+      conclusionCue({
+        flag: 'CHANCE',
+        text: '起動した!',
+        sub: 'Lightsail — 固定料金のインスタンスが立ち上がった',
+        after: 120,
+        ms: 1300,
+      }),
     ],
   },
 
@@ -409,10 +503,17 @@ export default [
     ],
   },
 
-  // ── N. AWS App Runner(pushしただけで公開まで自動) ────────────
+  /* ── N. Amazon ECS(ローリングデプロイ) ────────────
+   *
+   * 旧: AWS App Runner(2026-04-30 新規受付終了=メンテナンスモードのため差し替え。
+   * 椿レビュー #1 の波及分。2026-08-15)。deploy_progress の絵と weight 45 は
+   * そのまま流用し、id とテキストだけ入れ替えた(同枠・同重み=発火量不変)。
+   * ECS のローリング更新は「新タスクを起動→ヘルス確認→旧タスクを外す」を
+   * 進捗バーで進める画がそのまま合う。Fargate(batch4=起動基盤)とは切り口が別。
+   */
   {
-    id: 'yi_apprunner_mid',
-    name: 'App Runner予告(pushから自動公開)',
+    id: 'yi_ecs_rolling_mid',
+    name: 'ECS予告(ローリングデプロイ進行)',
     when: { event: 'leverOn', flag: ['STRONG_CHERRY', 'CHANCE'], mode: ['FREE_TIER'] },
     weight: { FREE_TIER: 45, default: 0 },
     duration: 2100,
@@ -423,7 +524,7 @@ export default [
       { waitFor: 'stop3', layer: 'sfx', action: 'synth', params: { preset: 'upgrade_chime' } },
       { waitFor: 'stop3', layer: 'overlay', action: 'particles', params: { preset: 'spark', x: 360, y: 300, count: 16 } },
       { waitFor: 'stop3', after: 100, layer: 'lcd', action: 'text',
-        params: { text: 'APP RUNNER', sub: 'pushしただけで公開完了', color: '#ffe066', ms: 1400 } },
+        params: { text: 'ECS ROLLING DEPLOY', sub: '新しいタスクへ入れ替え完了', color: '#ffe066', ms: 1400 } },
     ],
   },
 ];

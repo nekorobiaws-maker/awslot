@@ -1,99 +1,175 @@
 /**
- * AWSクイズルーレット演出のシナリオ。docs/BACKLOG.md「P: AWSクイズルーレット演出」
+ * リール3択クイズのシナリオ(U64-2 / 2026-08-15 ユーザー指示)。
  *
- * 出題 → 4択がルーレットで回る → 止まった選択肢が正解なら CZ 突入、不正解ならガセ終了。
- * 盤面は staging/anims/lcdanims-extra.js の `aws_quiz_roulette`、
- * 出題データは src/data/quiz.js。
+ * ── この枠の歴史 ────────────────────────────────────────────────
+ *   1. 元は「AWSクイズルーレット」(出題 → 4択が回る → 正解ならCZ)。
+ *   2. U53 でクイズをやめ、同じ発生枠を「どのリールから止める?」の3択に置き換えた。
+ *   3. **U64-2 でクイズへ戻した**。出題は休止していた46問(src/data/quiz.js)を使い、
+ *      3つの選択肢を **左 / 中 / 右のリール** に割り当てて第1停止で答える形にした。
+ *      発生枠(いつ・どれくらい出るか)は U53 のままなので、演出の総量は変わらない。
+ *   4択ルーレットの盤面(lcdanims-extra.js の aws_quiz_roulette)と
+ *   buildQuizRound() は休止のまま保全してある(再生しているシナリオは1本も無い)。
  *
- * ■ 「正解に止まったら当選」の担保(ここが一番大事)
+ * ── いまの演出 ───────────────────────────────────────────────
+ *   ① 出題   「◯◯をしたい。どのサービス?」+ 3択を 左 / 中 / 右 に表示
+ *   ② 回答    **新しい選択UIは作らない**。既存の停止操作がそのまま入力で、
+ *             プレイヤーが第1停止したリール = 選んだ選択肢
+ *   ③ 発表    第1停止でその場で判定。正誤は **押したリールと正解の位置の一致** で決まる
+ *   ④ 接続    当選ゲームならそのまま従来のCZ突入告知へ繋ぐ
+ *
+ * ══ 【最重要】正誤と当落は別物 ═══════════════════════════════════
+ *
+ * ■ 正誤は事実に忠実(演出RNGでシャッフルされた正解の位置と、押したリールの一致)
+ *   当落を見て正解の位置を後から動かしたりしない。
+ *   → 「正解したのに役は不成立」「不正解でもCZ突入」が普通に起きる。それが正しい。
+ *
+ * ■ 当落は出目と抽選が決める(この演出は1枚も変えない)
+ *   出目・当落は **レバーON時点で確定済み**。演出側からゲーム状態は触らない
+ *   (DESIGN.md 4.2)。盤面へ渡す `win` は「このシナリオが当選確定の枠かどうか」で、
+ *   正誤の判定には一切使わない(表示の言い回しを分けるためだけの値)。
+ *
+ * ■ 4通りの見え方(盤面 + 告知プレートで出し分ける)
+ *   | シナリオ           | 回答   | 盤面                        | 告知プレート | 音(正誤/当落) |
+ *   |--------------------|--------|-----------------------------|--------------|------------------|
+ *   | 当選(entry_cz)   | 正解   | 正解!!                      | CZ突入       | チャイム / 祝福  |
+ *   | 当選(entry_cz)   | 不正解 | 不正解… / 正解は◯「◯◯」   | CZ突入       | ブザー / 祝福    |
+ *   | 非当選(miss系)   | 正解   | 正解!! / 役は不成立…        | (出さない)  | チャイム / 下降音 |
+ *   | 非当選(miss系)   | 不正解 | 不正解… / 正解は◯ — 役は不成立… | (出さない) | ブザー / 下降音  |
+ *   当選版だけ告知プレートを持つので、盤面側は win:true のとき当落に触れない(U8)。
+ *
+ * ■ 音は「正誤」と「当落」で別系統(2026-08-15 ユーザー指示 U66-7)
+ *   正誤 … sfx.quizVerdict(staging/actions.js)。押したリールと正解の位置の一致で
+ *          チャイム(checklist_ok)/ クイズのブザー(buzzer_wrong)を鳴らし分ける。
+ *          **シナリオ側に preset を直書きしないこと**(旧実装はこれで
+ *          「正解表示なのにブッブー」が鳴っていた)。
+ *   当落 … CZ突入のファンファーレ / 非当選の静かな下降音(cz_lose)。正誤では変えない。
+ *
+ * ■ 学習記録(2026-08-15 学習強化 L1/L4)
+ *   3本とも `layer:'learn' / action:'quizResult'` のキューを1本ずつ持ち、
+ *   正誤(問題id + 正誤)と正解サービスを data/learnlog.js へ積む。
+ *   **画も音も出さない**ので演出の総量は変わらず、当落・出目・スコアにも影響しない。
+ *   実装は staging/actions.js の 'learn.quizResult'。
+ *
+ * ■ 「当選が確定した枠でしか当選を名乗らない」担保(クイズ時代と同じ構造)
  *   演出は抽選結果を先に知ってからシナリオを選ぶ(DESIGN.md 4.2)。
- *   その性質を使い、正解版と不正解版を「結果が確定した別々のイベント」に貼り分けてある。
+ *   その性質を使い、当選版と非当選版を「結果が確定した別々のイベント」に貼り分ける。
  *
- *   正解版   qz_quiz_entry_cz … `modeEnter` / enterMode: CZ
+ *   当選版   qz_reelpick_entry_cz … `modeEnter` / enterMode: CZ
  *       CZ のモードスタックへ積まれた後にしか流れないイベント。
  *       つまり **このシナリオが動く時点で CZ 突入は確定している**。
- *   不正解版 qz_quiz_miss     … `paramChange` / param: zencho_end, value: MISS
+ *   非当選版 qz_reelpick_miss     … `paramChange` / param: zencho_end, value: MISS
  *       前兆が「何も起きずに終わった」ことを告げるイベント。
  *       freetier.js は当選を保持していない前兆でしか MISS を出さないので、
  *       **このシナリオが動く時点で非当選が確定している**。
+ *   非当選版 qz_reelpick_miss_idle … `leverOn` / 構造的に当たらない役 + 前兆なし + 非天井
+ *       下の NEVER_WINS / NOT_CEILING_GAME のコメント参照。
  *
- *   どちらも when 条件だけで当落が決まっており、weight や chance を触っても
- *   「非当選なのに正解へ止まる」ことは起こらない。
- *   (逆向き、つまり「当選しているのに不正解で終わる」も起こらない)
+ *   どれも when 条件だけで当落が決まっており、weight や chance を触っても
+ *   「非当選なのに突入と出る」ことは起こらない(逆向きも同じ)。
  *
- * ■ 他の告知との棲み分け
+ * ■ 選んだリールの受け取り方(新しい入力は作らない)
+ *   { waitFor: 'stop1', params: { pick: '$stop1.index' } } と書くと、
+ *   engine/timeline.js が控えた stop1 の payload から
+ *   **実際に最初に止めたリール**(0=左 / 1=中 / 2=右)が演出へ届く。
+ *   受け取るだけで、ゲーム側へは何も書き戻さない。
+ *
+ * ■ 他の告知との棲み分け(クイズ時代から不変)
  *   director は1イベントにつき1シナリオしか再生しない(重み付き抽選)。
- *   - 正解版は CZ の突入演出(cz.js の cz_*_entry、weight 100)と同じ枠を奪い合う。
- *     weight 70 なので CZ 突入のおよそ 40%(2〜3回に1回)がクイズ経由になる。
- *   - 不正解版は前兆のガセ終了(zencho.js の zn_result_miss、weight 100)と同じ枠。
- *     weight 45 で約 30%。「ガセは控えめ」の指示に合わせて正解版より薄くしてある。
+ *   - 当選版は CZ の突入演出(cz.js の cz_*_entry、weight 100)と同じ枠を奪い合う。
+ *     weight 70 なので CZ 突入のおよそ 40% がクイズ経由になる。
+ *   - 非当選版は前兆のガセ終了(zencho.js の zn_result_miss、weight 100)と同じ枠。
+ *   weight / chance はクイズ時代の実測値をそのまま引き継いでいる
+ *   (発生枠を置き換えただけで、演出の総量は変えないため)。
  *
- *   前兆の結果告知 zn_result_entry_cz は `zencho_end` 側の別イベントなので、
- *   正解版と同時に走る。ただし読ませたい文字の場所が違ううえ、あちらは
- *   140ms から 800ms の短い一言なので、クイズが結果を出す 2.7 秒時点にはもう消えている。
+ * ■ 盤面の座席割り(正は staging/anims/lcdanims-extra.js の PICK_* 定数)
+ *     y   3〜  5 … 外枠
+ *     y   6〜 38 … 問題文プレート
+ *     y  44〜146 … 3択のマス(左 / 中 / 右 + 選択肢)
+ *     y 152〜236 … **lcd.text の告知プレート専用**。盤面は文字を置かない
+ *     y 248      … 判定(正解!! / 不正解…)
+ *     y 274      … 内訳(正解は◯ / 役は不成立…)
+ *     y 292      … 足元の見出し
+ *   compact:true(当選版)ではこの座標系が 0.74 倍へ縮み、CZ盤面が下から覗ける。
+ *   縮むと判定が告知プレートの裏に回るため、判定まわりだけ compact 用の座標を持つ
+ *   (lcdanims-extra.js の PICK_VERDICT_LAYOUT)。
  *
- *   盤面の座席割り(正は staging/anims/lcdanims-extra.js の QUIZ_* 定数):
- *     y   3〜  8 … 外枠
- *     y   8〜 26 … 問題文(QUIZ_Q_TOP / QUIZ_Q_H)
- *     y  36〜166 … 4択のマス(QUIZ_GRID_TOP + QUIZ_CELL_H×2 + QUIZ_ROW_GAP)
- *     y 182      … 進行バー(QUIZ_BAR_Y)。**告知プレートの裏に回ってよい装飾**
- *     y 250      … 判定ラベル CORRECT!! / MISS(QUIZ_LABEL_Y)
- *     y 278      … 足元の見出し「AWS QUIZ / どのサービス?」(QUIZ_HEAD_Y)
- *   lcd.text の帯は y152〜236 に出るので、**読ませる文字**(問題文・選択肢・判定)は
- *   すべて帯の外に置いてある。帯と重なるのは 182 の装飾バーだけ。
- *   compact:true(正解版)ではこの座標系が 0.74 倍へ縮み、下側がさらに空く。
- *   ※ 選択肢の座標は U15(縦に広げた改修)で y36〜162 → y36〜166 になっている。
+ * ■ 二重表示の回避(U8)
+ *   判定(正解!! / 不正解…)を出しているのは **盤面だけ**。
+ *   lcdanims.js の ANIM_HEADLINES に reel_pick_choice を登録してあるので、
+ *   同じ文言はテロップ側で自動的に伏せられる。
+ *   当選版だけが lcd.text を1本使うが、内容は正誤ではなく当落(「CZ突入」)。
  *
- * ■ CZ盤面を潰さない(2026-08-14 検証指摘 V3)
- *   CZ突入版は CZ の1ゲーム目に重なるため、全面を覆うと
- *   「CZがどこまで進んだか」が見えなくなる。正解版のキューには compact:true を渡し、
- *   盤面を 0.74 倍へ縮めて液晶の下側(結論の1行とテロップ帯)を空けてある。
- *   前兆中に出る不正解版(qz_quiz_miss / qz_quiz_miss_idle)は通常ステージの上なので
- *   隠して困る情報が無く、迫力を優先して全面のまま。
+ * ■ 背景の当落バレを止める(U42。クイズでも維持)
+ *   当選版は **CZ の modeEnter** で始まるので、出題した瞬間には既にモードが CZ。
+ *   何もしないと液晶の背景・ステージ名が先に CZ へ変わり、答える前にバレる。
+ *   対策は render 側にあり、シナリオは出題キューに hold:true を渡すだけでよい:
+ *     lcdanims.js の STAGE_HOLD_ANIMS に reel_pick_choice を登録してあり、
+ *     phase が 'answer' になるまで render/lcd.js が **1つ前の背景・ステージ名**を出す。
+ *   つまり「発表」と「背景がCZへ変わる」が同じ瞬間に起きる。
+ *   **非当選版には hold を付けない**(モードが変わらないので隠すものが無く、
+ *   付けると保留中の入力ガードで投入・レバーが塞がって進行が止まる)。
  *
- * ■ 進行はリール停止と完全同期(ユーザー要望「ボタンを止めるたびに進行する」)
- *   時間で勝手に進めず、waitFor キューで aws_quiz_roulette の phase を進める:
- *     at:0          → 'start'  出題(4択は出るがルーレットは回らない)
- *     waitFor stop1 → 'spin'   回転開始。次を押すまで何秒でも回り続ける
- *     waitFor stop2 → 'lock'   約1.1秒かけて減速 → 確定。**当落はまだ伏せる**
- *     waitFor stop3 → 'reveal' ○ / ✕ の発表と告知テロップ
- *
- *   どちらのシナリオも「そのゲームの払出処理」で発火するため、
- *   phase を進める stop1〜stop3 は **次のゲーム** の停止操作になる。
- *   つまり「結果が出たゲームで出題 → 次の1回転を自分のペースで消化しながら開ける」
- *   という流れで、当落の保証(上記)は一切変わらない。
- *
- * ■ 背景の当落バレを止める(2026-08-14 ユーザー指摘 U42)
- *   正解版は **CZ の modeEnter** で始まるので、出題した瞬間には既にモードが CZ。
- *   何もしないと液晶の背景・ステージ名・盤面が先に CZ へ変わり、
- *   回答する前に「これは正解する」が分かってしまう。
- *   対策は render 側にあり、シナリオは今までどおりでよい:
- *     staging/anims/lcdanims.js の STAGE_HOLD_ANIMS に aws_quiz_roulette を登録してあり、
- *     phase が 'reveal' になるまで render/lcd.js が **1つ前の背景・ステージ名**を出し続ける
- *     (盤面と液晶テロップもその間は伏せる)。
- *   つまり「正解の発表」と「背景がCZへ変わる」が同じ瞬間に起きる。
- *   不正解版はモードが変わらないので、この仕組みは何もしない(通常背景のまま)。
- *
- * ■ modeEnter とキュー開始時刻
- *   main.js は modeEnter で lcdAnims.clear() を呼んでから director を動かす
- *   (登録順が保証されている)。したがって modeEnter 起点のこのシナリオは
- *   at:0 から液晶アニメを出してよい。逆に zencho_end 起点の不正解版は
- *   モード遷移を伴わないので、こちらも at:0 で問題ない。
+ * ■ デバッグ強制発火
+ *   ?rp=1        … 3本すべてを最優先で発火させる
+ *   ?rp=entry_cz … 当選版だけを狙う(?rp=miss / ?rp=miss_idle も同様)
+ *   ?quiz=acm    … 出題を固定する(data/quiz.js の id。文字組みの確認用)
+ *   強制中は weight を跳ね上げて chance を外すが、**when は緩めない**ので
+ *   「当選版でしか突入を名乗らない」担保はそのまま
+ *   (非当選版を出したいときは役強制キーと併用する)。
  */
 
 import { SESSION } from '../session.js';
 import { NORMAL_SUBSTATES } from '../modes.js';
-// U46b(2026-08-15): 出題の頭に出す「Bedrock が生成した1行」。
-// 文言は data/scenarios/yokoku-bedrock.js が持つ(生成演出の文言を1か所にまとめるため)。
-// ここで使うぶんには **必ずクイズが始まる場所** なので「クイズの時間です」が嘘にならない。
-import { BEDROCK_QUIZ_INTRO } from './yokoku-bedrock.js';
+
+/* ══ デバッグ強制発火(検証担当向け)═══════════════════════════════════
+ * 作法は yokoku-wind.js の ?yw= と同じ。ブラウザ以外(scripts/sim.mjs 等)には
+ * location が無いので常に無効。 */
+function readQuery(name) {
+  try {
+    if (typeof location === 'undefined' || !location?.search) return null;
+    const v = new URLSearchParams(location.search).get(name);
+    return v ? v.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+const FORCE_RP = readQuery('rp');
+/**
+ * ?quiz=acm … 出題を固定する(data/quiz.js の id)。
+ * 出題の**タイミング**は変えない(?rp= と併用すること)。
+ * 未知のIDを渡した場合は data/quiz.js 側が通常どおり1問引く。
+ * @type {string|null}
+ */
+const FORCE_QUIZ_ID = readQuery('quiz');
+/** 強制中の weight(他の候補を確実に押し切る大きさ) */
+const FORCE_WEIGHT = 200000;
+
+/** 元の weight の「出てよいモード」だけを残したまま最大化する */
+function forcedWeight(weight = {}) {
+  const out = {};
+  for (const [mode, w] of Object.entries(weight)) out[mode] = w > 0 ? FORCE_WEIGHT : 0;
+  return out;
+}
+
+/** ?rp= で指定されたシナリオの weight を跳ね上げ、chance を外す */
+function applyForce(list) {
+  if (!FORCE_RP) return list;
+  // ?rp=1 / ?rp=on は「全部」の意味(空文字はどのIDにも含まれる)
+  const needle = FORCE_RP === '1' || FORCE_RP === 'on' ? '' : FORCE_RP;
+  return list.map((s) => {
+    if (!s.id.includes(needle)) return s;
+    const { chance, ...rest } = s;
+    return { ...rest, weight: forcedWeight(s.weight) };
+  });
+}
 
 /**
  * 天井(Auto Recovery)に当たらないゲームの `modeState.games` 一覧。
  *
  * freetier.js は onGame の先頭で games を +1 してから `games >= ceiling` を見るので、
  * レバーON時点の modeState.games が ceiling-1 のゲームが「天井でCZへ飛ぶゲーム」。
- * 不正解クイズはそこを避ける(避けないと「不正解と出たのに天井でCZ」になる)。
+ * 非当選版はそこを避ける(避けないと「役は不成立と出したのに天井でCZ」になる)。
  */
 const NOT_CEILING_GAME = Array.from(
   { length: Math.max(1, NORMAL_SUBSTATES.ceiling.games - 1) },
@@ -112,208 +188,199 @@ const NEVER_WINS = ['LOSE', 'BELL', 'REPLAY', 'REPLAY2'];
 /**
  * 出題を許可する「残り回転数」の一覧(= セッションの最終回転では出題しない)。
  *
- * **不正解版だけに必要**なガード。不正解版は zencho_end(払出処理)で発火するため、
- * 進行を担う stop1〜stop3 は「次のゲーム」の停止操作になる。最終回転で出題すると
+ * **qz_reelpick_miss だけに必要**なガード。あれは zencho_end(払出処理)で発火するため、
+ * 判定を担う第1停止は「次のゲーム」の停止操作になる。最終回転で出題すると
  * 開ける前にセッションが終わり、告知だけが次のセッションへ残ってしまう。
  *
- * 正解版は不要になった(下の qz_quiz_entry_cz のコメント参照)。
+ * 当選版は不要(flow.js の _settleSpinTransition により CZ の modeEnter は
+ * 「そのスピンのレバーON」で起きるため、第1停止は同じゲームの操作になる)。
  *
  * 【重要】長さは data/session.js の totalGames から必ず導出すること。
- * 以前は 64 個の固定リストだったため、セッション長が 50 → 100 に伸びた際に
- * spinsLeft が 65 以上のケースが軒並み条件から外れ、クイズの発火率が
- * 41.8% → 5.9% まで落ちる事故を起こした(2026-08-13)。
+ * 固定リストにするとセッション長を伸ばしたときに静かに発火しなくなる(2026-08-13 の事故)。
  */
 const SPINS_LEFT_HAS_NEXT = Array.from({ length: SESSION.totalGames }, (_, i) => i + 1);
 
-export default [
+/**
+ * 出題(第1停止を待つ)。
+ * **見た目は当選版・非当選版で完全に共通**にすること(入りで当落が読めてはいけない)。
+ * 問題そのものも当落と無関係に引く(data/quiz.js の buildReelQuizRound)。
+ *
+ * @param {object} opt
+ * @param {boolean} [opt.compact] 盤面を 0.74 倍にする(CZ盤面の上に出す当選版だけ)
+ * @param {boolean} [opt.hold]
+ *   背景の切替を判定まで保留する(U42)。**モードが変わる当選版だけ** true。
+ *   保留中は投入・レバーが塞がる(main.js の入力ガード)ため、
+ *   次のゲームの第1停止で開ける非当選版に付けると進行が止まる。
+ *   詳しくは lcdanims.js の STAGE_HOLD_ANIMS のコメント。
+ *   どちらも **画には出ない**ので、共通であるべき見た目は変わらない。
+ */
+function askCues({ compact = false, hold = false } = {}) {
+  return [
+    { at: 0,   layer: 'sfx',  action: 'synth', params: { preset: 'announce' } },
+    { at: 0,   layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
+    /*
+     * 出題は at:0 で出す。停止操作が極端に速いと waitFor stop1 のキューが
+     * 先に発火して 'answer' → 'ask' の順に逆転しうるため、遅らせない
+     * (modeEnter 起点でも main.js の lcdAnims.clear() より後に走ることが保証されている)。
+     */
+    { at: 0,   layer: 'lcd',  action: 'anim',
+      params: {
+        anim: 'reel_pick_choice', phase: 'ask', compact, hold, quizId: FORCE_QUIZ_ID,
+      } },
+    { at: 60,  layer: 'char', action: 'show',  params: { char: 'kiro', pose: 'surprised' } },
+    { at: 300, layer: 'sfx',  action: 'synth', params: { preset: 'ui_select' } },
+  ];
+}
+
+export default applyForce([
   {
-    id: 'qz_quiz_entry_cz',
-    name: 'AWSクイズルーレット(正解 → CZ突入)',
-    // CZ へ入った後にしか来ないイベント = 当選確定。ここでしか correct:true を渡さない
-    // 残り回転数のガードは付けない。
-    // flow.js の _settleSpinTransition により CZ の modeEnter は「そのスピンのレバーON」で
-    // 起きるようになったため、進行を担う stop1〜stop3 は**同じゲームの停止操作**になる。
-    // セッションをまたいで告知だけが残る経路が消えたのでガードは不要
-    // (残しておくと spinsLeft の上限変更で静かに発火しなくなる副作用のほうが大きい)。
+    id: 'qz_reelpick_entry_cz',
+    name: 'リール3択クイズ(当選ゲーム → CZ突入)',
+    // CZ へ入った後にしか来ないイベント = 当選確定。ここでしか win:true を渡さない
     when: { event: 'modeEnter', enterMode: ['CZ'] },
     weight: { default: 70 },
     // 液晶を丸ごと使うので、走っている間は他の液晶演出とテキスト帯を止める(director が調停する)
     exclusive: true,
-    duration: 9000,
+    duration: 4200,
     cues: [
-      { at: 0,    layer: 'sfx',     action: 'synth', params: { preset: 'announce' } },
-      { at: 0,    layer: 'lamp',    action: 'pattern', params: { pattern: 'rare' } },
-      { at: 0,    layer: 'overlay', action: 'flash', params: { color: '#7cf3ff', ms: 220 } },
-      // ① 出題(ルーレットはまだ回らない)
-      // at:0 で出す。以前は 40ms にしていたが、停止操作が極端に速いと
-      // waitFor stop1 のキュー(releasedAt=経過時間)が先に発火してしまい、
-      // spin → lock → start の順に逆転して出題が引き直される事故があった。
-      // modeEnter 起点のこのシナリオは main.js の lcdAnims.clear() より後に走るので
-      // at:0 から液晶アニメを出して問題ない(登録順が保証されている)。
-      { at: 0,    layer: 'lcd',     action: 'anim',
-        params: { anim: 'aws_quiz_roulette', correct: true, phase: 'start', compact: true } },
-      // U46b: 出題の合図は「Bedrock が生成した1行」として出す(座布団つきの lcd.text)
-      { at: 40,   layer: 'lcd',     action: 'text', params: { ...BEDROCK_QUIZ_INTRO, ms: 1100 } },
-      { at: 60,   layer: 'char',    action: 'show',  params: { char: 'kiro', pose: 'surprised' } },
-      { at: 300,  layer: 'sfx',     action: 'synth', params: { preset: 'ui_select' } },
+      // hold:true = 判定まで背景を通常ステージのまま留める(U42)。当選版だけ
+      ...askCues({ compact: true, hold: true }),
+      { at: 0, layer: 'overlay', action: 'flash', params: { color: '#7cf3ff', ms: 220 } },
 
-      // ② 第1停止 → 回転開始(次を押すまで回り続ける)
+      /*
+       * 第1停止 = 回答の確定。pick には実際に最初に止めたリールが入る。
+       * win:true は **当落**の申告(このイベントは CZ 突入確定の枠)。
+       * 正誤は盤面が pick と正解の位置から自分で決めるので、ここでは渡さない。
+       */
       { waitFor: 'stop1', layer: 'lcd', action: 'anim',
-        params: { anim: 'aws_quiz_roulette', correct: true, phase: 'spin', compact: true } },
-      { waitFor: 'stop1', layer: 'sfx', action: 'synth', params: { preset: 'charge_up' } },
-      // 刻み音はアニメの回転速度(170ms/コマ)に合わせる。長回しされた場合は
-      // 音は途切れるが、盤面のマーカーが回り続けるので進行は目で分かる
-      { waitFor: 'stop1', after: 0, layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
-      { waitFor: 'stop1', after: 170, layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
-      { waitFor: 'stop1', after: 340, layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
-      { waitFor: 'stop1', after: 510, layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
-      { waitFor: 'stop1', after: 680, layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
-      { waitFor: 'stop1', after: 850, layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
-      { waitFor: 'stop1', after: 1020, layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
-      { waitFor: 'stop1', after: 1190, layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
-
-      // ③ 第2停止 → 減速して確定。正解/不正解はまだ伏せたまま点滅で待つ
-      { waitFor: 'stop2', layer: 'lcd', action: 'anim',
-        params: { anim: 'aws_quiz_roulette', correct: true, phase: 'lock', compact: true } },
-      { waitFor: 'stop2', after: 55, layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
-      { waitFor: 'stop2', after: 117, layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
-      { waitFor: 'stop2', after: 186, layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
-      { waitFor: 'stop2', after: 271, layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
-      { waitFor: 'stop2', after: 376, layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
-      { waitFor: 'stop2', after: 525, layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
-      { waitFor: 'stop2', after: 1100, layer: 'sfx',     action: 'synth', params: { preset: 'reel_stop' } },
-      { waitFor: 'stop2', after: 1120, layer: 'overlay', action: 'shake', params: { power: 6, ms: 200 } },
-
-      // ④ 第3停止 → 正解発表(アニメは +260ms で判定を出す)
-      { waitFor: 'stop3', after: 120, layer: 'lcd', action: 'anim',
-        params: { anim: 'aws_quiz_roulette', correct: true, phase: 'reveal', ms: 2800, compact: true } },
-      { waitFor: 'stop3', after: 380, layer: 'overlay', action: 'flash', params: { color: '#ffe066', ms: 340 } },
-      { waitFor: 'stop3', after: 390, layer: 'overlay', action: 'shake', params: { power: 14, ms: 460 } },
-      { waitFor: 'stop3', after: 400, layer: 'sfx',     action: 'synth', params: { preset: 'upgrade_chime' } },
-      { waitFor: 'stop3', after: 440, layer: 'char',    action: 'pose',  params: { char: 'kiro', pose: 'happy' } },
-      { waitFor: 'stop3', after: 460, layer: 'char',    action: 'motion', params: { char: 'kiro', motion: 'bounce' } },
-      { waitFor: 'stop3', after: 520, layer: 'lcd',     action: 'particles', params: { preset: 'spark', x: 220, y: 110, count: 20 } },
-      { waitFor: 'stop3', after: 580, layer: 'sfx',     action: 'synth', params: { preset: 'fanfare_reg' } },
-      // 告知テロップは可読性エンジンへ。「突入」を含むので次のレバーONまで残る
-      { waitFor: 'stop3', after: 640, layer: 'lcd',     action: 'text',
-        params: { text: 'CZ突入', sub: 'ベストプラクティス通り', color: '#ffe066', ms: 2000 } },
-      { waitFor: 'stop3', after: 900, layer: 'voice',   action: 'play',  params: { key: 'kiro_cz_start_01' } },
+        params: {
+          anim: 'reel_pick_choice', phase: 'answer', win: true,
+          pick: '$stop1.index', compact: true, ms: 3200,
+        } },
+      { waitFor: 'stop1', after: 40,  layer: 'sfx',     action: 'synth', params: { preset: 'reel_stop' } },
+      /*
+       * 正誤の音(U66-7)。**当落ではなく正誤**で鳴り分ける専用アクション。
+       * 突入の祝福(下)より先に、控えめの音量で1つだけ鳴らす =
+       * 「答えは合っていた/外していた」→「それはそれとして突入」の順で耳に入る。
+       */
+      { waitFor: 'stop1', after: 150, layer: 'sfx',     action: 'quizVerdict',
+        params: { pick: '$stop1.index', gain: 0.7 } },
+      /*
+       * 学習記録(2026-08-15 学習強化 L1/L4)。**画も音も出さないキュー**。
+       *   ・正誤を data/learnlog.js へ積む(苦手カテゴリの材料になる)
+       *   ・正解サービスを AWS図鑑へ入れる(不正解でも入れる = 正解を画面で見せているため)
+       * layer:'learn' は視覚キューでもテキストキューでもないので、
+       * director.js の DROP_TEXT / DROP_VISUAL でも落ちず、classifyScenario の
+       * 判定も動かさない(3本とも exclusive のまま)。
+       * ゲーム抽選RNGは1回も引かないので当落・出目・スコアには一切影響しない。
+       */
+      { waitFor: 'stop1', after: 160, layer: 'learn',   action: 'quizResult',
+        params: { pick: '$stop1.index' } },
+      /*
+       * ここから下は **CZ突入の祝福**(正誤ではなく当落に対する反応)。
+       * 不正解でも突入は突入なので、鳴り物は正誤で変えない。
+       * 正誤の反応は盤面の ○/✕ と判定文字、そして上の quizVerdict が担当する。
+       */
+      { waitFor: 'stop1', after: 240, layer: 'overlay', action: 'flash', params: { color: '#ffe066', ms: 320 } },
+      { waitFor: 'stop1', after: 250, layer: 'overlay', action: 'shake', params: { power: 12, ms: 420 } },
+      { waitFor: 'stop1', after: 260, layer: 'sfx',     action: 'synth', params: { preset: 'upgrade_chime' } },
+      { waitFor: 'stop1', after: 300, layer: 'char',    action: 'pose',  params: { char: 'kiro', pose: 'happy' } },
+      { waitFor: 'stop1', after: 320, layer: 'char',    action: 'motion', params: { char: 'kiro', motion: 'bounce' } },
+      { waitFor: 'stop1', after: 380, layer: 'lcd',     action: 'particles', params: { preset: 'spark', x: 220, y: 96, count: 20 } },
+      { waitFor: 'stop1', after: 460, layer: 'sfx',     action: 'synth', params: { preset: 'fanfare_reg' } },
+      /*
+       * 告知テロップは可読性エンジンへ。「突入」を含むので次のレバーONまで残る。
+       * 判定(正解!! / 不正解…)は盤面が言っているので、ここでは当落だけを書く(U8)。
+       * サブ行は **正解でも不正解でも成り立つ言い方**にすること
+       * (クイズの正誤と当落が別物だ、をここでもう一度伝える役目も持たせてある)。
+       */
+      { waitFor: 'stop1', after: 700, layer: 'lcd',     action: 'text',
+        params: { text: 'CZ突入', sub: 'クイズの正誤とは別に、出目でCZ確定', color: '#ffe066', ms: 1800 } },
+      { waitFor: 'stop1', after: 900, layer: 'voice',   action: 'play',  params: { key: 'kiro_cz_start_01' } },
     ],
   },
 
   {
-    id: 'qz_quiz_miss',
-    name: '【ガセ】AWSクイズルーレット(不正解 → 何も起きずに終わる)',
+    id: 'qz_reelpick_miss',
+    name: '【ガセ】リール3択クイズ(前兆が何も起きずに終わる)',
     // 前兆が当選を保持していないときにしか出ないイベント = 非当選確定
     when: {
       event: 'paramChange', mode: ['FREE_TIER'],
       match: { param: ['zencho_end'], value: ['MISS'], spinsLeft: SPINS_LEFT_HAS_NEXT },
     },
     weight: { FREE_TIER: 120, default: 0 },
-    // 正解版と同じく液晶を丸ごと使う
     exclusive: true,
-    duration: 9000,
+    duration: 4000,
     cues: [
-      { at: 0,    layer: 'sfx',  action: 'synth', params: { preset: 'announce' } },
-      { at: 0,    layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
-      // ① 出題(理由は正解版のコメント参照。停止操作に追い越されないよう at:0)
-      { at: 0,    layer: 'lcd',  action: 'anim',
-        params: { anim: 'aws_quiz_roulette', correct: false, phase: 'start' } },
-      // U46b: 正解版と同じ導入。ここで出し分けると導入だけで当落がバレるため文言は共通
-      { at: 40,   layer: 'lcd',  action: 'text', params: { ...BEDROCK_QUIZ_INTRO, ms: 1100 } },
-      { at: 60,   layer: 'char', action: 'show',  params: { char: 'kiro', pose: 'surprised' } },
-      { at: 300,  layer: 'sfx',  action: 'synth', params: { preset: 'ui_select' } },
+      ...askCues(),
 
-      // ② 第1停止 → 回転開始
+      // win:false = このゲームは役が成立しない(盤面が「役は不成立…」を添える)
       { waitFor: 'stop1', layer: 'lcd', action: 'anim',
-        params: { anim: 'aws_quiz_roulette', correct: false, phase: 'spin' } },
-      { waitFor: 'stop1', layer: 'sfx', action: 'synth', params: { preset: 'charge_up' } },
-      { waitFor: 'stop1', after: 0, layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
-      { waitFor: 'stop1', after: 170, layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
-      { waitFor: 'stop1', after: 340, layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
-      { waitFor: 'stop1', after: 510, layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
-      { waitFor: 'stop1', after: 680, layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
-      { waitFor: 'stop1', after: 850, layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
-      { waitFor: 'stop1', after: 1020, layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
-      { waitFor: 'stop1', after: 1190, layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
-
-      // ③ 第2停止 → 減速して確定(当落は伏せたまま)
-      { waitFor: 'stop2', layer: 'lcd', action: 'anim',
-        params: { anim: 'aws_quiz_roulette', correct: false, phase: 'lock' } },
-      { waitFor: 'stop2', after: 55, layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
-      { waitFor: 'stop2', after: 117, layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
-      { waitFor: 'stop2', after: 186, layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
-      { waitFor: 'stop2', after: 271, layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
-      { waitFor: 'stop2', after: 376, layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
-      { waitFor: 'stop2', after: 525, layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
-      { waitFor: 'stop2', after: 1100, layer: 'sfx',     action: 'synth', params: { preset: 'reel_stop' } },
-      { waitFor: 'stop2', after: 1120, layer: 'overlay', action: 'shake', params: { power: 6, ms: 200 } },
-
-      // ④ 第3停止 → 不正解発表
-      { waitFor: 'stop3', after: 120, layer: 'lcd', action: 'anim',
-        params: { anim: 'aws_quiz_roulette', correct: false, phase: 'reveal', ms: 2800 } },
-      { waitFor: 'stop3', after: 380, layer: 'sfx',   action: 'synth', params: { preset: 'error_buzz' } },
-      { waitFor: 'stop3', after: 440, layer: 'char',  action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
-      { waitFor: 'stop3', after: 640, layer: 'lcd',   action: 'text',
-        params: { text: '不正解…', sub: 'ドキュメントを読み直そう', color: '#8aa0b4', ms: 1400 } },
-      { waitFor: 'stop3', after: 860, layer: 'lamp',  action: 'pattern', params: { pattern: 'idle' } },
-      { waitFor: 'stop3', after: 960, layer: 'voice', action: 'play',   params: { key: 'kiro_lose_02' } },
+        params: {
+          anim: 'reel_pick_choice', phase: 'answer', win: false,
+          pick: '$stop1.index', ms: 3000,
+        } },
+      { waitFor: 'stop1', after: 40,  layer: 'sfx',   action: 'synth', params: { preset: 'reel_stop' } },
+      /*
+       * ── 音の系統を分ける(2026-08-15 ユーザー指示 U66-7)────────────────
+       * 【旧】ここは error_buzz(障害の警報)を当落の音として鳴らしていたため、
+       *   **クイズに正解していてもブッブーが鳴る** = 盤面の「正解!!」と真逆の音になっていた。
+       * 【新】正誤の音と当落の音を分ける:
+       *   正誤 … quizVerdict(正解=チャイム / 不正解=クイズのブザー)
+       *   当落 … 少し遅らせた静かな下降音(cz_lose)。役が成立しなかったことを伝える
+       */
+      { waitFor: 'stop1', after: 300, layer: 'sfx',   action: 'quizVerdict',
+        params: { pick: '$stop1.index', gain: 0.8 } },
+      // 学習記録(画も音も出さない。詳しくは qz_reelpick_entry_cz のコメント)
+      { waitFor: 'stop1', after: 160, layer: 'learn', action: 'quizResult',
+        params: { pick: '$stop1.index' } },
+      { waitFor: 'stop1', after: 380, layer: 'char',  action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
+      { waitFor: 'stop1', after: 1000, layer: 'sfx',  action: 'synth', params: { preset: 'cz_lose', gain: 0.4 } },
+      { waitFor: 'stop1', after: 560, layer: 'lamp',  action: 'pattern', params: { pattern: 'idle' } },
+      { waitFor: 'stop1', after: 700, layer: 'voice', action: 'play',   params: { key: 'kiro_lose_02' } },
     ],
   },
 
   {
-    id: 'qz_quiz_miss_idle',
-    name: '【ガセ】AWSクイズルーレット(通常ゲームで出て不正解に終わる)',
+    id: 'qz_reelpick_miss_idle',
+    name: '【ガセ】リール3択クイズ(通常ゲームで出て役は不成立)',
     /*
-     * ユーザー指摘「クイズは毎回絶対に正解する。外れるパターンも作って」への対応。
+     * 「クイズが出たら毎回当たる」を避けるための非当選枠(クイズ時代の指摘を引き継ぐ)。
      *
      * 構造的に非当選が確定する条件だけで発火させる:
      *   flag            … CZ_ENTRY.table に行が無い4役(単独では絶対に当たらない)
      *   zenchoActive    … false = 前兆が走っていない = 当選を保持してもいない
      *   modeState.games … 天井(Auto Recovery)でCZへ飛ぶゲームを除外
-     * この3点で「このゲームは何も起きない」が確定するので、不正解に止めても嘘にならない
-     * (正解 ⇒ 当選 の原則も当然維持される)。
-     *
-     * nearMiss:true で正解の隣のマスに止まるので、外れても悔しさが残る。
+     * この3点で「このゲームは何も起きない」が確定するので、
+     * 「役は不成立」と出しても嘘にならない(クイズの正誤は別に事実で判定される)。
      */
     when: {
       event: 'leverOn', mode: ['FREE_TIER'], flag: NEVER_WINS,
       match: { 'modeState.zenchoActive': [false], 'modeState.games': NOT_CEILING_GAME },
     },
     weight: { FREE_TIER: 500, default: 0 },
-    // 実測で「クイズ総数のうち不正解 35〜45% / 正解 55〜65%」に収まる値へ調整(2026-08-13)
+    // クイズ時代の実測値をそのまま引き継ぐ(非当選 35〜45% / 当選 55〜65%)
     chance: 0.046,
     exclusive: true,
-    duration: 9000,
+    duration: 4000,
     cues: [
-      { at: 0,    layer: 'sfx',  action: 'synth', params: { preset: 'announce' } },
-      { at: 0,    layer: 'lcd',  action: 'anim',
-        params: { anim: 'aws_quiz_roulette', correct: false, nearMiss: true, phase: 'start' } },
-      // U46b: 正解版と同じ導入(上2本と共通の文言)
-      { at: 40,   layer: 'lcd',  action: 'text', params: { ...BEDROCK_QUIZ_INTRO, ms: 1100 } },
-      { at: 60,   layer: 'char', action: 'show',  params: { char: 'kiro', pose: 'surprised' } },
-      { at: 300,  layer: 'sfx',  action: 'synth', params: { preset: 'ui_select' } },
+      ...askCues(),
 
       { waitFor: 'stop1', layer: 'lcd', action: 'anim',
-        params: { anim: 'aws_quiz_roulette', correct: false, nearMiss: true, phase: 'spin' } },
-      { waitFor: 'stop1', layer: 'sfx', action: 'synth', params: { preset: 'charge_up' } },
-      { waitFor: 'stop1', after: 0,    layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
-      { waitFor: 'stop1', after: 340,  layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
-      { waitFor: 'stop1', after: 680,  layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
-      { waitFor: 'stop1', after: 1020, layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
-
-      { waitFor: 'stop2', layer: 'lcd', action: 'anim',
-        params: { anim: 'aws_quiz_roulette', correct: false, nearMiss: true, phase: 'lock' } },
-      { waitFor: 'stop2', after: 186,  layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
-      { waitFor: 'stop2', after: 376,  layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
-      { waitFor: 'stop2', after: 1100, layer: 'sfx', action: 'synth', params: { preset: 'reel_stop' } },
-
-      { waitFor: 'stop3', after: 120, layer: 'lcd', action: 'anim',
-        params: { anim: 'aws_quiz_roulette', correct: false, nearMiss: true, phase: 'reveal', ms: 2800 } },
-      { waitFor: 'stop3', after: 380, layer: 'sfx',  action: 'synth', params: { preset: 'error_buzz' } },
-      { waitFor: 'stop3', after: 440, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
-      { waitFor: 'stop3', after: 640, layer: 'lcd',  action: 'text',
-        params: { text: '不正解…', sub: '惜しい、隣だった', color: '#8aa0b4', ms: 1400 } },
+        params: {
+          anim: 'reel_pick_choice', phase: 'answer', win: false,
+          pick: '$stop1.index', ms: 3000,
+        } },
+      { waitFor: 'stop1', after: 40,  layer: 'sfx',  action: 'synth', params: { preset: 'reel_stop' } },
+      // 正誤の音(U66-7)。当落の音は下の cz_lose が別系統で担当する
+      { waitFor: 'stop1', after: 300, layer: 'sfx',  action: 'quizVerdict',
+        params: { pick: '$stop1.index', gain: 0.8 } },
+      // 学習記録(画も音も出さない。詳しくは qz_reelpick_entry_cz のコメント)
+      { waitFor: 'stop1', after: 160, layer: 'learn', action: 'quizResult',
+        params: { pick: '$stop1.index' } },
+      { waitFor: 'stop1', after: 380, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
+      { waitFor: 'stop1', after: 1000, layer: 'sfx', action: 'synth', params: { preset: 'cz_lose', gain: 0.4 } },
+      { waitFor: 'stop1', after: 560, layer: 'lamp', action: 'pattern', params: { pattern: 'idle' } },
     ],
   },
-];
+]);

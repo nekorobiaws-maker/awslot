@@ -61,6 +61,17 @@ function playSession(seed, agg) {
      * (回数で数えると分母が 1セッションあたり4G以上小さくなり、初当りが甘く見える)。
      */
     if (p.mode === 'FREE_TIER' || p.mode === 'CZ') agg.normalSpins++;
+    /*
+     * ステージ滞在の内訳(U63 で追加)。
+     * レア役の出現率を上げると昇格が増えるので、**気づかないうちに高確が日常になる**
+     * (= ステージ示唆が意味を失う)。CZ供給の蛇口(czPerGame)は
+     * 「滞在率 × 毎ゲーム抽選」なので、初当りを合わせる前にここを見ること。
+     * leverOn のペイロードには内部状態が乗っていないため ModeMachine から直接読む。
+     */
+    if (p.mode === 'FREE_TIER') {
+      agg.stage[modes.state?.subState ?? 'COLD_START'] =
+        (agg.stage[modes.state?.subState ?? 'COLD_START'] ?? 0) + 1;
+    }
     if (p.freeze) freeze = true;
   });
   bus.on('modeExit', (p) => {
@@ -134,7 +145,7 @@ function runSeed(seed) {
   const agg = {
     normalSpins: 0, bonusEntries: 0, ceilingBonus: 0, recoveryBonus: 0,
     freezeSessions: 0, at: 0, in: 0, out: 0,
-    cz: {}, bonus: {}, rush: {},
+    cz: {}, bonus: {}, rush: {}, stage: {},
   };
   const scores = [];
   for (let i = 0; i < RUNS; i++) scores.push(playSession(seed + i * 7919, agg));
@@ -154,7 +165,15 @@ const line = (label, fn) => {
 
 console.log(`  ${'項目'.padEnd(28)}${results.map((r) => `seed=${r.seed}`.padStart(14)).join('')}`);
 line('平均スコア(目標220〜340)', (r) => `${fmt(r.mean)}枚`);
+/*
+ * 分位点(U63 で追加)。平均と中央値だけだと「どこが厚くなったのか」が分からず、
+ * バランスを動かしたときに **中央だけが浮く / 尻尾だけが伸びる** の区別が付かない。
+ * 称号(data/titles.js)の閾値もこの並びをそのまま使う。
+ */
+line('  下位10% / 25%', (r) => `${r.pick(0.10)} / ${r.pick(0.25)}枚`);
 line('中央値(目標90〜180)', (r) => `${r.pick(0.5)}枚`);
+line('  上位25% / 10%', (r) => `${r.pick(0.75)} / ${r.pick(0.90)}枚`);
+line('  上位3% / 0.5%', (r) => `${r.pick(0.97)} / ${r.pick(0.995)}枚`);
 line('上位1%(目標1250〜2200)', (r) => `${r.pick(0.99)}枚`);
 line('上位0.1%(目標2600以内)', (r) => `${r.pick(0.999)}枚`);
 line('機械割(目標150〜190%)', (r) => pct(r.agg.out / r.agg.in));
@@ -168,6 +187,12 @@ line('ボーナス回数/セッション', (r) => fmt(r.agg.bonusEntries / RUNS,
 line('  うち引き戻し復帰(U32)', (r) => fmt(r.agg.recoveryBonus / RUNS, 2));
 line('RUSH突入/セッション', (r) => fmt(r.agg.at / RUNS, 2));
 line('フリーズ遭遇率(8〜12%)', (r) => pct(r.agg.freezeSessions / RUNS));
+line('通常時のステージ滞在(通常/高確/激熱)', (r) => {
+  const s = r.agg.stage;
+  const total = Object.values(s).reduce((a, b) => a + b, 0) || 1;
+  return ['COLD_START', 'WARM_POOL', 'PROVISIONED']
+    .map((id) => fmt(((s[id] ?? 0) / total) * 100, 0)).join('/');
+});
 
 console.log('\n  ── ボーナス→RUSH当選率(目標 12 / 45 / 85%)──');
 for (const id of ['LAMBDA_REG', 'S3_BIG', 'DYNAMO_BIG']) {

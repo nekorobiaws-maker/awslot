@@ -66,12 +66,28 @@ export const NORMAL_SUBSTATES = {
      * Bedrock役(ALARM)は **レア役ではない = 出現率が変わっていない** ので据え置き。
      * サメ揃い(1/600)も「引けたら必ず上がる」を守るため据え置き。
      */
+    /**
+     * 【U63(2026-08-15)/ レア役さらに2倍に対する相殺】
+     * U48 とまったく同じ配分で、レア役1回あたりの昇格率をもう一段 **0.7倍**にした。
+     *   弱チェ 0.32→0.22 / スイカ 0.46→0.32 / チャンス目 0.55→0.39 / 強チェ 0.63→0.44
+     * 昇格の総量は 2 × 0.7 = 1.4倍だが、上位ステージには転落率(下記 downgradePerGame)が
+     * あるので滞在時間は 1.4倍まで伸びない(飽和する)。そのぶんを czPerGame 側の
+     * 0.60倍と合わせて初当り 1/95〜110 に着地させている。
+     * ALARM(レア役ではない)とサメ揃い(引けたら必ず上がる)は今回も据え置き。
+     */
     ALARM:         { WARM_POOL: 0.24, PROVISIONED: 0.07 },
+    WEAK_CHERRY:   { WARM_POOL: 0.22, PROVISIONED: 0.09 },
+    MELON:         { WARM_POOL: 0.32, PROVISIONED: 0.15 },
+    CHANCE:        { WARM_POOL: 0.39, PROVISIONED: 0.20 },
+    STRONG_CHERRY: { WARM_POOL: 0.44, PROVISIONED: 0.32 },
+    SHARK:         { WARM_POOL: 1.00, PROVISIONED: 0.90 },
+  },
+  /** U63(レア役さらに2倍)の直前の昇格率 = U48 の値 */
+  previousUpgradeRare2x: {
     WEAK_CHERRY:   { WARM_POOL: 0.32, PROVISIONED: 0.13 },
     MELON:         { WARM_POOL: 0.46, PROVISIONED: 0.21 },
     CHANCE:        { WARM_POOL: 0.55, PROVISIONED: 0.29 },
     STRONG_CHERRY: { WARM_POOL: 0.63, PROVISIONED: 0.46 },
-    SHARK:         { WARM_POOL: 1.00, PROVISIONED: 0.90 },
   },
   /** U48(レア役2倍)の直前の昇格率。戻すときの基準として保持 */
   previousUpgradeRare1x: {
@@ -92,7 +108,10 @@ export const NORMAL_SUBSTATES = {
    * ステージ滞在中の「毎ゲームCZ抽選」(2026-08-13 新設)。
    *
    * レア役は約1/25でしか引けないので、レア役契機のCZ抽選だけでは
-   * 「激アツに上がったのに何も起きないまま転落」が頻発する。
+   * 「激アツに上がったのに何も起きないまま転落」が頻発する
+   * (レア役の出現率は U48 → U63 で 1/25 → **1/6.17** まで上がったが、
+   *  そのぶん下の czPerGame を 0.54倍・CZ当選率を 0.5倍にして相殺しているので、
+   *  「ステージが主線 / レア役単発は昇格が主な仕事」という構図は変わっていない)。
    * ステージ自体に毎ゲームの当選チャンスを持たせて、
    *   高確   … 1/50G 程度で勝負がかかる
    *   激アツ … **数ゲーム以内にほぼ勝負が決まる**(CZ or ボーナス直結級)
@@ -126,7 +145,20 @@ export const NORMAL_SUBSTATES = {
    * ここだけをもう一段(0.85倍)絞って **1/100 前後**へ着地させた
    * (昇格率・CZ当選率は「レア役を引いた手応え」に直結するので、総量の微調整はここで行う)。
    */
-  czPerGame: { COLD_START: 0, WARM_POOL: 0.030, PROVISIONED: 0.119 },
+  /**
+   * 【U63(2026-08-15)/ レア役さらに2倍に対する相殺】
+   * U48 と同じ考え方で、毎ゲーム抽選をもう一段 **0.54倍**へ。
+   *   高確 0.030 → 0.0162(1/33.3G → 1/61.7G)
+   *   激アツ 0.119 → 0.064(1/8.4G → 1/15.6G)
+   * 「上がったら数ゲーム以内に勝負が決まる」リズムは、上位ステージの滞在が
+   * 昇格増で伸びているぶん保たれている(激アツは平均12.5G居るので約6割で勝負がかかる)。
+   * 0.60倍(0.018 / 0.071)では実測の初当りが 1/96 と目標(1/95〜110)の下端に
+   * 張り付いたので、U48 のときと同じく **ここだけをもう一段(0.90倍)** 絞って
+   * 1/100 前後へ着地させた(昇格率は「レア役を引いた手応え」なので触らない)。
+   */
+  czPerGame: { COLD_START: 0, WARM_POOL: 0.0162, PROVISIONED: 0.064 },
+  /** U63(レア役さらに2倍)の直前値 = U48 の値 */
+  previousCzPerGameRare2x: { COLD_START: 0, WARM_POOL: 0.030, PROVISIONED: 0.119 },
   /** U48(レア役2倍)の直前値 */
   previousCzPerGameRare1x: { COLD_START: 0, WARM_POOL: 0.05, PROVISIONED: 0.20 },
   /** 初当り引き締め前(ボーナス1/31.3時代)の毎ゲーム抽選 */
@@ -169,7 +201,24 @@ export const NORMAL_SUBSTATES = {
    * 折り返し点が 75G だった。通常時の滞在(実測 74.5G/セッション)とほぼ同じなので、
    * **引けなかった回だけが終盤で1回踏む**= 救済として素直な形になっている。
    */
-  ceiling: { games: 75, name: 'Auto Recovery', action: 'FORCE_CZ' },
+  /**
+   * 【U63(2026-08-15)/ 75G → **78G**】中央値を戻すための唯一のレバー。
+   *
+   * レア役を4倍(U48比2倍)にしたことで、通常時のコイン持ちと
+   * RUSH 1回の価値がそれぞれ数%ずつ厚くなり、**中央値だけが 168 → 180枚** に浮いた
+   * (平均・上位1%・初当りは目標内)。天井は「引けなかった回に必ず1回配られるボーナス」で
+   * **分布のちょうど真ん中に効く**ので、中央値を動かしたいときはここが一番副作用が少ない
+   *   75G … 中央値 173〜191 / 平均 252〜257 / 機械割 184〜186%
+   *   78G … **中央値 149〜159 / 平均 243〜247 / 機械割 181〜182%** ← 採用
+   *   80G … 中央値 127〜134 / 平均 233〜240 / 機械割 178〜180%
+   *   82G … 中央値 111〜126 / 平均 229〜234 / 機械割 176〜178%
+   * 上位1%(1,282〜1,362枚)はどの値でも1枚も動かない = 尻尾を痛めずに中央だけ動く。
+   * 78G は実測の通常時滞在(80.5G)とほぼ同じなので、
+   * 「引けなかった回だけが終盤で1回踏む」という天井の位置づけも変わらない。
+   */
+  ceiling: { games: 78, name: 'Auto Recovery', action: 'FORCE_CZ' },
+  /** U63(中央値の戻し)の直前値 */
+  previousCeilingGames75: 75,
   /** 100回転スコアアタック初期の天井(毎セッション到達していた頃の値) */
   previousCeilingGames: 30,
   /** 引き締め1周目に置いた値(まだ 0.68回/セッション 踏んでいて主線のままだった) */
@@ -259,6 +308,28 @@ export const CZ_ENTRY = {
      *     出現率が 1/6000 → 1/3000 になったぶんだけ初当りへの寄与は倍になるが、
      *     通常時 74G で 2.5% = 誤差の範囲。
      */
+    /**
+     * 【U63(2026-08-15)/ レア役さらに2倍に対する相殺】
+     * U48 と同じく **レア役1回あたりの当選率をもう一段 0.5倍**。
+     * 出会う回数だけが倍になり、「レア役 → だいたいステージ昇格」の重さは不変。
+     *   弱チェ 0.0135→0.00675 / スイカ 0.022→0.011 / チャンス目 0.030→0.015
+     *   強チェ 0.045→0.0225 / サメ 0.090→0.045(直撃も同じ倍率)
+     * 据え置き2つ(U48 と同じ理由):
+     *   ・Bedrock役(ALARM)… レア役ではないので出現率が変わっていない
+     *   ・ゴースト揃い    … bonus 1.000(最上位のプレミア役は絶対に触らない)
+     *     出現率 1/1500 は通常時 75G で 5% = ボーナス初当りの約 6% を担う。
+     *     ここは「引けたら確定」の背骨なので、寄与が増えるぶんは他で吸収する。
+     */
+    ALARM:         { cz: 0.012,   bonus: 0.00000, direct_at: 0.00000 },
+    WEAK_CHERRY:   { cz: 0.00675, bonus: 0.00000, direct_at: 0.00000 },
+    MELON:         { cz: 0.011,   bonus: 0.00350, direct_at: 0.00000 },
+    CHANCE:        { cz: 0.015,   bonus: 0.00625, direct_at: 0.00000 },
+    STRONG_CHERRY: { cz: 0.0225,  bonus: 0.01600, direct_at: 0.00175 },
+    SHARK:         { cz: 0.045,   bonus: 0.00000, direct_at: 0.00850 },
+    GHOST:         { cz: 0.000,   bonus: 1.00000, direct_at: 0.00000 },
+  },
+  /** U63(レア役さらに2倍)の直前値 = U48 の値 */
+  previousTableRare2x: {
     ALARM:         { cz: 0.012,  bonus: 0.0000, direct_at: 0.0000 },
     WEAK_CHERRY:   { cz: 0.0135, bonus: 0.0000, direct_at: 0.0000 },
     MELON:         { cz: 0.022,  bonus: 0.0070, direct_at: 0.0000 },
@@ -887,7 +958,18 @@ export const CZ_TYPES = {
        *   (DP: 8G 78.1% / **9G 85.0%** / 10G 89.9%)。
        * 持ち時間の食い方も 9G ぶんに軽くなる。
        */
-      id: 'WELL_ARCHITECTED', name: 'Well-Architected CZ', games: 9, successRate: 0.85,
+      /**
+       * ■ games を 9 → **7** にした理由(U63 / 2026-08-15)
+       * レア役がさらに2倍になり、獲得則を据え置いたまま 9G だと
+       * 6本積める確率が 85.0% → **94.0%** = 「ほぼ確定CZ」に化ける。
+       * U48 と同じく獲得則・役の序列は一切触らず、消化G数だけ縮めた
+       *   (DP: 6G 73.5% / **7G 83.4%** / 8G 89.9% / 9G 94.0%)。
+       * 7G の 83.4% は依然としてCZ11種で最上位(次点は FIS 72%)なので ★★★ は不変。
+       */
+      id: 'WELL_ARCHITECTED', name: 'Well-Architected CZ', games: 7, successRate: 0.83,
+      /** U63(レア役さらに2倍)の直前値。レア役を2倍へ戻すなら 9G / 0.85 へ戻す */
+      previousGames9Rare2x: 9,
+      previousSuccessRate9GRare2x: 0.85,
       /** U48(レア役2倍)の直前値。レア役を1倍へ戻すなら 10G / 0.84 へ戻す */
       previousGames10Rare1x: 10,
       previousSuccessRate10GRare1x: 0.84,
@@ -1291,12 +1373,23 @@ export const RUSH_DERIVED_ENTRY = {
    * 「引いたら何か起きる」密度は1ゲームあたりで見れば据え置きで、
    * ゾーンに入る回数そのものは変わらない。
    */
+  /**
+   * 【U63(2026-08-15)/ レア役さらに2倍に対する相殺】
+   * レア役1回あたりのゾーン当選率をもう一段 **0.5倍**(確定役の行は据え置き)。
+   * 1ゲームあたりのゾーン当選率は据え置き = ゾーンに入る回数は変わらない。
+   */
   table: {
+    MELON:         { CLOUDFRONT: 0.075, KINESIS: 0.05 },
+    CHANCE:        { CLOUDFRONT: 0.095, KINESIS: 0.065, GRAVITON: 0.03 },
+    STRONG_CHERRY: { CLOUDFRONT: 0.095, KINESIS: 0.07, EC2_BURST: 0.045, RESERVED: 0.025, STEP_FUNCTIONS: 0.015 },
+    SHARK:         { SPOT_ZONE: 0.30, EC2_BURST: 0.25, KINESIS: 0.20, STEP_FUNCTIONS: 0.25 },
+    GHOST:         { STEP_FUNCTIONS: 0.50, SPOT_ZONE: 0.30, SERVERLESS_UP: 0.20 },
+  },
+  /** U63(レア役さらに2倍)の直前値 = U48 の値 */
+  previousTableRare2x: {
     MELON:         { CLOUDFRONT: 0.15, KINESIS: 0.10 },
     CHANCE:        { CLOUDFRONT: 0.19, KINESIS: 0.13, GRAVITON: 0.06 },
     STRONG_CHERRY: { CLOUDFRONT: 0.19, KINESIS: 0.14, EC2_BURST: 0.09, RESERVED: 0.05, STEP_FUNCTIONS: 0.03 },
-    SHARK:         { SPOT_ZONE: 0.30, EC2_BURST: 0.25, KINESIS: 0.20, STEP_FUNCTIONS: 0.25 },
-    GHOST:         { STEP_FUNCTIONS: 0.50, SPOT_ZONE: 0.30, SERVERLESS_UP: 0.20 },
   },
   /** U48(レア役2倍)の直前値 */
   previousTableRare1x: {
@@ -1579,6 +1672,16 @@ export const RECOVERY_SPECS = {
        * ほぼ毎回 maxTotalGames(15G)まで伸びて「延長が日常」になっていた。
        * レア役は通常時 1/24.7 なので、**平均延長 0.19G / 平均滞在 5.2G**(実測)。
        * 延長は「レア役を引けた回だけのご褒美」になり、上限にもまず当たらない。
+       *
+       * 【U63(2026-08-15)/ レア役が 1/6.17 になった後の実測】
+       * **平均延長 0.87G / 平均滞在 5.87G**(引き戻し成功 81.4% = successRate どおり)。
+       * 5G中に1回は延びる(1 − 0.838^5 = 59%)ので「延長が日常」寄りに戻っているが、
+       *   ・延長は **当落を一切動かさない**(successRate は 5G でも 9G でも 0.82)
+       *   ・上限 15G には実測でもまず当たらない(平均 5.9G)
+       *   ・100回転の消費は +0.2G/セッション = 誤差
+       * なので **games は 5G のまま据え置いた**。ここを削ると
+       * 「レア役を引くと粘れる」という参加型の手応えまで消える。
+       * 延長を絞りたくなったら games ではなく maxTotalGames(15G)を先に下げること。
        */
       id: 'HOT_STANDBY', name: 'ホットスタンバイ (Multi-AZ)',
       /** 復帰先の正は data/rushes.js の RECOVERY_BONUS(U32 でボーナスへ変更) */

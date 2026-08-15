@@ -2,9 +2,28 @@
  * 液晶Canvas描画。DESIGN.md 5.3 / 5.4
  *
  * サブレイヤーの並び(stage → bgObject → char → fgEffect → ui)を関数分割で表現する。
- * プロトタイプでは char / fgEffect は未実装(Phase 3 でキャラ描画と演出が入る)。
  *
- * 表示内容は「モード名 + 残G + 状態の数字 + ひとことテロップ」に絞る。
+ * ══ 表示チャネルは2系統だけ(2026-08-15 ユーザー指示 U66-5)═══════════════
+ *
+ *   盤面(このファイル)  … **持続する情報**。いま何のモードで、何を目指していて、
+ *                          どこまで進んだか。毎フレーム描き直す常設表示。
+ *   ポップアップ(lcd.text)… **瞬間の告知**。いま何が起きたか。尺が来れば消える。
+ *
+ * 液晶の下部にあった「説明テロップ帯」(flow.telop を毎フレーム流し込む黒帯)は
+ * **廃止した**。ポップアップと同じことを別の場所へ書き続けるチャネルで、
+ * ユーザー指摘のとおり二重表示の温床だったため:
+ *   ・そのゲームの出来事(「CACHE HIT — +18 枚」等)→ ポップアップと盤面が持つ
+ *   ・モードのルール・目標(「ALARM を発報させろ!」等)→ 盤面の常設行が持つ
+ * 移行先の対応は docs/DESIGN.md ではなく各盤面のコメントに書いてある。
+ * **帯を復活させないこと**(復活させると U8 の二重表示が丸ごと戻る)。
+ *
+ * ── 液晶の座席割り(440 × 300)──────────────────────────────
+ *   y   0〜 34 … タイトルバー(ステージ名 / 残りG / ラスト5)
+ *   y  34〜150 … 盤面(主役の絵と数字)
+ *   y 152〜236 … lcd.text の告知プレート専用。盤面は文字を置かない
+ *   y 232〜262 … 結論・合計の1行(RUSH の footerPlate 等)
+ *   y 266〜300 … **旧テロップ帯の跡地**。U66-5 で空いたので、
+ *                盤面のルール行(_drawRuleLine)と CZ の目標行を置く
  */
 
 import { CZ_GRAPH_MAX, CZ_GRAPH_THRESHOLD } from '../game/modes/cz.js';
@@ -12,7 +31,7 @@ import { CZ_GRAPH_MAX, CZ_GRAPH_THRESHOLD } from '../game/modes/cz.js';
 // ここに数値を直書きすると data/modes.js を触った瞬間に表示だけ嘘になる
 // (2026-08-14 しおん指摘 S3 / S15 と同型の事故)。
 import { ZONE_SPEC_BY_ID } from '../data/modes.js';
-import { uiAssets } from '../engine/assets.js';
+import { uiAssets, symbolAssets } from '../engine/assets.js';
 import { downscaleInSteps } from './symbols-draw.js';
 // 新CZ4種(ALB / SQS DLQ / Blue-Green / GameDay)の盤面は別ファイルへ切り出す
 import { drawCzAlb, drawCzDlq, drawCzBlueGreen, drawCzFis } from './lcd-cz-extra.js';
@@ -100,6 +119,16 @@ const STAGE_TINT_ALPHA = 0.42;
 const CHAR_DIM_WHILE_TEXT = 0.45;
 
 /**
+ * 盤面の常設ルール行の基準Y(U66-5 で廃止した説明テロップ帯の跡地)。
+ *
+ * 旧テロップ帯は y266〜300 の黒帯だった。帯そのものは無くなったが、
+ * 「そのモードのルール・目標」という **持続情報** の置き場としてこの高さは有効なので、
+ * 行だけを残してある(下敷きは行の高さぶんだけ)。
+ * 告知プレート(lcd.text)は y152〜236 なので重ならない。
+ */
+const RULE_LINE_Y = 280;
+
+/**
  * 盤面が「残り n G」を自前で出しているモード(2026-08-14 検証指摘 V21-11)。
  *
  * 液晶ヘッダ右上の「残り 4 G」と盤面中央の「残り 4 / 8 G」が同時に出ていて、
@@ -183,6 +212,69 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
+/* ══ 揃える絵柄の実画像(U54 / 2026-08-15 ユーザー指示)══════════════
+ *
+ * 「ゴースト7を揃えろ!」「サメBARを揃えろ!」の指示に、文字(7 / BAR)だけでなく
+ * **リールに乗っている絵柄そのもの**(assets/symbols/GHOST7.png / SHARKBAR.png)を出す。
+ * 経路は絵柄飛来予告(staging/anims/lcdanims-extra.js)と同じ共有ストア symbolAssets。
+ *
+ * 原画は 418×418 の正方形。毎フレーム 50px まで落とすとジャギる & 重いので、
+ * 初回だけ段階縮小(symbols-draw.js の downscaleInSteps)して焼き、以降は貼るだけ。
+ * 画像が未ロード・未配置のあいだは null が返り、**従来の文字プレートへ落ちる**
+ * (キャッシュしないので、後から画像が届けば次のフレームで絵に切り替わる)。
+ */
+
+/** 焼き付ける長辺の長さ(液晶のプレートは 54px 角なので120あれば足りる) */
+const SYMBOL_ART_MAX = 120;
+/** @type {Map<string, HTMLCanvasElement>} 絵柄IDごとに1枚 */
+const SYMBOL_ART_CACHE = new Map();
+
+/**
+ * 絵柄の実画像タイル(縦横比は原画のまま)。未ロードなら null。
+ * @param {string} id 絵柄ID(GHOST7 / SHARKBAR など)
+ * @returns {CanvasImageSource|null}
+ */
+function symbolArt(id) {
+  if (!id) return null;
+  const hit = SYMBOL_ART_CACHE.get(id);
+  if (hit) return hit;
+  const img = symbolAssets.get(id);
+  if (!img) return null;
+  try {
+    const iw = img.width || SYMBOL_ART_MAX;
+    const ih = img.height || SYMBOL_ART_MAX;
+    const k = SYMBOL_ART_MAX / Math.max(iw, ih);
+    const tw = Math.max(1, Math.round(iw * k));
+    const th = Math.max(1, Math.round(ih * k));
+    const c = document.createElement('canvas');
+    c.width = tw;
+    c.height = th;
+    const cx = c.getContext('2d');
+    if (!cx) return null;
+    cx.imageSmoothingEnabled = true;
+    cx.imageSmoothingQuality = 'high';
+    cx.drawImage(downscaleInSteps(img, iw, ih, tw, th), 0, 0, tw, th);
+    SYMBOL_ART_CACHE.set(id, c);
+    return c;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 絵柄タイルを箱に収めて(contain)描く。潰さないことを優先する。
+ * @returns {{w:number, h:number}} 実際に描いた大きさ
+ */
+function drawSymbolArt(ctx, tile, cx, cy, boxW, boxH) {
+  const tw = tile.width || boxW;
+  const th = tile.height || boxH;
+  const k = Math.min(boxW / tw, boxH / th);
+  const dw = tw * k;
+  const dh = th * k;
+  ctx.drawImage(tile, cx - dw / 2, cy - dh / 2, dw, dh);
+  return { w: dw, h: dh };
+}
+
 export class LcdView {
   /**
    * @param {object} opts
@@ -227,7 +319,8 @@ export class LcdView {
   /**
    * サブレイヤー順に描画する(DESIGN.md 5.4):
    *   1 stage → 2 bgObject → 3 char → 4 fgEffect → 5 ui
-   * @param {{modeId:string, state:object, telop:string, stackIds:string[]}} view
+   * @param {{modeId:string, state:object, stackIds:string[]}} view
+   *   U66-5 で `telop` は受け取らなくなった(液晶下部の説明テロップ帯を廃止)。
    */
   draw(view) {
     const ctx = this.ctx;
@@ -464,8 +557,6 @@ export class LcdView {
       case 'REINVENT_ED': this._drawEnding(ctx, view.state, textActive); break;
       default: this._drawFreeTier(ctx, view.state, textActive); break;
     }
-
-    this._drawTelop(ctx, view.telop);
   }
 
   /**
@@ -647,36 +738,67 @@ export class LcdView {
     ctx.stroke();
   }
 
-  _drawTelop(ctx, telop) {
-    if (!telop) return;
-    /**
-     * 二重表示の排除(2026-08-14 ユーザー指摘 U8)。
-     *
-     * 役割分担は「瞬間の演出=ポップアップ / 持続的な状態情報=テロップ」。
-     * ポップアップ(演出テキスト帯)が同じことを言っている間は、下のテロップは黙る。
-     * ポップアップは尺が来れば必ず消えるので、そのあとテロップが状態表示として残る
-     * (= 情報は必ずどちらかに出ていて、同時に2か所へは出ない)。
-     *
-     * 申告(_ambient)より前に返しているのは意図的。_ambient は
-     * 「実際に描いた場所でだけ呼ぶ」約束なので、描かない回に申告してはいけない。
-     */
-    if (this.anims?.covers?.(telop)) return;
-    // モードのルール文は液晶側を正とする。同じ文言を下部パネルにも出さないよう申告する。
-    // カテゴリ判定は使わない: ルール文は長い説明なので、たまたま「継続」などを
-    // 含んだだけで演出側の告知まで巻き添えで消えてしまう。
-    this._ambient(telop, { matchCategory: false });
-    const y = this.h - 34;
-    ctx.fillStyle = this._stageIsArt ? 'rgba(0,0,0,0.62)' : 'rgba(0,0,0,0.45)';
-    ctx.fillRect(0, y, this.w, 34);
-    ctx.fillStyle = '#eaf2ff';
-    ctx.font = `600 14px ${FONT}`;
+  /* ══ 旧テロップ帯の跡地(y266〜300)══════════════════════════════════
+   *
+   * 2026-08-15 ユーザー指示 U66-5 で `_drawTelop`(flow.telop を毎フレーム
+   * 黒帯に流し込む説明欄)は **削除した**。同じことをポップアップと2か所へ
+   * 書き続けるチャネルだったため(U8 の二重表示の主因)。
+   *
+   * 空いた帯には「そのモードで **ずっと変わらない** ルール・目標」だけを置く。
+   * 毎ゲーム変わる出来事は書かないこと(それはポップアップの担当)。 */
+
+  /**
+   * 盤面の常設ルール行(旧テロップ帯の跡地)。
+   *
+   * ここに出してよいのは **そのモードに居る限り変わらない文** だけ:
+   *   ・目標(「ALARM を発報させろ!」)
+   *   ・遊び方(「キャッシュヒットで枚数が飛んでくる」)
+   * 毎ゲームの結果・獲得枚数・残りゲーム数は書かない(盤面の主役かポップアップの担当)。
+   *
+   * ポップアップ(告知プレート)は y152〜236 なので、この行(y280)とは重ならない。
+   * それでも同じことを言っている場合は U8 に従って **ポップアップを優先** して黙る。
+   *
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {string} text
+   * @param {object} [opts]
+   * @param {string} [opts.color]
+   * @param {number} [opts.size]
+   * @param {string} [opts.sub] 2行目(さらに小さく出す補足)
+   */
+  _drawRuleLine(ctx, text, { color = 'rgba(255,255,255,0.78)', size = 13, sub = '' } = {}) {
+    if (!text) return;
+    // ポップアップが同じことを言っている間は黙る(U8。役割分担は瞬間=ポップアップ)
+    if (this.anims?.covers?.(text) ?? false) return;
+
+    ctx.save();
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    let text = String(telop);
-    while (ctx.measureText(text).width > this.w - 24 && text.length > 4) {
-      text = `${text.slice(0, -2)}…`;
+    const y = RULE_LINE_Y - (sub ? 8 : 0);
+    // 画像ステージの上でも沈まないよう、行の下にごく薄い下敷きを敷く
+    ctx.fillStyle = this._stageIsArt ? 'rgba(0,0,0,0.5)' : 'rgba(0,0,0,0.32)';
+    ctx.fillRect(0, y - 15, this.w, sub ? 36 : 26);
+
+    ctx.font = `700 ${size}px ${FONT}`;
+    ctx.fillStyle = color;
+    let shown = String(text);
+    while (ctx.measureText(shown).width > this.w - 24 && shown.length > 4) {
+      shown = `${shown.slice(0, -2)}…`;
     }
-    ctx.fillText(text, this.w / 2, y + 17);
+    ctx.fillText(shown, this.w / 2, y);
+    // 常設で出している文言は申告する(同じことをポップアップに積ませない)。
+    // カテゴリ判定は使わない: ルール文は長いので、たまたま「継続」等を含んだだけで
+    // 演出側の告知まで巻き添えで消えてしまう。
+    this._ambient(shown, { matchCategory: false });
+
+    if (sub) {
+      ctx.font = `600 11px ${FONT}`;
+      ctx.fillStyle = 'rgba(255,255,255,0.55)';
+      let s = String(sub);
+      while (ctx.measureText(s).width > this.w - 24 && s.length > 4) s = `${s.slice(0, -2)}…`;
+      ctx.fillText(s, this.w / 2, y + 16);
+      this._ambient(s, { matchCategory: false });
+    }
+    ctx.restore();
   }
 
   // ── モード別 ────────────────────────────────
@@ -696,6 +818,21 @@ export class LcdView {
   }
 
   _drawCz(ctx, state, textActive = false) {
+    /*
+     * ── 目標と期待度の常設行(2026-08-15 U66-5 の移行先)───────────────
+     * 旧テロップ帯にしか出ていなかった
+     *   `${state.goal} 期待度${state.stars} — ${state.goalDetail}`
+     * (game/modes/cz.js の onEnter)を盤面の常設行として引き取る。
+     * CZ は11種あって盤面もバラバラだが、「何をすれば勝ちか」は全種共通の
+     * 持続情報なので、盤面の実装ごとに散らさず **ここで1回だけ** 描く。
+     * 期待度(★)は入場時に決まって最後まで変わらない = 常設情報の資格を満たす。
+     */
+    if (state?.goal) {
+      this._drawRuleLine(ctx, `${state.goal}${state.stars ? `  期待度 ${state.stars}` : ''}`, {
+        color: '#ffd166',
+        sub: state?.goalDetail ?? '',
+      });
+    }
     if (state?.ui === 'checklist') return this._drawCzChecklist(ctx, state, textActive);
     if (state?.ui === 'pillars') return this._drawCzPillars(ctx, state, textActive);
     if (state?.ui === 'sfn') return this._drawCzSfn(ctx, state, textActive);
@@ -1054,11 +1191,12 @@ export class LcdView {
       ctx.font = `900 20px ${FONT_HEAVY}`;
       ctx.fillStyle = '#ffffff';
       ctx.fillText('CloudWatch ALARM', this.w / 2, gy + gh + 24);
-      // 目標(state.goal)は全CZ共通でゲーム側が持っている
-      const goal = state?.goal ?? 'ALARM を発報させろ!';
-      ctx.font = `700 12px ${FONT}`;
-      ctx.fillStyle = '#ffd166';
-      ctx.fillText(goal, this.w / 2, gy + gh + 42);
+      /*
+       * 目標(state.goal)はここには描かない(2026-08-15 U66-5)。
+       * CZ11種で共通の持続情報なので、_drawCz の常設ルール行が
+       * 「目標 + 期待度 + 補足」をまとめて1か所で出す。
+       * ここに戻すと同じ文が盤面に2行並ぶ(U8 の二重表示)。
+       */
       this._ambient('CloudWatch ALARM');
     }
   }
@@ -1072,7 +1210,7 @@ export class LcdView {
    * 役割分担は「持続的な状態情報 = 盤面 / 瞬間の演出 = ポップアップ」なので、
    * 揃え方の指示は **盤面だけの担当** に一本化した:
    *   1. ここで出している指示文を _ambient() で申告する
-   *      → 下部パネル(main.js の dedupeTelop)が同じ文言のテロップを伏せる
+   *      → 同じ文言のポップアップ(lcd.text)が積まれなくなる
    *   2. game/modes/bonusready.js は毎ゲームの指示テロップを返さなくした
    * 消化ゲーム数の (nG) も盤面側だけが持つ(テロップ側と数字がズレて見えていた)。
    *
@@ -1105,15 +1243,32 @@ export class LcdView {
     // この画面が常設で「確定」を出しているので、テキスト帯には同じ告知を出させない
     this._ambient('BONUS 確定!!');
 
-    // 揃える絵柄のプレート(3コマぶん並べて「中段に揃える」を絵で示す)
+    /*
+     * 揃える絵柄のプレート(3コマぶん並べて「中段に揃える」を絵で示す)。
+     *
+     * U54(2026-08-15 ユーザー指示): 文字(7 / BAR)ではなく
+     * **リールに乗っている絵柄の実画像**(GHOST7.png / SHARKBAR.png)を出す。
+     * 画像が来ていないときだけ従来の文字へ落ちる(symbolArt が null を返す)。
+     * 位置・大きさは以前と同一なので、下の指示テキスト(y208)や
+     * 告知プレート帯(y152〜236)との取り合いは変わっていない(U8)。
+     */
+    const symbolId = state?.targetSymbol === 'SHARKBAR' ? 'SHARKBAR' : 'GHOST7';
     const label = state?.targetSymbol === 'SHARKBAR' ? 'BAR' : '7';
     const plateColor = state?.targetSymbol === 'SHARKBAR' ? '#ffd166' : '#c88bff';
-    const pw = textActive ? 42 : 54;
-    const ph = textActive ? 38 : 50;
+    const art = symbolArt(symbolId);
+    /*
+     * 帯が出ていないときだけ一回り大きくする(54×50 → 60×56)。
+     * 絵柄が主役になったぶん見せ場を作るための拡大で、下端は
+     *   132+50=182 → 130+56=186
+     * と 4px 下がるだけ。指示テキスト(y208 / 22px = 上端 y197)とは 11px 空く。
+     * 帯が出ている間(textActive)は指示が y134 まで上がってくるので、**広げない**。
+     */
+    const pw = textActive ? 42 : 60;
+    const ph = textActive ? 38 : 56;
     const gap = 10;
     const totalW = pw * 3 + gap * 2;
     const px = (this.w - totalW) / 2;
-    const py = textActive ? 84 : 132;
+    const py = textActive ? 84 : 130;
     for (let i = 0; i < 3; i++) {
       const x = px + i * (pw + gap);
       const bob = Math.sin(this.t * 5 - i * 0.6) * 3;
@@ -1122,10 +1277,25 @@ export class LcdView {
       ctx.fill();
       ctx.lineWidth = 2.5;
       ctx.strokeStyle = plateColor;
+      // 「これが揃う」を目立たせる淡い発光(点滅は BONUS 確定!! と同じ周期)
+      ctx.save();
+      ctx.shadowColor = plateColor;
+      ctx.shadowBlur = 8 + blink * 6;
       ctx.stroke();
-      ctx.font = `900 ${textActive ? 20 : 26}px ${FONT_HEAVY}`;
-      ctx.fillStyle = plateColor;
-      ctx.fillText(label, x + pw / 2, py + bob + ph / 2 + 1);
+      ctx.restore();
+
+      if (art) {
+        // 枠からはみ出さないよう、内側 4px を余白にして収める
+        ctx.save();
+        roundRect(ctx, x, py + bob, pw, ph, 7);
+        ctx.clip();
+        drawSymbolArt(ctx, art, x + pw / 2, py + bob + ph / 2, pw - 8, ph - 8);
+        ctx.restore();
+      } else {
+        ctx.font = `900 ${textActive ? 20 : 26}px ${FONT_HEAVY}`;
+        ctx.fillStyle = plateColor;
+        ctx.fillText(label, x + pw / 2, py + bob + ph / 2 + 1);
+      }
     }
 
     /*
@@ -1185,9 +1355,24 @@ export class LcdView {
     const title = state?.title ?? 'BONUS';
     const pulse = 1 + Math.sin(this.t * 6) * 0.03;
 
+    /*
+     * ── AWS豆知識カードと同居する(2026-08-15 ユーザー指示 U64-8)────────────
+     * カード(staging/anims/lcdanims-extra.js の TRIVIA_CARD)は y38〜146 を占める。
+     * 大ロゴ(y79〜125)はその真下に潜って重なっていたので、
+     * **カードが出ている間だけロゴをヘッダ帯(y0〜34)へ縮めて逃がす**。
+     * これで ロゴ / カード / 獲得枚数(162)/ 残りG(190)/ ベル説明(214)/ SET(238)
+     * の6つが1画面に全部並ぶ。カードが消えれば大ロゴへ戻る。
+     */
+    const cardActive = this.anims?.isPlaying?.('aws_trivia_card') === true;
+
     // テキスト帯が出ている間は、盤面を丸ごと帯の上(y<TEXT_BAND_TOP)へ収める
-    const titleY = textActive ? 62 : 102;
-    const titleSize = textActive ? 30 : 46;
+    let titleY = textActive ? 62 : 102;
+    let titleSize = textActive ? 30 : 46;
+    if (cardActive) {
+      // ヘッダ帯の中。左のステージ名・右のカウントダウンとは重ならない中央に置く
+      titleY = 17;
+      titleSize = 16;
+    }
 
     ctx.save();
     ctx.translate(this.w / 2, titleY);
@@ -1207,11 +1392,39 @@ export class LcdView {
     // ボーナス名は常設で大きく出ているので、テキスト帯に同じ告知を出させない
     this._ambient(title);
 
+    /*
+     * カードが出ている間は、帯が無ければ下3行(162 / 190 / 214 / 238)をそのまま使う。
+     * カードの下端は 146 なので重ならない(座標を動かすときは
+     * lcdanims-extra.js の TRIVIA_CARD と必ず突き合わせること)。
+     */
+
     const remaining = state?.remaining ?? 0;
     const total = state?.total ?? 0;
     const gained = `+${Math.floor(state?.gained ?? 0)} 枚`;
     const left = `残り ${remaining} / ${total} G`;
     const leftColor = remaining <= 3 ? '#ff8a8a' : '#ffffff';
+
+    if (textActive && cardActive) {
+      /*
+       * ── 帯 + カードが同時に出ている(U64-8)──────────────────────────
+       * 上(y38〜146)はカード、中(y151〜237)は帯で埋まっているので、
+       * 数値は **帯の下・テロップ帯(y266〜)の上** の空き(y240〜262)へ1行で逃がす。
+       * ここでも消えるのはロゴだけ(ヘッダに縮小版が出ている)。
+       */
+      const y = 252;
+      ctx.font = `900 18px ${FONT_HEAVY}`;
+      ctx.fillStyle = '#ffe066';
+      ctx.fillText(gained, 96, y);
+      ctx.font = `900 15px ${FONT_HEAVY}`;
+      ctx.fillStyle = leftColor;
+      ctx.fillText(left, 244, y);
+      if (state?.isSet) {
+        ctx.font = `900 13px ${FONT_HEAVY}`;
+        ctx.fillStyle = state?.onDemand ? '#7bf7d0' : 'rgba(255,255,255,0.8)';
+        ctx.fillText(`SET ${state?.setCount ?? 1}`, 382, y);
+      }
+      return;
+    }
 
     if (textActive) {
       /* ── 帯が出ている間: 獲得枚数と残りGを1行にまとめて上へ逃がす ── */
@@ -1230,24 +1443,35 @@ export class LcdView {
       return;
     }
 
-    ctx.font = `700 15px ${FONT}`;
-    ctx.fillStyle = 'rgba(255,255,255,0.9)';
-    ctx.fillText(state?.name ?? '', this.w / 2, 142);
+    /*
+     * ── ボーナス名の日本語表記は出さない(2026-08-15 検証指摘 Q2 / U8)──────
+     * ここには state.name(「ゴーストボーナスSP」)を 15px で出していたが、
+     * すぐ上の大ロゴが state.title(「GHOST BONUS SP」)= **同じものの英語表記** で、
+     * 同じ情報が2行並んでいた(実質の二重表示)。
+     * U8 の「同じことは1か所」に合わせ、**盤面の主役である大ロゴ側に寄せて**
+     * こちらを落とす。日本語名が要る場面(残存価値の明細など)は
+     * game/modes/bonus.js が state.name をそのまま使えるので情報は失われない。
+     */
 
+    /*
+     * Q2 で日本語名の行(y142)を落としたぶん、下の3行を 12px 詰めて
+     * 大ロゴとの間が空きすぎないようにする(174/200/220 → 162/190/214)。
+     * 帯が出ているときは上の textActive 分岐が別レイアウトを持つので影響しない。
+     */
     // 獲得枚数(純増ベース)。ベルが揃うたびに一気に伸びる
     ctx.font = `900 24px ${FONT_HEAVY}`;
     ctx.fillStyle = '#ffe066';
-    ctx.fillText(gained, this.w / 2, 174);
+    ctx.fillText(gained, this.w / 2, 162);
 
     // 残ゲーム数(15G / 6G と短いので、消化中はここが主役になる)
     ctx.font = `900 20px ${FONT_HEAVY}`;
     ctx.fillStyle = leftColor;
-    ctx.fillText(left, this.w / 2, 200);
+    ctx.fillText(left, this.w / 2, 190);
 
     // ベルで増えるという遊び方の説明(2026-08-13 の仕様変更ぶん)
     ctx.font = `700 12px ${FONT}`;
     ctx.fillStyle = 'rgba(255,255,255,0.75)';
-    ctx.fillText('ベル揃いで +15 枚', this.w / 2, 220);
+    ctx.fillText('ベル揃いで +15 枚', this.w / 2, 214);
 
     /*
      * セット継続型(DynamoDB BIG)は「いま何セット目か」だけを常設で出す。
@@ -1263,7 +1487,7 @@ export class LcdView {
       ctx.font = `900 17px ${FONT_HEAVY}`;
       // オンデマンド(継続確定の内部フラグ)は色の明るさだけで匂わせる
       ctx.fillStyle = state?.onDemand ? '#7bf7d0' : 'rgba(255,255,255,0.8)';
-      ctx.fillText(`SET ${state?.setCount ?? 1}`, this.w / 2, 242);
+      ctx.fillText(`SET ${state?.setCount ?? 1}`, this.w / 2, 238);
     }
   }
 
@@ -1336,6 +1560,15 @@ export class LcdView {
         ctx.fillText(state.phaseText, this.w / 2, gy + 52);
       }
     }
+    /*
+     * 引き戻し層の目的(U66-5 の移行先)。
+     * 「切り替えきれば復帰、間に合わなければ通常時へ」は入場から出るまで変わらない
+     * 持続情報だが、旧実装ではゲーム側の入場テロップ(recovery.js)にしか出ておらず、
+     * 帯を畳むと **何を待っている画面なのかが読めなく** なるためここで引き取る。
+     */
+    this._drawRuleLine(ctx, '切替が完了すれば復旧のボーナス — RTO 超過で通常運転へ', {
+      color: '#ffd166',
+    });
   }
 
   // ── Phase 5: 引き戻し最終防衛 ─────────────────

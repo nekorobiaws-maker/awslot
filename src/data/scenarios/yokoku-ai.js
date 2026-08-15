@@ -50,7 +50,7 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.6 } },
       { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'Athena: QUERY RUNNING…', color: '#8ad4ff', ms: 500 } },
-      { at: 550, layer: 'lcd', action: 'text',  params: { text: 'SCAN 0.6GB — 0 HIT', color: '#8ad4ff', ms: 700 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: 'SCAN 0.6GB — 0 HIT', color: '#8ad4ff', ms: 700 } },
     ],
   },
   {
@@ -64,11 +64,11 @@ export default [
       { at: 0,    layer: 'char', action: 'show', params: { char: 'kiro', pose: 'surprised' } },
       { at: 0,    layer: 'sfx',  action: 'synth', params: { preset: 'charge_up' } },
       { at: 50,   layer: 'lcd',  action: 'text', params: { text: 'Athena: QUERY RUNNING…', color: '#ffd166', ms: 500 } },
-      { at: 650,  layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 220, y: 190, count: 14 } },
-      { at: 700,  layer: 'lcd',  action: 'text', params: { text: 'SCAN 812GB…', color: '#ffd166', ms: 600 } },
-      { at: 1300, layer: 'lcd',  action: 'text', params: { text: '128,000 HIT !!', sub: '全件フルスキャン', color: '#ffe066', ms: 900 } },
-      { at: 1350, layer: 'overlay', action: 'flash', params: { color: '#ffe066', ms: 200 } },
-      { at: 1400, layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'happy' } },
+      { waitFor: 'stop1',  layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 220, y: 190, count: 14 } },
+      { waitFor: 'stop1', after: 50,  layer: 'lcd',  action: 'text', params: { text: 'SCAN 812GB…', color: '#ffd166', ms: 600 } },
+      { waitFor: 'stop3', layer: 'lcd',  action: 'text', params: { text: '128,000 HIT !!', sub: '全件フルスキャン', color: '#ffe066', ms: 900 } },
+      { waitFor: 'stop3', after: 50, layer: 'overlay', action: 'flash', params: { color: '#ffe066', ms: 200 } },
+      { waitFor: 'stop3', after: 100, layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'happy' } },
     ],
   },
 
@@ -83,7 +83,7 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.5 } },
       { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'Redshift: WAREHOUSE WARMING…', color: '#8ad4ff', ms: 500 } },
-      { at: 500, layer: 'lcd', action: 'text',  params: { text: 'queued: 1 job', color: '#8ad4ff', ms: 500 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: 'queued: 1 job', color: '#8ad4ff', ms: 500 } },
     ],
   },
 
@@ -99,8 +99,8 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'dynamo_scale', gain: 0.5 } },
       { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'Glue: CRAWLER STARTING…', color: '#8ad4ff', ms: 500 } },
-      { at: 500, layer: 'lcd', action: 'particles', params: { preset: 'scale', x: 210, y: 200, count: 6 } },
-      { at: 550, layer: 'lcd', action: 'text',  params: { text: 'connected: 1 / 5', color: '#8ad4ff', ms: 600 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'particles', params: { preset: 'scale', x: 210, y: 200, count: 6 } },
+      { waitFor: 'stop3', after: 50, layer: 'lcd', action: 'text',  params: { text: 'connected: 1 / 5', color: '#8ad4ff', ms: 600 } },
     ],
   },
   {
@@ -114,11 +114,11 @@ export default [
       { at: 0,    layer: 'char', action: 'show', params: { char: 'kiro', pose: 'panic' } },
       { at: 0,    layer: 'sfx',  action: 'synth', params: { preset: 'dynamo_scale' } },
       { at: 50,   layer: 'lcd',  action: 'text', params: { text: 'Glue: CRAWLER RUNNING…', color: '#ffd166', ms: 500 } },
-      { at: 600,  layer: 'lcd',  action: 'particles', params: { preset: 'scale', x: 210, y: 200, count: 18 } },
-      { at: 650,  layer: 'lcd',  action: 'text', params: { text: 'connected: 4 / 5', color: '#ffd166', ms: 600 } },
-      { at: 1250, layer: 'sfx',  action: 'synth', params: { preset: 'upgrade_chime' } },
-      { at: 1300, layer: 'lcd',  action: 'text', params: { text: 'CRAWLER COMPLETE', sub: '全データ連結済み', color: '#ffe066', ms: 900 } },
-      { at: 1320, layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'happy' } },
+      { waitFor: 'stop1',  layer: 'lcd',  action: 'particles', params: { preset: 'scale', x: 210, y: 200, count: 18 } },
+      { waitFor: 'stop1', after: 50,  layer: 'lcd',  action: 'text', params: { text: 'connected: 4 / 5', color: '#ffd166', ms: 600 } },
+      { waitFor: 'stop3', layer: 'sfx',  action: 'synth', params: { preset: 'upgrade_chime' } },
+      { waitFor: 'stop3', after: 50, layer: 'lcd',  action: 'text', params: { text: 'CRAWLER COMPLETE', sub: '全データ連結済み', color: '#ffe066', ms: 900 } },
+      { waitFor: 'stop3', after: 70, layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'happy' } },
     ],
   },
 
@@ -134,9 +134,9 @@ export default [
       { at: 0,    layer: 'char', action: 'show', params: { char: 'kiro', pose: 'surprised' } },
       { at: 0,    layer: 'sfx',  action: 'synth', params: { preset: 'scale_out', gain: 0.7 } },
       { at: 50,   layer: 'lcd',  action: 'text', params: { text: 'EMR: CLUSTER BOOTING…', color: '#ffd166', ms: 500 } },
-      { at: 600,  layer: 'lcd',  action: 'particles', params: { preset: 'scale', x: 220, y: 210, count: 16 } },
-      { at: 650,  layer: 'lcd',  action: 'text', params: { text: 'NODES x6', sub: '並列ノードが立ち上がった', color: '#ffe066', ms: 800 } },
-      { at: 1250, layer: 'sfx',  action: 'synth', params: { preset: 'charge_up', gain: 0.6 } },
+      { waitFor: 'stop3',  layer: 'lcd',  action: 'particles', params: { preset: 'scale', x: 220, y: 210, count: 16 } },
+      { waitFor: 'stop3', after: 50,  layer: 'lcd',  action: 'text', params: { text: 'NODES x6', sub: '並列ノードが立ち上がった', color: '#ffe066', ms: 800 } },
+      { waitFor: 'stop3', layer: 'sfx',  action: 'synth', params: { preset: 'charge_up', gain: 0.6 } },
     ],
   },
 
@@ -151,7 +151,7 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.5 } },
       { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'SageMaker: TRAINING JOB…', color: '#8ad4ff', ms: 500 } },
-      { at: 550, layer: 'lcd', action: 'text',  params: { text: 'epoch 3/10 acc 58%', color: '#8ad4ff', ms: 600 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: 'epoch 3/10 acc 58%', color: '#8ad4ff', ms: 600 } },
     ],
   },
   {
@@ -165,12 +165,12 @@ export default [
       { at: 0,    layer: 'char', action: 'show', params: { char: 'kiro', pose: 'surprised' } },
       { at: 0,    layer: 'sfx',  action: 'synth', params: { preset: 'charge_up' } },
       { at: 50,   layer: 'lcd',  action: 'text', params: { text: 'SageMaker: TRAINING JOB…', color: '#ffd166', ms: 500 } },
-      { at: 650,  layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 220, y: 200, count: 14 } },
-      { at: 700,  layer: 'lcd',  action: 'text', params: { text: 'epoch 7/10 acc 88%', color: '#ffd166', ms: 600 } },
-      { at: 1350, layer: 'lcd',  action: 'particles', params: { preset: 'rainbow', x: 220, y: 200, count: 20 } },
-      { at: 1400, layer: 'lcd',  action: 'text', params: { text: 'epoch 10/10 acc 99.2%', sub: '収束しきった', color: '#ffe066', ms: 1000 } },
-      { at: 1420, layer: 'overlay', action: 'flash', params: { color: '#ffe066', ms: 220 } },
-      { at: 1450, layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'happy' } },
+      { waitFor: 'stop1',  layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 220, y: 200, count: 14 } },
+      { waitFor: 'stop1', after: 50,  layer: 'lcd',  action: 'text', params: { text: 'epoch 7/10 acc 88%', color: '#ffd166', ms: 600 } },
+      { waitFor: 'stop3', layer: 'lcd',  action: 'particles', params: { preset: 'rainbow', x: 220, y: 200, count: 20 } },
+      { waitFor: 'stop3', after: 50, layer: 'lcd',  action: 'text', params: { text: 'epoch 10/10 acc 99.2%', sub: '収束しきった', color: '#ffe066', ms: 1000 } },
+      { waitFor: 'stop3', after: 70, layer: 'overlay', action: 'flash', params: { color: '#ffe066', ms: 220 } },
+      { waitFor: 'stop3', after: 100, layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'happy' } },
     ],
   },
 
@@ -186,9 +186,9 @@ export default [
       { at: 0,    layer: 'char', action: 'show', params: { char: 'kiro', pose: 'surprised' } },
       { at: 0,    layer: 'sfx',  action: 'synth', params: { preset: 'rare_flag' } },
       { at: 40,   layer: 'lcd',  action: 'text', params: { text: 'Rekognition: ANALYZING SYMBOL…', color: '#ffd166', ms: 500 } },
-      { at: 600,  layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 220, y: 190, count: 12 } },
-      { at: 650,  layer: 'lcd',  action: 'text', params: { text: 'LABEL: CHERRY (76%)', color: '#ffd166', ms: 800 } },
-      { at: 1300, layer: 'sfx',  action: 'synth', params: { preset: 'edge_hit', gain: 0.6 } },
+      { waitFor: 'stop3',  layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 220, y: 190, count: 12 } },
+      { waitFor: 'stop3', after: 50,  layer: 'lcd',  action: 'text', params: { text: 'LABEL: CHERRY (76%)', color: '#ffd166', ms: 800 } },
+      { waitFor: 'stop3', layer: 'sfx',  action: 'synth', params: { preset: 'edge_hit', gain: 0.6 } },
     ],
   },
   {
@@ -203,8 +203,8 @@ export default [
       { at: 0,   layer: 'char', action: 'show', params: { char: 'kiro', pose: 'surprised' } },
       { at: 0,   layer: 'sfx',  action: 'synth', params: { preset: 'charge_up' } },
       { at: 60,  layer: 'lcd',  action: 'text', params: { text: 'Rekognition: ANALYZING SYMBOL…', color: '#ffd166', ms: 600 } },
-      { at: 700, layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 220, y: 190, count: 16 } },
-      { at: 750, layer: 'lcd',  action: 'text', params: { text: 'LABEL: PHANTOM (74%)', color: '#ffd166', ms: 700 } },
+      { waitFor: 'stop3', layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 220, y: 190, count: 16 } },
+      { waitFor: 'stop3', after: 50, layer: 'lcd',  action: 'text', params: { text: 'LABEL: PHANTOM (74%)', color: '#ffd166', ms: 700 } },
       { waitFor: 'stop3', after: 100, layer: 'lcd', action: 'particles', params: { preset: 'rainbow', x: 220, y: 190, count: 26 } },
       { waitFor: 'stop3', after: 150, layer: 'lcd', action: 'text',
         params: { text: 'LABEL: PHANTOM (98%)', sub: '信頼度がほぼ振り切れた', color: '#ffe066', ms: 1400 } },
@@ -225,8 +225,8 @@ export default [
       { at: 0,   layer: 'char', action: 'show', params: { char: 'kiro', pose: 'surprised' } },
       { at: 0,   layer: 'sfx',  action: 'synth', params: { preset: 'charge_up' } },
       { at: 60,  layer: 'lcd',  action: 'text', params: { text: 'Rekognition: ANALYZING SYMBOL…', color: '#ffd166', ms: 600 } },
-      { at: 700, layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 220, y: 190, count: 16 } },
-      { at: 750, layer: 'lcd',  action: 'text', params: { text: 'LABEL: PHANTOM (74%)', color: '#ffd166', ms: 700 } },
+      { waitFor: 'stop3', layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 220, y: 190, count: 16 } },
+      { waitFor: 'stop3', after: 50, layer: 'lcd',  action: 'text', params: { text: 'LABEL: PHANTOM (74%)', color: '#ffd166', ms: 700 } },
       { waitFor: 'stop3', after: 100, layer: 'lcd', action: 'particles', params: { preset: 'rainbow', x: 220, y: 190, count: 26 } },
       { waitFor: 'stop3', after: 150, layer: 'lcd', action: 'text',
         params: { text: 'LABEL: PHANTOM (98%)', sub: '信頼度がほぼ振り切れた', color: '#ffe066', ms: 1400 } },
@@ -236,20 +236,18 @@ export default [
     ],
   },
 
-  // ── Polly: テロップの読み上げ風演出(弱のみ) ────────────────────
-  {
-    id: 'ya_polly_readout_weak',
-    name: '【弱】Polly読み上げ予告(内容はただの日常ログ)',
-    when: { event: 'leverOn', flag: ['LOSE', 'BELL', 'REPLAY'], mode: ['FREE_TIER'] },
-    weight: { FREE_TIER: 55, default: 0 },
-    chance: 0.35,
-    duration: 1000,
-    cues: [
-      { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'announce', gain: 0.5 } },
-      { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'Polly: SPEAKING…', sub: 'テロップを読み上げ中', color: '#8ad4ff', ms: 500 } },
-      { at: 500, layer: 'lcd', action: 'text',  params: { text: '「本日は晴天なり」', color: '#8ad4ff', ms: 600 } },
-    ],
-  },
+  /* ── Polly: 退役(2026-08-15 U61)───────────────────────────────────
+   *
+   * ここにあった `ya_polly_readout_weak`(「Polly: SPEAKING…」→「本日は晴天なり」)は
+   * **data/scenarios/yokoku-polly.js の分岐型シリーズへ引っ越した**。
+   * 引っ越した理由は2つ:
+   *   1. 同じ Polly ネタが2種類あると「Polly が出た」の意味が薄まる
+   *   2. 旧版はレバーONの1秒で結論まで出し切る作りで、U57 の
+   *      「結論は第3停止で出して次のレバーONで消す」に合わなかった
+   * 新シリーズは「本日は晴天なり(ハズレ)/ スイカなり / チェリーなり / Lambdaなり /
+   * サメなり」の5本で、読み上げ文がそのまま成立役を表す。
+   * 旧版の weight(55)と chance(0.35)は新シリーズが引き取っている(総量は据え置き)。
+   */
 
   // ── Transcribe: 音声認識のテキスト化(弱のみ) ────────────────────
   {
@@ -262,7 +260,7 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick', gain: 0.5 } },
       { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'Transcribe: LISTENING…', color: '#8ad4ff', ms: 500 } },
-      { at: 500, layer: 'lcd', action: 'text',  params: { text: '「…特に異常なし」', color: '#8ad4ff', ms: 500 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: '「…特に異常なし」', sub: 'Transcribe — 文字起こしはここまで', color: '#8ad4ff', ms: 500 } },
     ],
   },
 
@@ -277,7 +275,7 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.5 } },
       { at: 0,   layer: 'lcd', action: 'text',  params: { text: '原文: 「S3バケットを同期中」', color: '#8ad4ff', ms: 500 } },
-      { at: 550, layer: 'lcd', action: 'text',  params: { text: 'EN: "Syncing S3 bucket"', color: '#8ad4ff', ms: 700 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: 'EN: "Syncing S3 bucket"', color: '#8ad4ff', ms: 700 } },
     ],
   },
   {
@@ -291,10 +289,10 @@ export default [
       { at: 0,    layer: 'char', action: 'show', params: { char: 'kiro', pose: 'surprised' } },
       { at: 0,    layer: 'sfx',  action: 'synth', params: { preset: 'charge_up' } },
       { at: 50,   layer: 'lcd',  action: 'text', params: { text: '原文: 「そろそろ…来るかも」', color: '#ffd166', ms: 600 } },
-      { at: 650,  layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 220, y: 200, count: 12 } },
-      { at: 700,  layer: 'lcd',  action: 'text', params: { text: 'EN: "It is coming very soon"', sub: '訳文がやけに具体的', color: '#ffe066', ms: 1100 } },
-      { at: 1350, layer: 'sfx',  action: 'synth', params: { preset: 'upgrade_chime', gain: 0.7 } },
-      { at: 1380, layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'happy' } },
+      { waitFor: 'stop3',  layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 220, y: 200, count: 12 } },
+      { waitFor: 'stop3', after: 50,  layer: 'lcd',  action: 'text', params: { text: 'EN: "It is coming very soon"', sub: '訳文がやけに具体的', color: '#ffe066', ms: 1100 } },
+      { waitFor: 'stop3', layer: 'sfx',  action: 'synth', params: { preset: 'upgrade_chime', gain: 0.7 } },
+      { waitFor: 'stop3', after: 30, layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'happy' } },
     ],
   },
 
@@ -310,9 +308,9 @@ export default [
       { at: 0,    layer: 'char', action: 'show', params: { char: 'kiro', pose: 'surprised' } },
       { at: 0,    layer: 'sfx',  action: 'synth', params: { preset: 'checklist_ok' } },
       { at: 40,   layer: 'lcd',  action: 'text', params: { text: 'Comprehend: ANALYZING SENTIMENT…', color: '#ffd166', ms: 500 } },
-      { at: 600,  layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 220, y: 200, count: 12 } },
-      { at: 650,  layer: 'lcd',  action: 'text', params: { text: 'POSITIVE 92%', sub: 'ポジティブ判定', color: '#ffe066', ms: 900 } },
-      { at: 1250, layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'happy' } },
+      { waitFor: 'stop3',  layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 220, y: 200, count: 12 } },
+      { waitFor: 'stop3', after: 50,  layer: 'lcd',  action: 'text', params: { text: 'POSITIVE 92%', sub: 'ポジティブ判定', color: '#ffe066', ms: 900 } },
+      { waitFor: 'stop3', layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'happy' } },
     ],
   },
 
@@ -327,7 +325,7 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.5 } },
       { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'Textract: READING SYMBOL…', color: '#8ad4ff', ms: 500 } },
-      { at: 550, layer: 'lcd', action: 'text',  params: { text: '読取結果: ???(低信頼度)', color: '#8ad4ff', ms: 600 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: '読取結果: ???(低信頼度)', sub: 'Textract — 絵柄を読み取れなかった', color: '#8ad4ff', ms: 600 } },
     ],
   },
 
@@ -343,10 +341,10 @@ export default [
       { at: 0,    layer: 'char', action: 'show', params: { char: 'kiro', pose: 'surprised' } },
       { at: 0,    layer: 'sfx',  action: 'synth', params: { preset: 'announce' } },
       { at: 50,   layer: 'lcd',  action: 'text', params: { text: 'Q: このゲーム、そろそろ来る?', sub: 'Amazon Q に質問中…', color: '#ffd166', ms: 800 } },
-      { at: 850,  layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 220, y: 200, count: 12 } },
-      { at: 900,  layer: 'lcd',  action: 'text', params: { text: 'A: 可能性は十分にあります', color: '#ffe066', ms: 1000 } },
-      { at: 1500, layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'happy' } },
-      { at: 1520, layer: 'sfx',  action: 'synth', params: { preset: 'charge_up', gain: 0.6 } },
+      { waitFor: 'stop3',  layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 220, y: 200, count: 12 } },
+      { waitFor: 'stop3', after: 50,  layer: 'lcd',  action: 'text', params: { text: 'A: 可能性は十分にあります', sub: 'Amazon Q の回答', color: '#ffe066', ms: 1000 } },
+      { waitFor: 'stop3', layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'happy' } },
+      { waitFor: 'stop3', after: 20, layer: 'sfx',  action: 'synth', params: { preset: 'charge_up', gain: 0.6 } },
     ],
   },
 
@@ -361,7 +359,7 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.5 } },
       { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'OpenSearch: QUERY実行中…', color: '#8ad4ff', ms: 500 } },
-      { at: 500, layer: 'lcd', action: 'text',  params: { text: '0 件 HIT', color: '#8ad4ff', ms: 500 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: '0 件 HIT', color: '#8ad4ff', ms: 500 } },
     ],
   },
 
@@ -377,10 +375,10 @@ export default [
       { at: 0,    layer: 'char', action: 'show', params: { char: 'kiro', pose: 'surprised' } },
       { at: 0,    layer: 'sfx',  action: 'synth', params: { preset: 'charge_up' } },
       { at: 50,   layer: 'lcd',  action: 'text', params: { text: 'QuickSight: レポート生成中…', color: '#ffd166', ms: 600 } },
-      { at: 650,  layer: 'lcd',  action: 'particles', params: { preset: 'rainbow', x: 220, y: 200, count: 18 } },
-      { at: 700,  layer: 'lcd',  action: 'text', params: { text: 'アクセス数 240%増', sub: 'グラフが跳ね上がった', color: '#ffe066', ms: 1000 } },
-      { at: 1350, layer: 'overlay', action: 'flash', params: { color: '#ffe066', ms: 200 } },
-      { at: 1380, layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'happy' } },
+      { waitFor: 'stop3',  layer: 'lcd',  action: 'particles', params: { preset: 'rainbow', x: 220, y: 200, count: 18 } },
+      { waitFor: 'stop3', after: 50,  layer: 'lcd',  action: 'text', params: { text: 'アクセス数 240%増', sub: 'QuickSight のグラフが跳ね上がった', color: '#ffe066', ms: 1000 } },
+      { waitFor: 'stop3', layer: 'overlay', action: 'flash', params: { color: '#ffe066', ms: 200 } },
+      { waitFor: 'stop3', after: 30, layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'happy' } },
     ],
   },
 ];

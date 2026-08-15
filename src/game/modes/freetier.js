@@ -46,7 +46,7 @@ import { NORMAL_SUBSTATES } from '../../data/modes.js';
 import {
   ZENCHO, ZENCHO_PATTERN_BY_ID, ZENCHO_WIN_RANK, CHAIN_SPEC_BY_PATTERN,
 } from '../../data/zencho.js';
-import { FLAG_BY_ID } from '../../data/flags.js';
+// FLAG_BY_ID の import は U64-4(成立役テロップの廃止)で不要になったため外した
 import { isRareRole } from '../../data/rareroles.js';
 
 const SUBSTATE_BY_ID = Object.fromEntries(NORMAL_SUBSTATES.states.map((s) => [s.id, s]));
@@ -85,6 +85,51 @@ export function setDebugPattern(id) {
 /** 現在のデバッグ固定パターン(検証用の読み出し口) */
 export function getDebugPattern() {
   return DEBUG_PATTERN;
+}
+
+/**
+ * デバッグ用の前兆強度の固定(?strength=3 / 2026-08-15 検証指摘 F5)。
+ *
+ * 【なぜ要るか】演出パターンには `minStrength`(この強度以上でしか出ない)があり、
+ *   ?pattern=fis_az_down のような強度3専用パターンを固定しても、
+ *   強度が 1 や 2 に決まった前兆では **一度も発火しない**ため確認できなかった。
+ *
+ * 【出目不変の約束】強度は必ず drawNumber を通してから上書きする。
+ * デバッグ指定の有無でゲーム抽選RNGの消費数は1つも変わらない。
+ * @type {number|null}
+ */
+let DEBUG_STRENGTH = null;
+
+/**
+ * 前兆の強度を固定する(デバッグ用)。
+ * @param {number|null} n 1〜3。範囲外 / null で解除
+ * @returns {number|null} 実際に設定された値
+ */
+export function setDebugStrength(n) {
+  const v = Number(n);
+  DEBUG_STRENGTH = Number.isInteger(v) && v >= 1 && v <= 3 ? v : null;
+  return DEBUG_STRENGTH;
+}
+
+/** 現在のデバッグ固定強度(検証用の読み出し口) */
+export function getDebugStrength() {
+  return DEBUG_STRENGTH;
+}
+
+/**
+ * 抽選で決まった強度に、デバッグ指定を反映して返す。
+ *
+ * 優先順は ?strength= > ?pattern= の要求強度 > 抽選値。
+ * **?pattern= だけを指定したときは、そのパターンの minStrength まで自動で持ち上げる**
+ * (F5: 強度3専用パターンを固定しても発火しない、を解消する)。
+ * @param {number} drawn 抽選で決まった強度
+ * @returns {number}
+ */
+function debugStrength(drawn) {
+  if (DEBUG_STRENGTH != null) return DEBUG_STRENGTH;
+  if (!DEBUG_PATTERN) return drawn;
+  const p = ZENCHO_PATTERN_BY_ID[DEBUG_PATTERN];
+  return p ? Math.max(drawn, p.minStrength ?? 1) : drawn;
 }
 
 /** state に対応する前兆状態を取り出す(無ければ空で作る) */
@@ -267,6 +312,8 @@ export const freeTier = {
      *
      * 「高確/激アツに入ってからCZ」を主ルートにするための本体。
      * レア役契機(上の drawCzEntry)は約1/25でしか回ってこないので、
+     * (U63 で 1/6.17 になったが、1回あたりの当選率を 0.5倍にして相殺しているため
+     *  「レア役単発ではCZに入らない」という関係は変わっていない)
      * ステージ自体が毎ゲーム抽選を持つことで
      * 「上がったのに何も起きずに転落」を減らし、
      * 激アツは数ゲーム以内にほぼ勝負が決まるようにしている。
@@ -373,11 +420,17 @@ export const freeTier = {
       }
     }
 
-    // 昇格テロップ > 前兆テロップ > レア役テロップ の優先順
+    /*
+     * 昇格テロップ > 前兆テロップ の優先順。
+     *
+     * ── 成立役テロップを廃止した(2026-08-15 ユーザー指示 U64-4)────────────
+     * ここには以前 `${役名} — 次に期待`(「チャンス目 — 次に期待」等)を出していたが、
+     * **成立役の告知は予告演出側(液晶のポップアップ・役色・効果音)の担当**で、
+     * 下部テロップにも同じことを書くと U8(同じ情報を2か所に出さない)に反する。
+     * レア役を引いたことは画と音で必ず伝わるので、テロップからは落とす。
+     * **役名を出すテロップをここへ書き戻さないこと。**
+     */
     if (!telop) telop = zenchoTelop;
-    if (!telop && isRareRole(g.flag)) {
-      telop = `${FLAG_BY_ID[g.flag]?.name ?? g.flag} — 次に期待`;
-    }
     return { telop, events };
   },
 };
@@ -456,7 +509,8 @@ function drawPattern(rng, strength, kind) {
 function startZencho(zs, rng, kind, pending, state = null) {
   const spec = kind === 'real' ? ZENCHO.real : ZENCHO.fake;
   const total = drawNumber(rng, spec.gamesDist);
-  const strength = drawNumber(rng, spec.strengthDist);
+  // 引いてから上書きする(RNGの消費数はデバッグ指定の有無で変わらない)
+  const strength = debugStrength(drawNumber(rng, spec.strengthDist));
   const pattern = drawPattern(rng, strength, kind);
   /**
    * 擬似連パターン(DeepRacer / CodePipeline)。到達step を先に決め、
@@ -496,7 +550,8 @@ function startZencho(zs, rng, kind, pending, state = null) {
 function promoteZencho(zs, rng, win) {
   const z = zs.z;
   zs.pending = win;
-  z.strength = Math.max(z.strength, drawNumber(rng, ZENCHO.real.strengthDist));
+  // 格上げ側もデバッグ指定を反映する(消費数は変えない。F5)
+  z.strength = debugStrength(Math.max(z.strength, drawNumber(rng, ZENCHO.real.strengthDist)));
   z.pattern = drawPattern(rng, z.strength, 'real');
   z.left = Math.max(z.left, ZENCHO.upgrade.minLeft);
   z.total = z.step + z.left;

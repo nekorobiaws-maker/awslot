@@ -249,7 +249,7 @@ export class GameFlow {
      */
     const freezeHit = drawFreeze(this.rng, this.flag, this.modes.currentId) || this._forcedFreeze;
     this._forcedFreeze = false;
-    // 前のゲームのテロップ(「チャンス目 — 次に期待」等)はここで寿命が切れる。
+    // 前のゲームのテロップ(前兆の途中経過など)はここで寿命が切れる。
     // 次のゲームが回った時点で古い情報は消し、必要な告知はこの後の
     // 抽選・モード処理が改めて設定する(2026-08-13 ユーザー指示)。
     this.telop = '';

@@ -27,7 +27,16 @@
  *   BELL → BELL / WEAK_CHERRY・STRONG_CHERRY → CHERRY / MELON → MELON
  *   CHANCE → LAMBDA / SHARK → SHARKBAR / GHOST → GHOST7
  *   ID が違うので `$flag` をそのまま symbol へ渡してはいけない。役ごとにシナリオを分けている。
+ *
+ * ■ 結論行(U57 / U62)
+ *   「何が運ばれてきたか」「開通したか」を言い切る行は conclusionCue() で作る:
+ *     出す = 第3停止(当落確定)/ 消える = 次のゲームのレバーON /
+ *     色  = data/rolecolors.js の役色(直書き禁止)
+ *   以前は運搬側の結論が金文字(#ffe066)で、チェリー成立でも赤にならず
+ *   「色 = 成立役」の対応が崩れていた(U62 で是正)。
  */
+
+import { colorForFlag, conclusionCue } from '../rolecolors.js';
 
 /* ══ デバッグ強制発火(検証担当向け)═══════════════════════════════════
  *
@@ -104,6 +113,8 @@ const FORCE_BLUEGREEN = (() => {
 const BG_SIDES = {
   blue: {
     flags: ['REPLAY'],
+    /** 結論行の色は役色マップから引く(U62)。リプレイ = DynamoDB の青 */
+    role: 'REPLAY',
     /**
      * リプレイは 1/7.3 と高頻度なので強めに間引く
      * (実効 = chance × YOKOKU_CHANCE_SCALE。係数は staging/director.js が正)。
@@ -111,7 +122,6 @@ const BG_SIDES = {
      */
     weight: 300,
     chance: 0.20,
-    color: '#8fc4ff',
     /** 「継続」の語は使わない(sticky 判定の語。意味も『もう1回転』の方が正確) */
     text: 'BLUE のまま',
     sub: 'リプレイ成立 — 現行のままもう1回転',
@@ -119,6 +129,8 @@ const BG_SIDES = {
   },
   green: {
     flags: ['MELON'],
+    /** スイカ = S3 の緑(U62) */
+    role: 'MELON',
     /**
      * スイカは 1/100。しかも成立時は「レア役限定の予告」が全部候補に入る激戦区
      * (候補 70本・総weight 6600超)なので、weight を厚くしないと選ばれない。
@@ -126,7 +138,6 @@ const BG_SIDES = {
      */
     weight: 2400,
     chance: null,
-    color: '#7bf7d0',
     text: 'GREEN へ切替',
     sub: 'スイカ成立 — 新バージョンへ切り替わった',
     flash: '#4ce0a0',
@@ -178,7 +189,8 @@ const DC_HITS = [
   {
     key: 'cherry',
     flags: ['WEAK_CHERRY', 'STRONG_CHERRY'],
-    color: '#ff4d4d',
+    /** 色は data/rolecolors.js が唯一の正(U62)。ここには16進を書かない */
+    role: 'WEAK_CHERRY',
     sub: '専用線が開通 — IAM の権限が通った',
     /** チェリー(1/24.2 + 1/86.4)の leverOn プールから約5%を取る */
     weight: 320,
@@ -186,21 +198,21 @@ const DC_HITS = [
   {
     key: 'melon',
     flags: ['MELON'],
-    color: '#4ce0a0',
+    role: 'MELON',
     sub: '専用線が開通 — S3 へ直接届いた',
     weight: 320,
   },
   {
     key: 'chance',
     flags: ['CHANCE'],
-    color: '#ffd95e',
+    role: 'CHANCE',
     sub: '専用線が開通 — Lambda が呼ばれた',
     weight: 320,
   },
   {
     key: 'shark',
     flags: ['SHARK'],
-    color: '#8ad4ff',
+    role: 'SHARK',
     sub: '専用線が開通 — 太い回線が繋がった',
     weight: 420,
   },
@@ -227,11 +239,10 @@ function dcMissScenario() {
     cues: [
       ...dcIntroCues(),
       { waitFor: 'stop3', after: 120, layer: 'sfx', action: 'synth', params: { preset: 'error_buzz', gain: 0.7 } },
-      { waitFor: 'stop3', after: 140, layer: 'lcd', action: 'text',
-        params: {
-          text: '接続できなかった…', sub: 'リンクが上がらないまま終わった',
-          color: '#96a3b3', ms: 1300, sticky: false,
-        } },
+      // U57/U62: 結論は stop3 + sticky、ハズレなので色は白(役色が付かない = 何も成立していない)
+      conclusionCue({
+        flag: 'LOSE', text: '接続できなかった…', sub: 'リンクが上がらないまま終わった', ms: 1300,
+      }),
     ],
   };
 }
@@ -250,9 +261,9 @@ function dcHitScenario(h) {
       ...dcIntroCues(),
       { waitFor: 'stop3', after: 100, layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
       { waitFor: 'stop3', after: 120, layer: 'sfx', action: 'synth', params: { preset: 'upgrade_chime' } },
-      { waitFor: 'stop3', after: 140, layer: 'overlay', action: 'flash', params: { color: h.color, ms: 200 } },
-      { waitFor: 'stop3', after: 160, layer: 'lcd', action: 'text',
-        params: { text: 'オンプレと接続完了', sub: h.sub, color: h.color, ms: 1400, sticky: false } },
+      { waitFor: 'stop3', after: 140, layer: 'overlay', action: 'flash',
+        params: { color: colorForFlag(h.role), ms: 200 } },
+      conclusionCue({ flag: h.role, text: 'オンプレと接続完了', sub: h.sub, after: 160, ms: 1400 }),
     ],
   };
 }
@@ -303,10 +314,18 @@ function bluegreenScenario(win, lean) {
         params: { anim: 'bluegreen_choice', phase: 'decide', win, lean, ms: 1800 } },
       { waitFor: 'stop3', after: 120, layer: 'sfx', action: 'synth', params: { preset: 'upgrade_chime' } },
       { waitFor: 'stop3', after: 140, layer: 'overlay', action: 'flash', params: { color: S.flash, ms: 220 } },
-      // sticky:false を明示する。2択の決着は「その場で読ませる」もので、
-      // 次のレバーONまで残す種類の告知ではない(残すと本物の告知の居場所を奪う)
-      { waitFor: 'stop3', after: 420, layer: 'lcd', action: 'text',
-        params: { text: S.text, sub: S.sub, color: S.color, ms: 1300, sticky: false } },
+      /*
+       * 2択の決着 = 結論行。U57 で他の予兆と同じライフサイクルへ揃えた:
+       *   stop3 で出す(ここは元から)+ **次のレバーONで消える**(sticky)。
+       * 以前は sticky:false を明示していたが、その理由だった
+       * 「残すと本物の告知の居場所を奪う」は U57 の
+       * 『sticky は上限寿命であって占有権ではない』(lcdanims.js の showText)で
+       * 構造的に解消した。新しい告知が来れば最低表示時間で必ずゆずる。
+       * result 誤判定の防止は priority:'gimmick'(上)と文言側で担保している
+       * ── classifyScenario は sticky パラメータではなく **文言** を見るため、
+       *    ここを sticky:true にしても分類は動かない。
+       */
+      conclusionCue({ flag: S.role, text: S.text, sub: S.sub, after: 420, ms: 1300 }),
     ],
   };
 }
@@ -345,8 +364,12 @@ export default applyForce([
       { at: 40,  layer: 'lcd',  action: 'anim',
         params: { anim: 'edge_wind_carry', symbol: 'CHERRY', count: 1, strength: 1, dir: -1, ms: 1900 } },
       { at: 900, layer: 'sfx',  action: 'synth', params: { preset: 'edge_hit' } },
-      { waitFor: 'stop3', after: 80, layer: 'lcd', action: 'text',
-        params: { text: 'IAM 到着', sub: '金の風がアクセスキーを運んできた', color: '#ffe066', ms: 1000 } },
+      // U62: 運ばれた絵柄 = 成立役なので、結論行はチェリー(IAM)の赤。
+      // 以前は金文字で「色 = 成立役」の対応が崩れていた
+      conclusionCue({
+        flag: 'WEAK_CHERRY', text: 'IAM 到着', sub: '金の風がアクセスキーを運んできた',
+        after: 80, ms: 1000,
+      }),
     ],
   },
 
@@ -360,11 +383,12 @@ export default applyForce([
       { at: 0,   layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
       { at: 0,   layer: 'sfx',  action: 'synth', params: { preset: 'wind_gust' } },
       { at: 40,  layer: 'lcd',  action: 'anim',
-        params: { anim: 'edge_wind_carry', symbol: 'MELON', count: 2, strength: 1, dir: -1, ms: 1900 } },
+        params: { anim: 'edge_wind_carry', symbol: 'MELON', count: 1, strength: 1, dir: -1, ms: 1900 } },
       { at: 900, layer: 'sfx',  action: 'synth', params: { preset: 'edge_hit' } },
       // U9: S3(スイカ)対応の示唆なので緑。tone は付けない(信頼度の赤帯とは別レイヤー)
-      { waitFor: 'stop3', after: 80, layer: 'lcd', action: 'text',
-        params: { text: 'S3 到着', sub: '風がオブジェクトを運んできた', color: '#4ce0a0', ms: 1000 } },
+      conclusionCue({
+        flag: 'MELON', text: 'S3 到着', sub: '風がオブジェクトを運んできた', after: 80, ms: 1000,
+      }),
     ],
   },
 
@@ -378,10 +402,12 @@ export default applyForce([
       { at: 0,   layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
       { at: 0,   layer: 'sfx',  action: 'synth', params: { preset: 'wind_gust' } },
       { at: 40,  layer: 'lcd',  action: 'anim',
-        params: { anim: 'edge_wind_carry', symbol: 'LAMBDA', count: 3, strength: 1, dir: -1, ms: 1900 } },
+        params: { anim: 'edge_wind_carry', symbol: 'LAMBDA', count: 1, strength: 1, dir: -1, ms: 1900 } },
       { at: 900, layer: 'sfx',  action: 'synth', params: { preset: 'edge_hit' } },
-      { waitFor: 'stop3', after: 80, layer: 'lcd', action: 'text',
-        params: { text: 'Lambda 到着', sub: '関数が3つ運ばれてきた', color: '#ffe066', ms: 1000 } },
+      // U62: チャンス目(Lambda)は黄。金(#ffe066)とは別の色にして役と1対1にする
+      conclusionCue({
+        flag: 'CHANCE', text: 'Lambda 到着', sub: '関数が運ばれてきた', after: 80, ms: 1000,
+      }),
     ],
   },
 
@@ -398,9 +424,10 @@ export default applyForce([
         params: { anim: 'edge_wind_carry', symbol: 'SHARKBAR', count: 1, strength: 2, dir: -1, ms: 2200 } },
       { at: 1000, layer: 'overlay', action: 'flash', params: { color: '#ffe066', ms: 220 } },
       { at: 1040, layer: 'sfx',     action: 'synth', params: { preset: 'shark_swim' } },
-      // 「何が運ばれてきたか」までで止める。当落は判定側の演出が語る
-      { waitFor: 'stop3', after: 80, layer: 'lcd', action: 'text',
-        params: { text: 'BAR 到着', sub: '虹の風がエッジから運んできた', color: '#ffe066', ms: 1200 } },
+      // 「何が運ばれてきたか」までで止める。当落は判定側の演出が語る。色はサメの水色(U62)
+      conclusionCue({
+        flag: 'SHARK', text: 'BAR 到着', sub: '虹の風がエッジから運んできた', after: 80, ms: 1200,
+      }),
     ],
   },
 
@@ -423,9 +450,15 @@ export default applyForce([
       { at: 0,  layer: 'sfx', action: 'synth', params: { preset: 'wind_gust', gain: 0.45 } },
       { at: 40, layer: 'lcd', action: 'anim',
         params: { anim: 'edge_wind_carry', count: 0, strength: 0, dir: -1, ms: 1400 } },
-      // 結論は出さない。「通り過ぎた」だけ
-      { at: 950, layer: 'lcd', action: 'text',
-        params: { text: '風だけが通り過ぎた', sub: 'キャッシュには何も残らなかった', color: '#8aa0b4', ms: 900 } },
+      /*
+       * 「何も運ばれてこなかった」= このゲームの結論(U57)。
+       * 当落が確定する stop3 まで待ってから出し、色はハズレの白(U62)。
+       * 以前は at:950 = **第3停止より前** に出ることがあり、
+       * 「結果の画は当落確定イベントのみ」を踏み越えていた。
+       */
+      conclusionCue({
+        flag: 'LOSE', text: '風だけが通り過ぎた', sub: 'キャッシュには何も残らなかった', ms: 900,
+      }),
     ],
   },
 
@@ -460,6 +493,17 @@ export default applyForce([
    *   どちらもゲーム進行の順序に触るので、ロジック担当の判断が要る。
    *   受け口(actions.js の 'reelfx.lock')と FREEZE.maxLockMs はそのまま残してある。
    *
+   * ══ 「ピク止め」で間を取り戻した(2026-08-15 ユーザー指示 U64-6)══════
+   *
+   * ユーザー指示は「コールドスタートのときは、レバーONでリールが一瞬だけ動いて
+   * すぐ止まり、1秒ほど静止してから回り出してほしい」。
+   * 上のとおりゲーム側のロックはこの枠では使えないので、
+   * **描画だけを止める** `reelfx.stall`(render/reelview.js の stall())で実現した。
+   *   ・リールの位置・速度・停止制御・成立役は1ミリも変わらない(描く場所だけ差し替え)
+   *   ・レバーONの後(= 成立役が決まった後)に呼ぶので ③(レア役限定)を壊さない
+   *   ・演出RNGもゲーム抽選RNGも消費しない
+   * 「無音の間」と長さを揃えてあるので、静止が明けるのと同時に文字が出る。
+   *
    * ■ 「無音」について
    *   このシナリオは SE を1つも鳴らさない。ただしレバーON音と
    *   レア役の効果音(main.js の FLAG_SFX)はシナリオの外で鳴るので、完全な無音ではない。
@@ -480,6 +524,11 @@ export default applyForce([
     priority: 'ambient',
     duration: 1800,
     cues: [
+      /*
+       * ピク止め(見た目だけ)。レバーONで一瞬動いて止まり、無音が明けると回り出す。
+       * ms は下の無音(750ms)と揃えてある。出目・停止制御は一切変わらない。
+       */
+      { at: 0, layer: 'reelfx', action: 'stall', params: { ms: 750 } },
       // 750ms は完全な無音。ここに音や画を足すと "間" が消える
       { at: 750, layer: 'lcd', action: 'text',
         params: { text: 'コールドスタート発生', sub: '関数の実行環境を初期化中', color: '#8ad4ff', ms: 900 } },
@@ -500,6 +549,8 @@ export default applyForce([
     priority: 'ambient',
     duration: 2600,
     cues: [
+      // ロングはピク止めも長い(= 静止が長いほど熱い、が画でも分かる)
+      { at: 0,    layer: 'reelfx', action: 'stall', params: { ms: 1400 } },
       { at: 1400, layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
       { at: 1400, layer: 'lcd',  action: 'text',
         params: {

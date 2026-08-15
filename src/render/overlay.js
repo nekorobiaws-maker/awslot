@@ -4,13 +4,41 @@
  * 液晶(z=2)とリール(z=4)は物理的に別領域にあるため、
  * 筐体全体を覆う演出はこのレイヤーだけが担当する。
  *
- * 自前で持つのはフラッシュ・画面揺れ・役ラベルの3つ。
+ * 自前で持つのはフラッシュ・画面揺れ・役ラベル・暗転・暗転の上の1行。
  * カットインとパーティクルは staging 側の実装を描画するだけに留める。
+ *
+ * **暗転(blackout)だけは筐体全体ではなく液晶(LCD)の矩形にしか塗らない**
+ * (2026-08-15 U60)。理由は blackout() のコメントを参照。
+ *
+ * ══ 液晶からはみ出してよいのは「告知級」だけ(2026-08-15 ユーザー指示 U66-4)══
+ *
+ * このレイヤーは筐体全体(720×1080)を覆えるが、実際に液晶の外へ絵を出してよいのは
+ * **ボーナス・RUSH の当選告知**だけ。予告・煽り(「WAF プロテクト」等)は
+ * 液晶の窓の中で完結させる。判定と実装は staging/anims/cutins.js が持つ:
+ *   FULLSCREEN_CUTINS … 外へ出てよいカットインの一覧(ここに無ければ液晶でクリップ)
+ * このファイル自身が描くもののうち
+ *   flash   … 画面全体の光。**色の板であって絵ではない**ので全面のままでよい
+ *   shake   … 筐体を揺らす CSS 変数。描画ではない
+ *   1行     … 液晶の矩形内(_drawLine)
+ *   役ラベル … ?debug=1 専用のHUD。液晶とリールの間の帯に出す(下のコメント参照)
+ * となっており、いずれもこの原則に反しない。
  */
 
 import { getLayerRect } from '../engine/layers.js';
 
 const FONT = '"Helvetica Neue", "Hiragino Sans", "Noto Sans JP", sans-serif';
+
+/** 角丸の矩形パス(サブ行の座布団に使う。塗り/線は呼び出し側で) */
+function roundRect(ctx, x, y, w, h, r) {
+  const rr = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rr);
+  ctx.arcTo(x + w, y + h, x, y + h, rr);
+  ctx.arcTo(x, y + h, x, y, rr);
+  ctx.arcTo(x, y, x + w, y, rr);
+  ctx.closePath();
+}
 
 /**
  * 暗転を維持できる上限[ms](2026-08-14 検証指摘の保険)。
@@ -27,10 +55,10 @@ const FONT = '"Helvetica Neue", "Hiragino Sans", "Noto Sans JP", sans-serif';
 export const BLACKOUT_MAX_HOLD_MS = 12000;
 
 /**
- * 生きている OverlayView の一覧(暗転の一括解除用)。
+ * 生きている OverlayView の一覧(暗転・1行表示の一括解除用)。
  *
- * 暗転は update(dt) の自然経過でしか消えないため、
- * 「セッションを引き直した」「演出システムを外した」のような **画面ごとの仕切り直し** で
+ * 暗転もオーバーレイの1行も update(dt) の自然経過でしか消えないため、
+ * 「セッションを引き直した」「次のゲームが始まった」のような **仕切り直し** で
  * 明示的に落とす口が要る。main.js を触らずに配線できるよう、
  * lcdanims.js の TEXT_HOSTS と同じ作法でモジュール側に持つ。
  * @type {Set<OverlayView>}
@@ -42,37 +70,33 @@ export function clearAllBlackouts() {
   for (const v of OVERLAY_HOSTS) v.clearBlackout();
 }
 
-/* ══ ページ全体の暗転(2026-08-14 検証指摘 V21-06)═══════════════════
+/**
+ * 生きているオーバーレイの1行表示をすべて落とす(2026-08-15 U57 / U60)。
  *
- * 【問題】フリーズの暗転が筐体の中だけだった
- *   このCanvasは #cabinet の中(720×1080)にしか無いので、
- *   暗転しても **ホールのボケ背景・HOW TO PLAY プレート・スマホ用の見出し** は
- *   明るいままで、「画面が落ちた」緊張感が出ていなかった。
- *
- * 【方針】筐体の外側だけを黒く塗る
- *   単純に全画面へ黒い div をかぶせると、**暗転の上に出すカットインや
- *   「神の声」まで暗くなる**(この Canvas は div より下の階層にあるため)。
- *   そこで「筐体の矩形と同じ大きさ・背景なしの div に、外向きの巨大な box-shadow」
- *   を敷いて、筐体の外周だけを黒く塗る。筐体の中は今までどおり Canvas の暗転が
- *   担当するので、濃さが同じなら継ぎ目は見えない。
- *
- * DOM は index.html を触らずにここで作る(生成タイミングは初回の暗転時)。
- * スタイルの本体は style.css の #page-blackout。
+ * オーバーレイの1行(showLine)は液晶のテキスト帯とは別実装なので、
+ * lcdanims.js の sticky 解除(次のレバーONで消える)が効かない。
+ * フリーズの結末「ボーナス確定!!」を余韻たっぷりに残せるようにした結果、
+ * **次のゲームの画面へ食い込みうる**ようになったため、
+ * テキスト帯と同じライフサイクル(次のレバーONで消える)をここで揃える。
+ * 呼び出し元は staging/director.js の
+ *   leverOn / modeEnter … 通常の寿命(次のゲーム / 画面の切り替わり)
+ *   sessionStart / detach … 仕切り直し
  */
-const PAGE_BLACKOUT_ID = 'page-blackout';
-
-/** ページ暗転レイヤーを取り出す(無ければ作る)。ブラウザ以外では null */
-function pageBlackoutEl() {
-  if (typeof document === 'undefined' || !document.body) return null;
-  let el = document.getElementById(PAGE_BLACKOUT_ID);
-  if (!el) {
-    el = document.createElement('div');
-    el.id = PAGE_BLACKOUT_ID;
-    el.setAttribute('aria-hidden', 'true');
-    document.body.appendChild(el);
-  }
-  return el;
+export function clearAllOverlayLines() {
+  for (const v of OVERLAY_HOSTS) v.clearLine();
 }
+
+/* ══ ページ全体の暗転は撤去した(2026-08-15 ユーザー指示 U60)═══════════
+ *
+ * V21-06 で「フリーズの暗転が筐体の中だけで緊張感が出ない」という指摘に対し、
+ * 筐体の外周を黒く塗る div(#page-blackout)を足していた。
+ * U60 でユーザー指示により **暗転は液晶(LCD)の中だけ** に戻したため、
+ *   ・筐体・リール・HOW TO PLAY プレート・ホール背景はすべて明るいまま
+ *   ・暗くなるのは「台の画面が落ちた」= 液晶の窓だけ
+ * になり、ページ側を触る必要が無くなった。
+ * DOM 生成・毎フレームの getBoundingClientRect・style.css の #page-blackout は
+ * まとめて削除してある(戻すときは V21-06 の履歴を参照)。
+ */
 
 export class OverlayView {
   /**
@@ -81,14 +105,24 @@ export class OverlayView {
    * @param {import('../staging/anims/cutins.js').Cutins} [opts.cutins]
    * @param {import('../staging/anims/particles.js').Particles} [opts.particles]
    * @param {HTMLElement} [opts.shakeTarget] 画面揺れを適用するDOM(筐体ルート)
+   * @param {import('../staging/anims/lcdanims.js').LcdAnims} [opts.anims]
+   *   二重表示(U8)の申告先。render/lcd.js と同じ**注入**で受け取る
+   *   (render → staging を import しないための約束)。
    */
-  constructor({ ctx, w = 720, h = 1080, cutins = null, particles = null, shakeTarget = null }) {
+  constructor({
+    ctx, w = 720, h = 1080, cutins = null, particles = null, shakeTarget = null, anims = null,
+  }) {
     this.ctx = ctx;
     this.w = w;
     this.h = h;
     this.cutins = cutins;
     this.particles = particles;
     this.shakeTarget = shakeTarget;
+    /**
+     * 液晶テキスト帯(LcdAnims)。U8「同じことを2か所に書かない」の申告に使う。
+     * 未注入でも描画は成立する(申告しないだけ)。
+     */
+    this.anims = anims;
 
     this.flashColor = null;
     this.flashLeft = 0;
@@ -116,21 +150,14 @@ export class OverlayView {
      */
     this.lineEntry = null;
 
-    /** ページ暗転レイヤー(初回の暗転で作る。V21-06) @type {HTMLElement|null} */
-    this._pageBlackoutEl = null;
-    /** ページ暗転が出ているか(消すときだけ触るためのフラグ) */
-    this._pageBlackoutOn = false;
-
-    // 暗転の一括解除(clearAllBlackouts)から見えるように自分を登録する。
-    // 生成側(main.js)に配線を足さなくてよいよう、ここで自己登録する。
+    // 暗転・1行表示の一括解除(clearAllBlackouts / clearAllOverlayLines)から
+    // 見えるように自分を登録する。生成側(main.js)に配線を足さなくてよいよう自己登録。
     OVERLAY_HOSTS.add(this);
   }
 
   /** 一括解除の対象から外す(テストで大量生成する場合の後始末用) */
   dispose() {
     OVERLAY_HOSTS.delete(this);
-    // ページ暗転は body 直下に居るので、自分が消えるときに必ず戻す
-    this._syncPageBlackout(0);
   }
 
   flash(color = '#ffffff', ms = 220) {
@@ -140,7 +167,15 @@ export class OverlayView {
   }
 
   /**
-   * 画面全体を暗転させる(U21: 秘宝伝「神の声」風のレバーONフリーズ用)。
+   * **液晶(LCD)の中だけ**を暗転させる(U21 のレバーONフリーズ用 / U60 で範囲を確定)。
+   *
+   * ■ どこが暗くなるか(2026-08-15 ユーザー指示 U60)
+   *   このCanvas は筐体全体(720×1080)を覆っているが、塗るのは
+   *   engine/layers.js の `lcd` 矩形だけ。**リール・筐体・その外側は明るいまま**。
+   *   「ホールの台の中で、画面だけが落ちた」という画にするための指定で、
+   *   V21-06 で足したページ全体の暗転(#page-blackout)は U60 で撤去した。
+   *   暗転の上に出す「神の声」(showLine)も液晶の中に描くので、
+   *   黒地と文字の関係は今までどおり成立する。
    *
    * ■ flash と何が違うか
    *   flash は `0.55 × (残り/尺)` の線形減衰で、**上限0.55・維持できない**。
@@ -195,8 +230,6 @@ export class OverlayView {
    */
   clearBlackout() {
     this.blackoutState = null;
-    // 次の draw() を待たずにページ側も戻す(仕切り直しの経路から呼ばれるため)
-    this._syncPageBlackout(0);
   }
 
   /**
@@ -207,12 +240,33 @@ export class OverlayView {
    * オーバーレイ自身がテキストを持つ。
    *
    * 文字は液晶の表示矩形に収める(cutins.js 冒頭の「文字は液晶の中だけに描く」)。
+   *
+   * ── U8(二重表示の禁止)の申告(2026-08-15 U60)──────────────────
+   * この1行は lcd.text を通らないので、放っておくと
+   * 「オーバーレイが大きく『ボーナス確定!!』と言い切っているのに、
+   *   盤面と液晶のポップアップも同じことを書く」= 三重表示になる。
+   * 液晶アニメが描く大文字(ANIM_HEADLINES → noteSpokenHeadline)と
+   * まったく同じ扱いで **言い切った文言を申告** し、
+   * 盤面側(render/lcd.js の _drawRuleLine → anims.covers)に黙ってもらう。
+   * 申告は次のレバーONで自動的に忘れられる(lcdanims.js の clearSpokenHeadlines)。
+   * 表示中はさらに毎フレーム registerAmbient する(_drawLine)ので、
+   * 同じことを言う lcd.text のポップアップも積まれなくなる。
+   *
    * @param {{text:string, sub?:string, color?:string, size?:number, ms?:number}} p
    */
   showLine({ text, sub = '', color = '#ffffff', size = 30, ms = 1200 } = {}) {
     if (!text) return;
     const dur = Math.max(1, ms);
     this.lineEntry = { text: String(text), sub: String(sub ?? ''), color, size, ms: dur, left: dur };
+    this.anims?.noteHeadline?.(this.lineEntry.text);
+  }
+
+  /**
+   * オーバーレイの1行を今すぐ消す(次のレバーONでの仕切り直し用 / U57)。
+   * 液晶テキスト帯の sticky 解除と同じ意味を持たせるための口。
+   */
+  clearLine() {
+    this.lineEntry = null;
   }
 
   /** 筐体を揺らす(CSS transform に上乗せせず、専用の変数で制御) */
@@ -263,6 +317,12 @@ export class OverlayView {
     const elapsed = e.ms - e.left;
     const alpha = Math.min(1, elapsed / 220) * Math.min(1, e.left / 220);
     if (alpha <= 0) return;
+    /*
+     * U8: 実際に描いたフレームだけ「いまこれを出している」と申告する
+     * (render/lcd.js の _ambient と同じ約束。見えていない回に申告しない)。
+     * これで同じことを言う lcd.text のポップアップは積まれなくなる。
+     */
+    this.anims?.registerAmbient?.(e.text);
 
     const cx = lcd.x + lcd.w / 2;
     const cy = lcd.y + lcd.h / 2;
@@ -280,7 +340,20 @@ export class OverlayView {
       size -= 2;
       ctx.font = `900 ${size}px ${FONT}`;
     }
-    const mainY = e.sub ? cy - 12 : cy;
+
+    /*
+     * ── サブ行がキャラに被る問題(2026-08-15 検証指摘 F4)────────────────
+     * フリーズの結末「ボーナス確定!! / ゴーストボーナスSP + RUSH 確定」は
+     * 明転と同時にサメ(kiro premium + zoom)が液晶いっぱいに出るところへ描かれる。
+     * サブ行は 14px で縁取りだけだったため、サメの体の上で完全に溶けていた。
+     *
+     * 直し方は2点(どちらも文言・尺には触らない):
+     *   ① ブロックごと少し上へ寄せる(サメの顔は液晶の下半分に来る)
+     *   ② サブ行の下に半透明の座布団を敷く(液晶テキスト帯 V31-08 と同じ手)
+     * サブ行そのものも 14 → 16px にして、明るい絵の上でも輪郭が残るようにした。
+     */
+    const blockShift = e.sub ? -24 : 0;
+    const mainY = cy + blockShift + (e.sub ? -12 : 0);
     ctx.lineWidth = Math.max(4, size * 0.2);
     ctx.strokeStyle = 'rgba(0,0,0,0.9)';
     ctx.strokeText(e.text, cx, mainY, maxW);
@@ -288,11 +361,23 @@ export class OverlayView {
     ctx.fillText(e.text, cx, mainY, maxW);
 
     if (e.sub) {
-      ctx.font = `700 14px ${FONT}`;
+      const subY = cy + blockShift + 26;
+      const subSize = 16;
+      ctx.font = `700 ${subSize}px ${FONT}`;
+      // 座布団(サメの絵の上でも読めるようにする)
+      const subW = Math.min(maxW, (ctx.measureText?.(e.sub)?.width ?? e.sub.length * subSize) + 26);
+      ctx.save();
+      ctx.globalAlpha = alpha * 0.72;
+      ctx.fillStyle = 'rgba(4,8,20,0.9)';
+      roundRect(ctx, cx - subW / 2, subY - subSize, subW, subSize * 2, 8);
+      ctx.fill();
+      ctx.restore();
+
       ctx.lineWidth = 3;
-      ctx.strokeText(e.sub, cx, cy + 22, maxW);
-      ctx.fillStyle = 'rgba(235,240,255,0.85)';
-      ctx.fillText(e.sub, cx, cy + 22, maxW);
+      ctx.strokeStyle = 'rgba(0,0,0,0.9)';
+      ctx.strokeText(e.sub, cx, subY, maxW);
+      ctx.fillStyle = 'rgba(240,245,255,0.95)';
+      ctx.fillText(e.sub, cx, subY, maxW);
     }
     ctx.restore();
   }
@@ -324,37 +409,6 @@ export class OverlayView {
     return b.alpha * Math.max(0, 1 - (b.t - outStart) / b.fadeOut);
   }
 
-  /**
-   * 筐体の外側(ページ)を筐体内と同じ濃さで暗くする(V21-06)。
-   * 筐体の位置はウィンドウサイズで動くので、暗転中は毎フレーム測り直す
-   * (測るのは暗転が出ている数秒だけ。常時のレイアウト読み取りにはならない)。
-   * @param {number} alpha 0〜1
-   */
-  _syncPageBlackout(alpha) {
-    // 一度も暗転していないのに DOM を作らない(起動直後の要素を増やさない)
-    if (alpha <= 0 && !this._pageBlackoutEl) return;
-    const el = this._pageBlackoutEl ?? (this._pageBlackoutEl = pageBlackoutEl());
-    if (!el) return;
-    if (alpha <= 0) {
-      if (this._pageBlackoutOn) {
-        el.style.opacity = '0';
-        el.style.display = 'none';
-        this._pageBlackoutOn = false;
-      }
-      return;
-    }
-    const rect = this.shakeTarget?.getBoundingClientRect?.();
-    if (rect) {
-      el.style.left = `${rect.left}px`;
-      el.style.top = `${rect.top}px`;
-      el.style.width = `${rect.width}px`;
-      el.style.height = `${rect.height}px`;
-    }
-    el.style.display = 'block';
-    el.style.opacity = String(alpha);
-    this._pageBlackoutOn = true;
-  }
-
   draw() {
     const ctx = this.ctx;
     ctx.clearRect(0, 0, this.w, this.h);
@@ -362,15 +416,20 @@ export class OverlayView {
     /**
      * 暗転はいちばん奥。カットイン・パーティクル・フラッシュは暗転の上に出す
      * (U21 のフリーズは「暗転で溜める → 暗転のままカットインで爆発」の順で組むため)。
+     *
+     * ── 塗るのは液晶の窓だけ(2026-08-15 ユーザー指示 U60)──────────────
+     * 以前はこの Canvas 全面(720×1080)+ ページ外周(#page-blackout)を塗っていた。
+     * U60 で「暗転は液晶の中だけ」に戻したので、engine/layers.js の lcd 矩形で
+     * 範囲を取る(筐体アートに合わせて窓の位置が動くため毎回引き直す)。
+     * リール・筐体・打ち方プレートは暗転しない。
      */
     const bo = this.blackoutAlpha();
-    // 筐体の外(ページ背景・操作ガイド・スマホ用の見出し)も同じ濃さで落とす
-    this._syncPageBlackout(bo);
     if (bo > 0) {
+      const lcd = getLayerRect('lcd');
       ctx.save();
       ctx.globalAlpha = bo;
       ctx.fillStyle = '#000000';
-      ctx.fillRect(0, 0, this.w, this.h);
+      ctx.fillRect(lcd.x, lcd.y, lcd.w, lcd.h);
       ctx.restore();
     }
 

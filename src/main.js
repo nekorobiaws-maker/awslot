@@ -40,7 +40,7 @@ import { CharacterLayer } from './render/chars/index.js';
 
 import { StagingDirector } from './staging/director.js';
 import { createActions } from './staging/actions.js';
-import { LcdAnims, getAmbientTexts, stageTextCovers } from './staging/anims/lcdanims.js';
+import { LcdAnims } from './staging/anims/lcdanims.js';
 import { Cutins } from './staging/anims/cutins.js';
 import { Particles } from './staging/anims/particles.js';
 
@@ -50,11 +50,13 @@ import { ZENCHO, ZENCHO_PATTERN_BY_ID } from './data/zencho.js';
 import { DEBUG_RUSH_KEYS } from './data/rushes.js';
 // U44: 甘スロ。判定(AMA_MODE)も遷移先URL(amaUrl)もデータ側が持つ
 import { AMA, AMA_MODE, amaUrl } from './data/ama.js';
-import { setDebugPattern, getDebugPattern } from './game/modes/freetier.js';
+import { setDebugPattern, getDebugPattern, setDebugStrength } from './game/modes/freetier.js';
 import { verifyStrips } from './data/reelstrips.js';
 import { SCENARIOS, validateScenarios } from './data/scenarios/index.js';
 import { MODE_BGM, FLAG_SFX } from './data/sfx-presets.js';
 import { SESSION } from './data/session.js';
+// 学習記録(2026-08-15 学習強化)。セッションの区切りを伝えるためだけに触る
+import { resetSessionDigest } from './data/learnlog.js';
 
 /**
  * 起動時に有効なモードID(?mode= 用)。
@@ -87,6 +89,8 @@ function readParams() {
     freeze: q.get('freeze') === '1',
     /** ?pattern=bill_shock で前兆の演出パターンを固定する(data/zencho.js の id) */
     pattern: q.get('pattern'),
+    /** ?strength=3 で前兆の強度を固定する(1〜3。強度専用パターンの確認用 / F5) */
+    strength: num('strength', null),
     /*
      * ?ama=1(甘スロ)はここでは読まない。
      * 判定の唯一の正は data/ama.js の AMA_MODE(小役テーブルを書き換える側と
@@ -103,14 +107,20 @@ function readParams() {
  *   L キー        … src/data/scenarios/yokoku-luna.js(KEY_MAP ではなく自前の keydown)
  *   URLクエリ     … src/main.js の readParams / render/lcd.js(countdown)/
  *                   scenarios の yokoku-luna(luna)・yokoku-aruaru(aruaru)・
- *                   yokoku-wind(yw / bluegreen)
+ *                   yokoku-wind(yw / bluegreen)・quiz(rp = リール3択クイズ / quiz = 出題固定)・
+ *                   yokoku-polly(polly = Polly マイクテスト予兆)・
+ *                   trivia(trivia = ボーナス中の豆知識カードの中身固定)/
+ *                   data/learnlog.js(learn = 学習表示のON/OFF / learnreset = 学習記録の消去)
  *   コンソールAPI … このファイル末尾の window.AWSLOT
  */
 
 /**
- * リザルトが開いている間の下部テロップ(2026-08-15 検証指摘 F18)。
+ * リザルトが開いている間の下部パネルの1行(2026-08-15 検証指摘 F18 / U66-5)。
+ *
  * 集計が終わった後も「成績を集計しています…」が残って事実と食い違っていたので、
  * 「次に何を押せばよいか」へ差し替える(キーは HELP_BASIC と同じもの)。
+ * U66-5 でこのパネルは **操作案内とシステム通知だけ** の場所になったため、
+ * これはその代表例として残る唯一のゲーム画面まわりの文言。
  */
 const RESULT_OPEN_TELOP = 'R キー / ↑キーでもう一度';
 
@@ -136,20 +146,28 @@ const HELP_QUERIES = [
   ['?czId=', 'CZの種類を指定'],
   ['?dc=', 'AS RUSH の初期台数'],
   ['?freeze=1', '初回レバーONをフリーズに'],
-  ['?pattern=', '前兆パターン固定'],
+  ['?pattern=', '前兆パターン固定(32種)'],
+  ['?strength=', '前兆の強度固定(1〜3)'],
+  ['?trivia=', '豆知識カードの中身固定(サービス名の一部)'],
   ['?countdown=1', 'ラスト5カウントダウン常時表示'],
   ['?nofx=1', '演出システムOFF'],
   ['?luna=1', 'ルナのカメオ強制'],
   ['?aruaru=', 'あるある分岐を狙う(1 / ネタid)'],
   ['?yw=', '風・Direct Connect等を狙う(idの一部)'],
   ['?bluegreen=1', 'BLUE/GREEN 2択を狙う'],
+  ['?rp=', 'リール3択クイズを狙う(1で全部 / entry_cz・miss・miss_idle)'],
+  ['?quiz=', 'クイズの出題を固定(data/quiz.js の id)'],
+  ['?polly=', 'Pollyマイクテストを狙う(1 / lose・melon・cherry・lambda・shark)'],
   ['?ama=1', '甘スロで遊ぶ'],
+  ['?learn=off', '学習表示を止める'],
+  ['?learnreset=1', '学習記録を消す'],
 ];
 
 /** コンソールから叩けるもの(window.AWSLOT) */
 const HELP_CONSOLE = [
   ['AWSLOT.forceFreeze()', '次の1回転をフリーズ'],
   ['AWSLOT.setZenchoPattern(id)', '前兆パターン固定(null で解除)'],
+  ['AWSLOT.setZenchoStrength(n)', '前兆の強度固定(1〜3 / null で解除)'],
   ['AWSLOT.zenchoPatterns', '固定できるID一覧'],
 ];
 
@@ -274,43 +292,24 @@ function setupAmaUi(flow = null) {
   document.getElementById('result-session')?.setAttribute('data-ama-label', AMA.label);
 }
 
-/** 比較用にテキストを正規化する(空白・記号を落として大文字化) */
-function normalizeText(s) {
-  return String(s ?? '')
-    .replace(/[\s!！?？…・、。,.\-—―~〜"'”’「」『』[\]【】()（）:：/／+＋]/g, '')
-    .toUpperCase();
-}
-
-/**
- * 液晶に出ている演出テキストと同じ意味のテロップは下部パネルに出さない。
+/* ══ 下部パネルの1行は「システム通知」専用(2026-08-15 ユーザー指示 U66-5)══
  *
- * 完全一致だけでなく「ボーナス確定!!」と「ボーナス確定」のような
- * 包含関係も重複とみなす。ただし短い語(3文字以下)の包含で消すと
- * 「CZ」を含むだけの別文言まで消えてしまうので、4文字以上に限る。
+ * ここには以前 flow.telop(モードの説明テロップ)をそのまま流していたが、
+ * 液晶下部の説明テロップ帯と合わせて **同じ文言が画面に2〜3か所** 並ぶ元凶だった。
+ * ゲームの表示チャネルは
+ *   盤面(常設情報) + ポップアップ(瞬間告知)
+ * の2系統に整理し、下部パネルの1行は **ゲームの話をしない**:
+ *   ・デバッグキーの結果(「[DEBUG] CREDIT +50」)
+ *   ・サウンドのミュート切替
+ *   ・リザルトを開いている間の操作案内
+ * だけを出す(スクリーンリーダ向けの role="status" もこの用途で残している)。
  *
- * @param {string} telop 下部パネルに出す予定のテロップ
- * @param {string[]} lcdTexts いま液晶に出ている演出テキスト
+ * **ここへモードの状態やゲームの出来事を書かないこと。** 書いた瞬間に
+ * 「盤面 + ポップアップ + パネル」の三重表示が戻る。
  */
-function dedupeTelop(telop, lcdTexts) {
-  const t = normalizeText(telop);
-  if (!t) return telop;
-  /*
-   * 2026-08-14 ユーザー指摘 U8:
-   * 液晶側のテロップ帯(render/lcd.js の _drawTelop)と同じ判定を使う。
-   * 両者で判定がずれると「液晶では伏せたのに下部パネルには出る」= 文言が
-   * 画面を飛び移ったように見えるので、必ず同じ関数で決める。
-   */
-  if (stageTextCovers(telop)) return '';
-  for (const raw of lcdTexts) {
-    const n = normalizeText(raw);
-    if (!n) continue;
-    if (n === t) return '';
-    const short = n.length < t.length ? n : t;
-    const long = n.length < t.length ? t : n;
-    if (short.length >= 4 && long.includes(short)) return '';
-  }
-  return telop;
-}
+
+/** システム通知の表示時間[ms]。押した手応えが残る程度に短く */
+const NOTICE_MS = 2600;
 
 /**
  * 起動時のちらつき防止(#boot-screen)を隠して本体をフェードインする。
@@ -434,6 +433,13 @@ async function boot() {
     cutins,
     particles: overlayParticles,
     shakeTarget: cabinetEl,
+    /*
+     * U8(同じことを2か所へ書かない)の申告先(2026-08-15 U60)。
+     * オーバーレイの1行(フリーズの「神の声」と結末)は lcd.text を通らないので、
+     * ここを渡しておかないとテロップ・ポップアップと三重表示になる。
+     * render/lcd.js と同じく **注入** で渡す(render が staging を import しないため)。
+     */
+    anims: lcdAnims,
   });
 
   // ── 音(Phase 4: 効果音/BGM、Phase 6: キャラ音声) ──
@@ -502,6 +508,15 @@ async function boot() {
     }),
   });
   if (!params.noFx) director.attach();
+
+  /*
+   * 学習記録のセッション区切り(2026-08-15 学習強化 L1)。
+   * リザルトの「今日出会ったサービス / 今日のクイズ成績」は
+   * **1セッション(100回転)ぶん**なので、新しいセッションの頭で捨てる。
+   * 永続している AWS図鑑とクイズ通算は消えない(消すのは ?learnreset=1 だけ)。
+   * ゲーム状態には触らない完全な一方向の購読。
+   */
+  bus.on('sessionStart', () => resetSessionDigest());
 
   // ── 描画側の直接フィードバック(演出シナリオとは別) ──
   bus.on('leverOn', (p) => {
@@ -574,6 +589,16 @@ async function boot() {
     const applied = setDebugPattern(params.pattern);
     if (!applied) console.warn(`[JAWSLOT] ?pattern= の値が不正です: ${params.pattern}`);
   }
+  /*
+   * ?strength=3 … 前兆の強度を固定する(2026-08-15 検証指摘 F5)。
+   * 強度は必ず抽選してから上書きするので、指定の有無で出目は変わらない。
+   * ?pattern= だけを指定した場合は、そのパターンの minStrength まで
+   * freetier.js が自動で持ち上げる(強度3専用パターンでも必ず発火する)。
+   */
+  if (params.strength != null) {
+    const applied = setDebugStrength(params.strength);
+    if (applied == null) console.warn(`[JAWSLOT] ?strength= は 1〜3 で指定してください: ${params.strength}`);
+  }
 
   // ── 入力 ──────────────────────────────────
   /**
@@ -599,6 +624,14 @@ async function boot() {
    */
   const stagingHoldsResult = () => lcdView.stageMasked;
 
+  /*
+   * システム通知(下部パネルの1行)。U66-5 の表示チャネル整理でここだけが残った用途。
+   * ゲームの状態は一切入れない(入れると盤面・ポップアップとの三重表示になる)。
+   */
+  let noticeText = '';
+  let noticeLeft = 0;
+  const notice = (text) => { noticeText = String(text ?? ''); noticeLeft = NOTICE_MS; };
+
   const input = new Input(cabinetEl).attach();
   input.on('BET', () => { if (!stagingHoldsResult()) flow.insertBet(); });
   input.on('LEVER', () => { if (!stagingHoldsResult()) flow.leverOn(); });
@@ -611,11 +644,11 @@ async function boot() {
   // R キー: リザルト表示中に新しい100回転を始める
   input.on('RESTART', () => {
     if (flow.isResult) flow.restart();
-    else flow.telop = `[SCORE ATTACK] 残り ${flow.spinsLeft} 回転`;
+    else notice(`[SCORE ATTACK] 残り ${flow.spinsLeft} 回転`);
   });
   input.on('DEBUG_CREDIT', () => {
     const n = credit.insert(50);
-    flow.telop = `[DEBUG] CREDIT +${n}`;
+    notice(`[DEBUG] CREDIT +${n}`);
   });
   DEBUG_FLAG_KEYS.forEach((d, i) => {
     input.on(`DEBUG_FLAG_${i + 1}`, () => flow.setForcedFlag(d.flag));
@@ -630,7 +663,7 @@ async function boot() {
   // W: 「風が子役を運んでくる」演出をその場で再生(液晶アニメを直接叩く)
   input.on('DEBUG_WIND', () => {
     lcdAnims.play('edge_wind_carry', { symbol: 'BELL', count: 2, strength: 1, dir: -1 });
-    flow.telop = '[DEBUG] 風の演出(EC2 ×2 / 金)';
+    notice('[DEBUG] 風の演出(EC2 ×2 / 金)');
   });
   /* Z X C V: RUSH 4種へ強制突入(U11)。
    * ヒーローRUSHは 1/50 × RUSH突入率で普通は踏めないので、検証用の入口を用意する。
@@ -640,7 +673,7 @@ async function boot() {
     input.on(`DEBUG_RUSH_${i + 1}`, () => {
       if (flow.isResult) return;
       modes.forceMode(d.mode, {});
-      flow.telop = `[DEBUG] ${d.short} へ強制突入`;
+      notice(`[DEBUG] ${d.short} へ強制突入`);
     });
   });
   // P: 前兆の演出パターンを順送りで固定する(もう一度押すと次のパターン、一周で解除)
@@ -651,9 +684,9 @@ async function boot() {
     const nextIndex = cur === null ? 0 : ids.indexOf(cur) + 1;
     const next = nextIndex < ids.length ? ids[nextIndex] : null;
     setDebugPattern(next);
-    flow.telop = next
+    notice(next
       ? `[DEBUG] 前兆パターン固定: ${ZENCHO_PATTERN_BY_ID[next]?.name ?? next}`
-      : '[DEBUG] 前兆パターン固定を解除';
+      : '[DEBUG] 前兆パターン固定を解除');
   });
 
   input.on('TOGGLE_MUTE', () => {
@@ -661,7 +694,7 @@ async function boot() {
     audio.resume().then(linkVoiceToAudio);
     const muted = audio.toggleMute();
     voice.setMuted(muted);
-    flow.telop = muted ? '[SOUND] ミュート' : '[SOUND] ミュート解除';
+    notice(muted ? '[SOUND] ミュート' : '[SOUND] ミュート解除');
   });
 
   const debugBar = document.getElementById('debug-bar');
@@ -690,6 +723,11 @@ async function boot() {
       chars.update(dt);
       // リザルトを開くまでの溜め(U7)。演出と同じ時計で数える
       resultPanel.update(dt);
+      // システム通知の寿命(押した手応えを数秒残して自然に消す)
+      if (noticeLeft > 0) {
+        noticeLeft -= dt;
+        if (noticeLeft <= 0) noticeText = '';
+      }
       // 描画の時間進行
       reelView.update(dt);
       lcdView.update(dt);
@@ -700,7 +738,7 @@ async function boot() {
       lcdView.draw({
         modeId: modes.currentId,
         state: modes.state,
-        telop: flow.telop,
+        // U66-5: telop は渡さない(液晶下部の説明テロップ帯を廃止したため)
         stackIds: modes.stackIds,
         // 100回転スコアアタックの進行(リザルト描画を担当する後続タスク用)
         session: flow.session,
@@ -729,31 +767,18 @@ async function boot() {
           (r, i) => (flow.canStop && r.canStop) || (modes.awaitingChoice && i !== 1),
         ),
       });
-      // 同じ文言が液晶にも出ているときは下部パネルのテロップを伏せる
-      // (「ボーナス確定」などが画面に2〜3個並ぶのを防ぐ。読ませたいのは液晶側)
-      //
-      // 見るのは2種類:
-      //   getVisibleTexts() … 演出のテキスト帯(lcd.text)
-      //   getAmbientTexts() … 液晶が常設で出している文言。
-      //                       モードのルール文(state.telop)は液晶の下部にも出ており、
-      //                       これを見ないと同じ文が液晶とパネルに二重で出てしまう。
-      //
-      // U42: 全面占有演出が当落を伏せている間(液晶が1つ前の背景を出している間)は、
-      // 下部パネルのテロップも黙る。液晶側だけ伏せてもモードのルール文
-      // (「ALARM を発報させろ!」等)がここに出ていては、結局そこで当落がバレる。
-      //
-      // リザルトが開いた後は「成績を集計しています…」を残さない(2026-08-15 検証指摘 F18)。
-      // 集計はもう終わって結果が画面に出ているので、事実と食い違う。
-      // ゲーム側の flow.telop は触らず(モードの状態表示なので render から書かない)、
-      // 表示するときだけ次の操作の案内へ差し替える。
-      cabinet.setTelop(
-        lcdView.stageMasked ? ''
-          : resultPanel.isOpen ? RESULT_OPEN_TELOP
-            : dedupeTelop(flow.telop, [
-              ...(lcdAnims.getVisibleTexts?.() ?? []),
-              ...getAmbientTexts(),
-            ]),
-      );
+      /*
+       * 下部パネルの1行(U66-5 で「システム通知」専用に整理)。
+       *
+       * ゲームの状態・出来事はここへ書かない。出すのは
+       *   ・リザルトを開いている間の操作案内(次に何を押せばよいか)
+       *   ・デバッグキー / ミュートの結果(数秒で自然に消える)
+       * だけで、どちらも盤面ともポップアップとも被らない = 二重表示が起きない。
+       *
+       * 【廃止したもの】flow.telop の流し込みと、そのための重複判定(dedupeTelop)。
+       * 液晶下部の説明テロップ帯(render/lcd.js の _drawTelop)と対で消してある。
+       */
+      cabinet.setTelop(resultPanel.isOpen ? RESULT_OPEN_TELOP : noticeText);
       // 演出が電飾を握っていない間だけモード既定のパターンに戻す
       if (!timeline.isPlaying) {
         cabinet.syncLampToMode(modes.currentId, flow.state === FLOW.SPINNING);
@@ -780,6 +805,15 @@ async function boot() {
           ...(lcdView.stageMasked ? ['mask:ON'] : []),
           `seed:${rng.seed}`,
           `${loop.fps}fps`,
+          /*
+           * モード側の進行ログ(flow.telop)。
+           *
+           * U66-5 で説明テロップ帯を廃止したので、これはもう **画面に出る文言ではない**。
+           * ただしゲーム側(game/modes/**)が「いま何が起きたか」を1行で持っている
+           * 唯一の値なので、検証で追えるようデバッグバーにだけ残す。
+           * **ここ以外へ出さないこと**(出した瞬間に二重表示が戻る)。
+           */
+          ...(flow.telop ? [`log:${String(flow.telop).slice(0, 36)}`] : []),
         ].join('  ');
       }
     },
@@ -806,7 +840,8 @@ async function boot() {
   window.AWSLOT = {
     flow, modes, credit, reels, rng, bus, loop, layers, symbols,
     director, timeline, chars, lcdAnims, cutins, SCENARIOS, FLAG_BY_ID,
-    audio, voice, lcdView,
+    // reelView は U64-6 の始動ピク止め(reelView.stallState)を外から観測するために公開する
+    audio, voice, lcdView, reelView,
     /**
      * V31-07 の入力ガードが今かかっているか(2026-08-15 検証指摘 F22)。
      * 「全面占有演出が当落を伏せている間は BET/レバーを受け付けない」窓は
@@ -823,6 +858,12 @@ async function boot() {
      * 固定してもゲーム抽選RNGの消費数は変わらないので出目は動かない。
      */
     setZenchoPattern: (id) => setDebugPattern(id),
+    /**
+     * 前兆の強度を固定する(1〜3。null で解除)。
+     *   AWSLOT.setZenchoStrength(3)
+     * 強度専用パターン(fis_az_down 等)を狙うとき用。こちらも出目は動かない。
+     */
+    setZenchoStrength: (n) => setDebugStrength(n),
     /** 固定できるパターンID一覧(コンソールでの確認用) */
     zenchoPatterns: ZENCHO.patterns.map((p) => p.id),
   };

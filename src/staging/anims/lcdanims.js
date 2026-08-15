@@ -12,11 +12,20 @@
  *   - 最低表示時間を必ず満たす(文字数が多ければ自動で延びる)
  *   - 消えるときは瞬時ではなくフェードアウトする
  *   - 短時間に複数来たら上書きせずキューイングして順送りする
- *   - 結果告知(sticky)は次のレバーONまで残る
+ *   - 結果告知・予兆の結論(sticky)は **次のレバーONまで** 残る。
+ *     ただし sticky は「上限寿命」であって占有権ではない: 新しい告知が来たら
+ *     最低表示時間を満たし次第ゆずる(showText 内のコメント / U57)。
  * 詳細は下の「演出テキスト帯」ブロックを参照。
  */
 
-import { LCD_ANIMS_EXTRA, beginPlateFrame } from './lcdanims-extra.js';
+/*
+ * ANIM_HEADLINES(アニメが自分で描いている大文字の申告)から呼ぶ口:
+ *   triviaHeadlineOf   … U59 の豆知識カードが出しているサービス名
+ *   reelPickHeadlineOf … U64-2 のリール3択クイズの判定(正解!! / 不正解…)
+ */
+import {
+  LCD_ANIMS_EXTRA, beginPlateFrame, triviaHeadlineOf, reelPickHeadlineOf,
+} from './lcdanims-extra.js';
 
 const FONT = '"Helvetica Neue", "Hiragino Sans", "Noto Sans JP", sans-serif';
 const FONT_HEAVY = '"Arial Black", "Helvetica Neue", "Hiragino Sans", sans-serif';
@@ -779,6 +788,45 @@ export const TEXT_QUEUE_MAX = 3;
 export const MODE_CHANGE_GRACE_MS = 260;
 
 /**
+ * レバーONで畳むときに残す余韻[ms](2026-08-15 検証指摘 F1)。
+ *
+ * 【問題】ステージ到着の告知(「サミット会場に到着」等)が
+ *   **次のゲームを回し始めてから 2.4〜5秒** 画面に残っていた。
+ *   犯人は releaseSticky が _requestFade を使っていたこと:
+ *   _requestFade は最低表示時間(長文で 2.8秒)を必ず守るので、
+ *   告知が出た直後にレバーONされると、その差ぶんだけ次のゲームへはみ出す。
+ *   到着告知は director のキューが数百ms遅れて出るため、まともに直撃していた。
+ *
+ * 【方針】次の回転が始まったら、前のゲームの話は読ませない
+ *   レバーONは「画面が次の話へ進んだ」合図なので、最低表示時間より優先する。
+ *   ただし0にすると瞬間移動で消えて見間違いになるため、消えていく途中だと
+ *   分かるだけの余韻を残す(モード遷移の MODE_CHANGE_GRACE_MS と同じ考え方)。
+ *
+ * 【F3 との関係】このゲームの結論が読まれずに飛ぶのを防ぐのは
+ *   下の TEXT_HANDOFF_MS(結論が来たら前の表示を早く畳む)側の役目。
+ *   両方そろって「結論は必ずそのゲームの中で出て、次の回転までに消える」になる。
+ */
+export const LEVER_RELEASE_GRACE_MS = 180;
+
+/**
+ * 新しい結論告知へ譲るときに、前の表示を見せる上限[ms](2026-08-15 検証指摘 F3)。
+ *
+ * 【問題】250ms間隔の高速目押しだと、第3停止で積んだ結論が
+ *   前の表示の最低表示時間(1.6〜2.8秒)待ちのままレバーONを迎え、
+ *   **次のゲームへずれ込んで**出ていた(前ゲームの結論が次の画面に出る)。
+ *
+ * 【方針】結論(sticky)が来たら、前の表示は「読み始められた」ところまでで譲る。
+ *   0 にすると前の告知が一瞬で消えて何も読めないので、
+ *   出現アニメ(TEXT_APPEAR_MS)+ 一拍ぶんは必ず見せる。
+ *
+ * 実測(ブラウザ / 前の表示が出た直後に結論を積んだ最悪ケース):
+ *   700 … 結論が出るまで 897ms
+ *   520 … 結論が出るまで 約700ms(= 譲り 520 + フェード 300 の重なり)  ← 現行
+ * ここから下げると前の告知が読めなくなるので、520 を下限とみなすこと。
+ */
+export const TEXT_HANDOFF_MS = 520;
+
+/**
  * 自動 sticky 判定に使う語。
  * 「見逃すと今の状況が分からなくなる告知」だけを入れること。
  * 語を足したくなったらこの配列(と下の STICKY_PATTERNS)だけを直す。
@@ -1013,7 +1061,13 @@ export function registerAmbientText(text, { matchCategory = true } = {}) {
   });
 }
 
-/** 申告が生きている常設文言の一覧 */
+/**
+ * 申告が生きている常設文言の一覧。
+ *
+ * U66-5 で下部パネルへのテロップ流し込みを廃止したので **本番の描画からは呼ばれない**
+ * (いまの唯一の消費者は showText 内の coveredByAmbient)。
+ * 「盤面がいま何を言っているか」を外から覗く口として、検証・デバッグ用に残してある。
+ */
 export function getAmbientTexts() {
   const now = Date.now();
   const out = [];
@@ -1137,8 +1191,8 @@ export function notifyStageEvent(eventName) {
 /**
  * 液晶に出ている文言の一覧(表示中 + 待機中の sticky 告知)。
  * LcdAnims の参照を持っていない側からも引けるようにモジュール関数でも公開する。
- * 筐体下部のテロップなど、別の場所に同じ文言を出さないための判定に使う:
- *   if (getVisibleTexts().some((t) => isDuplicateText(t, telop))) テロップは出さない
+ * 盤面の常設行など、別の場所に同じ文言を出さないための判定に使う:
+ *   if (getVisibleTexts().some((t) => isDuplicateText(t, line))) その行は出さない
  * @returns {string[]}
  */
 export function getVisibleTexts() {
@@ -1153,9 +1207,9 @@ export function getVisibleTexts() {
  * 2026-08-14 ユーザー指摘 U17(「SQSが捌けていない」等の二重表示):
  * これまでの重複判定はポップアップの **メイン行しか見ていなかった** ため、
  *   ポップアップ: text『BACKLOG: 2』 sub『SQS のキューが捌けていない』
- *   テロップ    : 『SQS のキューが捌けていない』
- * のように **サブ行とテロップが完全に同じ** ケースを取りこぼしていた。
- * サブ行は「持続情報の要約」を書きがちなので、テロップとぶつかりやすい。
+ *   盤面の常設行: 『SQS のキューが捌けていない』
+ * のように **サブ行と盤面の行が完全に同じ** ケースを取りこぼしていた。
+ * サブ行は「持続情報の要約」を書きがちなので、盤面の行とぶつかりやすい。
  * @returns {{text:string, sub:string}[]}
  */
 export function getVisibleTextLines() {
@@ -1166,12 +1220,13 @@ export function getVisibleTextLines() {
 
 /**
  * 「いま出ているポップアップが、この文言と同じことを言っているか」。
- * 2026-08-14 ユーザー指摘 U8(ポップアップと下部テロップの二重表示)。
+ * 2026-08-14 ユーザー指摘 U8(同じことを2か所へ書かない)。
  *
- * 役割分担は **瞬間の演出=ポップアップ / 持続的な状態情報=テロップ**。
- * 同じことを同時に2か所へ書かないよう、テロップ側(render/lcd.js の _drawTelop)が
- * 描く直前にここへ問い合わせ、被っている間はテロップを引っ込める。
- * ポップアップは尺が来れば必ず消えるので、そのあとテロップが状態表示として残る。
+ * 役割分担は **瞬間の告知=ポップアップ / 持続する情報=盤面**(2026-08-15 U66-5 で
+ * 説明テロップ帯を廃止し、この2系統だけになった)。
+ * 同じことを同時に2か所へ書かないよう、盤面側(render/lcd.js の _drawRuleLine ほか)が
+ * 描く直前にここへ問い合わせ、被っている間は盤面の行を引っ込める。
+ * ポップアップは尺が来れば必ず消えるので、そのあと盤面が状態表示として残る。
  *
  * 判定は3段:
  *   1. 正規化して完全一致          「BONUS 確定」=「BONUS確定!!」
@@ -1296,7 +1351,25 @@ export function setStageBandDeferred(on) {
  * アニメが尺切れで消えれば hold は自然に解けるので、固まったままにはならない。
  */
 export const STAGE_HOLD_ANIMS = {
+  // 【休止中】クイズルーレット(U53 で発生を止めた。盤面は残してある)
   aws_quiz_roulette: (params) => params?.phase !== 'reveal',
+  /**
+   * U64-2 リール3択クイズ(旧 U53「最初に止めるリール」)。クイズと同じ理由でここに要る:
+   * 正解版は CZ の modeEnter で始まる = 出題の瞬間にはもうモードが CZ なので、
+   * 何もしないと背景・ステージ名が先に CZ へ変わって「これは正解する」がバレる。
+   * phase:'answer'(判定発表)になった瞬間に本来の背景へ切り替わる。
+   *
+   * 【hold:true を書いた再生だけが対象】
+   *   保留が効いている間は render/lcd.js の stageMasked が立ち、
+   *   main.js が **投入とレバーを受け付けなくなる**(V31-07 の入力ガード)。
+   *   正解版は同じゲームの第1停止で開けるので問題ないが、
+   *   不正解版(qz_reelpick_miss)は払出中に出題して **次のゲームの第1停止**で開ける。
+   *   ここで投入・レバーが塞がると誰も進められなくなるため、
+   *   **モードが変わる正解版にだけ hold:true を渡す**(不正解版はモードが変わらず
+   *   隠すものが無いので、保留しなくても当落は一切バレない)。
+   *   モードが変わる出題を足すときは、その ask キューに hold:true を書くこと。
+   */
+  reel_pick_choice: (params) => params?.hold === true && params?.phase !== 'answer',
 };
 
 /* ══ アニメが自分で描く大文字の申告(2026-08-14 検証 major)═══════════
@@ -1327,6 +1400,34 @@ export const ANIM_HEADLINES = {
   scale_up_slam: () => 'スケールアップ!!',
   /** U34: ボーナスのセット継続ジャッジ(テロップは「ボーナス継続!! — SET n へ」) */
   capacity_judge: (params) => (params?.ok ? 'キャパシティ確保 — 継続!!' : ''),
+  /*
+   * U64-7 の申し送り: health_check_impact はここに登録しない。
+   * 失敗側(RUSH 終了)は盤面から文字を落として **ポップアップ1枚**へ寄せたので、
+   * 盤面が言い切っている文言は存在しない(継続側の『継続!!』は
+   * upper.js / cz.js がテロップ側で言わない約束で担保している)。
+   * 盤面へ大文字を戻すときは、ここへの登録も忘れずに。
+   */
+  /**
+   * U64-2: リール3択クイズの判定。判定を出しているのは **盤面だけ** なので、
+   * 同じ「正解!! / 不正解…」をテロップにも書かせない(U8)。
+   *
+   * 中身は **押したリールと正解の位置の一致**(事実)で決まる。当落は見ない
+   * (実装は lcdanims-extra.js の reelPickHeadlineOf)。
+   * 出題中(phase:'ask')や回答が届いていないときは空文字。
+   */
+  reel_pick_choice: (params) => reelPickHeadlineOf(params),
+  /**
+   * U59: ボーナス中の AWS豆知識カード。
+   * カードが液晶に大きく出しているサービス名を申告して、
+   * 同じ名前をテロップにも書かせない(U8)。
+   *
+   * 中身(どのサービスを出すか)は **この関数が呼ばれた時点** で決まる。
+   * ANIM_HEADLINES は LcdAnims.play の中で1回だけ評価されるので、
+   * 引いた1枚は params へ控えられ、draw はそれを読み継ぐ
+   * (実装は lcdanims-extra.js の triviaHeadlineOf / triviaStateOf)。
+   * dismiss:true の再生(次のレバーONでカードを消す差し替え)は空文字を返す。
+   */
+  aws_trivia_card: (params) => triviaHeadlineOf(params),
 };
 
 /**
@@ -1501,6 +1602,68 @@ function packLines(measure, text, maxWidth) {
   return lines.length > 0 ? lines : [text];
 }
 
+/* ══ 禁則処理(2026-08-15 検証指摘 F2)═══════════════════════════════
+ *
+ * 【問題】「パブリックアクセスをブロッ / ク」のように、
+ *   最後の1〜2文字だけが2行目へこぼれる行が多発していた(いわゆる泣き別れ)。
+ *   貪欲法は「入るだけ詰める」ので、あと1文字で溢れる長さの文言で必ず起きる。
+ *
+ * 【方針】行を増やさずに、**折る位置を1〜2文字ぶん手前へ送る**
+ *   前の行の末尾を最終行へ送り出すので、幅を超えることは絶対にない
+ *   (前の行は短くなるだけ)。フォントを縮める手もあるが、
+ *   U39 で「演出の文字が小さい」と指摘されているので大きさは触らない。
+ *   行頭に来てはいけない記号(句読点・閉じ括弧・長音など)へ送ってしまった場合は
+ *   もう1文字ぶん送って、記号が行頭に立たないようにする。
+ */
+
+/** これ以下の文字数しか残らない最終行を「泣き別れ」とみなす */
+export const ORPHAN_MAX_CHARS = 2;
+
+/**
+ * 行頭に置いてはいけない文字(送り出した先が読点や小書き仮名で始まる、を防ぐ)。
+ * 句読点・閉じ括弧・長音・小書き仮名を並べてある。
+ */
+export const NO_LINE_START_CHARS = '、。，．・…!?！?)）]】』」〕>》%ー〜:;：;/／'
+  + 'ァィゥェォッャュョヮヵヶぁぃぅぇぉっゃゅょゎ';
+
+/** 最終行が1〜2文字だけになっていないか */
+function hasOrphanLine(lines) {
+  if (lines.length < 2) return false;
+  return [...String(lines[lines.length - 1])].length <= ORPHAN_MAX_CHARS;
+}
+
+/**
+ * 泣き別れを解く。前の行の末尾を最終行へ送って、最終行を3文字以上にする。
+ * 送れない(前の行が短すぎる)場合は元のまま返す。
+ * @param {string[]} lines
+ * @param {(s:string)=>number} measure
+ * @param {number} maxWidth
+ * @returns {string[]}
+ */
+function fixOrphan(lines, measure, maxWidth) {
+  if (!hasOrphanLine(lines)) return lines;
+  const out = [...lines];
+  const i = out.length - 1;
+  let prev = [...out[i - 1]];
+  let last = [...out[i]];
+  // 最終行が ORPHAN_MAX_CHARS + 1 文字になるまで送る。前の行は必ず2文字以上残す
+  let guard = 0;
+  while (last.length <= ORPHAN_MAX_CHARS && prev.length > 2 && guard++ < 8) {
+    last.unshift(prev.pop());
+    // 送った先頭が行頭禁則の文字ならもう1文字送る
+    while (NO_LINE_START_CHARS.includes(last[0]) && prev.length > 2 && guard++ < 8) {
+      last.unshift(prev.pop());
+    }
+  }
+  const nextPrev = prev.join('').trimEnd();
+  const nextLast = last.join('');
+  // 送った結果どちらかが溢れるなら諦めて元のまま(幅を破るくらいなら泣き別れを許す)
+  if (!nextPrev || measure(nextPrev) > maxWidth || measure(nextLast) > maxWidth) return lines;
+  out[i - 1] = nextPrev;
+  out[i] = nextLast;
+  return out;
+}
+
 /** 末尾を削って「…」を付ける */
 function ellipsize(measure, text, maxWidth) {
   let s = String(text);
@@ -1513,6 +1676,8 @@ function ellipsize(measure, text, maxWidth) {
  * 文字列を指定幅に収める。
  *   1. そのまま入るならそのまま
  *   2. 入らなければ読点・スペース・中黒(無ければ文字単位)で maxLines 行に折る
+ *      → 折った直後に禁則処理(fixOrphan)。最終行が1〜2文字だけになる
+ *        「泣き別れ」を、折る位置を手前へ送って解消する(F2)
  *   3. それでも入らなければフォントを段階的に縮める(minFontSize まで)
  *   4. 最小サイズでも溢れたら末尾を「…」で省略する
  *
@@ -1553,7 +1718,8 @@ export function wrapText(ctx, text, {
     ctx.font = fontOf(size);
     const measure = (s) => ctx.measureText(s).width;
     if (measure(src) <= maxWidth) return { lines: [src], fontSize: size, truncated: false };
-    lastLines = packLines(measure, src, maxWidth);
+    // 折った直後に禁則処理をかける(行数は増えないので判定順は変わらない)
+    lastLines = fixOrphan(packLines(measure, src, maxWidth), measure, maxWidth);
     if (lastLines.length <= maxLines) return { lines: lastLines, fontSize: size, truncated: false };
   }
 
@@ -1713,6 +1879,31 @@ export class LcdAnims {
       this.text = entry;
       return entry;
     }
+    /*
+     * ── sticky は「上限寿命」であって「占有権」ではない(2026-08-15 U57)──────
+     *
+     * sticky の holdMs は Infinity なので、後から来たテキストは
+     * **次のレバーONまで一度も表示されない**(順番待ちのまま置き去りになる)。
+     * U55/U57 で「ステージ突入の告知」「予兆の結論」を軒並み sticky にしたところ、
+     *   レバーON: 「Invent会場に到着」(sticky)
+     *   第3停止 : 予兆の結論(sticky)  ← 順番待ちのまま出ない
+     * という取りこぼしが構造的に起こるようになった。
+     *
+     * sticky の意味は「**誰も次を言わなければ**次のレバーONまで残る」なので、
+     * 新しい告知が来たら最低表示時間(minHoldMs)を満たし次第ゆずる。
+     * _requestFade は最低表示時間を削らないので、
+     * 直前に出たばかりの告知が読まれずに飛ぶことはない。
+     *
+     * ── 結論告知には早く譲る(2026-08-15 検証指摘 F3)────────────────────
+     * 高速目押し(250ms間隔)だと、第3停止で積んだ結論が前の表示の
+     * 最低表示時間(最大2.8秒)を待つあいだにレバーONが来て、
+     * **そのゲームの結論が次のゲームへずれ込んで**いた。
+     * 新しく来たのが結論(sticky = 見逃せない告知)なら、前の表示は
+     * TEXT_HANDOFF_MS まで見せたら畳んで順番を空ける。
+     * 前の表示も出現アニメ+一拍ぶんは必ず見えるので、読み飛ばしにはならない。
+     */
+    if (entry.sticky) this._requestFadeSoon(this.text, Math.max(0, TEXT_HANDOFF_MS - this.text.elapsed));
+    else if (this.text.sticky) this._requestFade(this.text);
     this._enqueueText(entry);
     return entry;
   }
@@ -1780,6 +1971,33 @@ export class LcdAnims {
   }
 
   /**
+   * 「この文言を大きく言い切った」を申告する(2026-08-15 U60)。
+   *
+   * ANIM_HEADLINES(液晶アニメが canvas に直接描く大文字)と同じ扱いで、
+   * **lcd.text を通らない告知** をテロップ側の二重表示判定に乗せるための口。
+   * いまの使い手は render/overlay.js の showLine(フリーズの「神の声」と結末)。
+   * 寿命は次のレバーONまで(notifyStageEvent が clearSpokenHeadlines する)。
+   * @param {string} text
+   */
+  noteHeadline(text) {
+    noteSpokenHeadline(text);
+  }
+
+  /**
+   * そのアニメがいま再生中か(2026-08-15 U64-8)。
+   *
+   * 盤面(render/lcd.js)が「液晶のどこが埋まっているか」を知るための読み出し口。
+   * いまの使い手はボーナス盤面で、AWS豆知識カードが出ている間だけ
+   * 大ロゴを縮めてヘッダへ寄せる(カードとロゴの重なりを避ける)。
+   * **表示の場所取りにだけ使うこと**(当落の情報は一切含まない)。
+   * @param {string} animId
+   * @returns {boolean}
+   */
+  isPlaying(animId) {
+    return this.active.some((a) => a.id === animId && a.params?.dismiss !== true);
+  }
+
+  /**
    * ステージ背景の切替を保留すべきか(U42)。
    * STAGE_HOLD_ANIMS に登録されたアニメが「結果を出す前」の状態で走っている間だけ true。
    * @returns {boolean}
@@ -1840,10 +2058,21 @@ export class LcdAnims {
     while (this.textQueue.length > TEXT_QUEUE_MAX) this.textQueue.pop();
   }
 
-  /** sticky テキストの保持を解除する(最低表示時間を満たし次第フェードアウト) */
+  /**
+   * レバーONでの仕切り直し(2026-08-15 検証指摘 F1)。
+   *
+   * 次の回転が始まった時点で、前のゲームの告知は用済み。
+   * **最低表示時間を待たずに**余韻(LEVER_RELEASE_GRACE_MS)だけ残して畳む。
+   * 以前は _requestFade(最低表示時間を守る)だったため、
+   * 出たばかりの到着告知が次のゲームへ 2.4〜5秒はみ出していた。
+   *
+   * 待機中の sticky も捨てる。**前のゲームの話を次の画面で始めない**ため
+   * (そのゲームの結論は showText 側の TEXT_HANDOFF_MS で必ず当該ゲーム内に出るので、
+   *  ここまで残っているものは新しい告知に押し出された古い話になる)。
+   */
   releaseSticky() {
-    // キュー内の sticky はまだ一度も見せていないので消さない(表示されてから次のレバーONまで生きる)
-    if (this.text?.sticky) this._requestFade(this.text);
+    if (this.text?.sticky) this._requestFadeSoon(this.text, LEVER_RELEASE_GRACE_MS);
+    this.textQueue = this.textQueue.filter((e) => !e.sticky);
   }
 
   update(dt) {

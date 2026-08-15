@@ -37,8 +37,10 @@ import { verifyStrips, REEL_STRIPS } from '../src/data/reelstrips.js';
 import { CHECKLIST_MAX_PER_GAME } from '../src/game/modes/cz.js';
 // リザルトのランク刻み(到達率の実測をここで突き合わせる)
 import { RANKS, rankOf } from '../src/game/modes/result.js';
+// 称号(U56)。刻みは分布の分位点に合わせるので、到達率を毎回突き合わせる
+import { TITLES } from '../src/data/titles.js';
 import {
-  NORMAL_FLAGS, BONUS_FLAGS, rareFlagMismatches, NORMAL_BASE_DENOMS, AMA_APPLIED,
+  NORMAL_FLAGS, BONUS_FLAGS, rareFlagMismatches, NORMAL_BASE_DENOMS, AMA_APPLIED, FLAG_BY_ID,
 } from '../src/data/flags.js';
 // U44: 甘スロ(?ama=1 / --ama)。レア役の出現率だけが2倍になる救済モード
 import { AMA, AMA_MODE } from '../src/data/ama.js';
@@ -694,6 +696,25 @@ function reportSessions({ scores, agg, runs, mean, pick }) {
   }).join(' / '));
 
   /*
+   * 称号の到達率(U63 で追加 / U56 の data/titles.js)。
+   *
+   * 称号の刻みは「分布の分位点」に合わせる設計(下から 常時 / 25% / 50% /
+   * 75% / 90% / 97% / 99.5% パーセンタイル = 到達率 100 / 75 / 50 / 25 / 10 / 3 / 0.5%)。
+   * titles.js には「バランス担当が更新する」と書いてあるので、
+   * **RANK と同じように毎回この表を出して、ズレたらすぐ気づけるようにしておく**。
+   * ここは **累積**(その称号以上に到達した割合)で出す。刻みの意味が累積だから。
+   */
+  console.log(
+    `\n  ── 称号の到達率(累積 / data/titles.js の titleOf と同じ刻み` +
+    `${AMA_MODE ? ` / ${AMA.label}は amaMin 側` : ''})──`,
+  );
+  console.log('  ' + TITLES.map((t) => {
+    const min = AMA_MODE ? t.amaMin : t.min;
+    const hit = scores.filter((s) => s >= min).length / runs;
+    return `${t.label} ${Number.isFinite(min) ? `${min}枚` : '常時'} ${pct(hit)}`;
+  }).reverse().join(' / '));
+
+  /*
    * 初当りと機械割(U44 で追加)。
    * 甘スロ(--ama)と通常モードを **同じ物差し** で並べて見るために、
    * セッションモードでも通常モードの report() と同じ定義で出す:
@@ -845,7 +866,9 @@ function reportSessions({ scores, agg, runs, mean, pick }) {
 
   /*
    * U23: ホットスタンバイの延長(レア役で +1G)。
-   * 5G固定 + レア役1/24.7 なので、平均延長は 0.2G 前後が設計どおり。
+   * 5G固定 + レア役1/24.7 なので、平均延長は 0.2G 前後が設計どおり
+   * (U63 でレア役が 1/6.17 になり、平均延長 **0.87G / 平均滞在 5.9G** が現行の設計値。
+   *  延長は当落を動かさないので、上限 15G に届いていなければ健全)。
    */
   const sb = agg.standby;
   console.log(
@@ -1218,18 +1241,27 @@ function checkRareRoutes() {
     ]);
   }
 
-  // (10) ボーナス中は専用の小役テーブル(ベル15枚)を引く
+  /*
+   * (10) ボーナス中は専用の小役テーブル(ベル15枚)を引く。
+   *
+   * 見たいのは「モードでテーブルが切り替わること」なので、通常時の払出は
+   * **data/flags.js の値を正としてそのまま読む**(U63 でコイン持ちの調整のため
+   * 通常時のベルが 8 → 7枚 になり、8枚を直書きしていたこの検証が落ちた)。
+   * ボーナス中の15枚だけは「ボーナスの純増の骨格」なので固定値で見張る。
+   */
   {
     const modes = new ModeMachine({ rng: new FixedRng(0.5), bus: new EventBus() });
     modes.start('FREE_TIER');
     const normalTable = modes.flagTableId;
     modes._push('BONUS', { bonusId: 'S3_BIG', viaReady: true });
     const bonusTable = modes.flagTableId;
+    const normalBell = payoutOf('BELL', 'NORMAL');
+    const bonusBell = payoutOf('BELL', 'BONUS');
     const ok = normalTable === 'NORMAL' && bonusTable === 'BONUS'
-      && payoutOf('BELL', 'NORMAL') === 8 && payoutOf('BELL', 'BONUS') === 15;
+      && normalBell === FLAG_BY_ID.BELL.payout && bonusBell === 15 && bonusBell > normalBell;
     results.push([
       'ボーナス中のベルは15枚', ok,
-      `通常${payoutOf('BELL', 'NORMAL')}枚 / ボーナス${payoutOf('BELL', 'BONUS')}枚(table=${bonusTable})`,
+      `通常${normalBell}枚 / ボーナス${bonusBell}枚(table=${bonusTable})`,
     ]);
   }
 

@@ -76,6 +76,14 @@
 
 // 天井(Auto Recovery)のゲーム数。NOT_CEILING_GAME の算出に使う(data/modes.js が唯一の正)
 import { NORMAL_SUBSTATES } from '../modes.js';
+/*
+ * 結論行の作法(U57)と役色(U62)は data/rolecolors.js が唯一の正。
+ * yokoku-batch3.js と同じ扱いにしてある:
+ *   弱 = 「このゲームは当たらない」の言い切り → ハズレ色(白)。第3停止まで待つ
+ *   中 = 成立役が1つに決まるものだけ役色。絞れないもの(rare:true)は中立色
+ * どちらも **次のゲームのレバーONで消える**。
+ */
+import { conclusionCue, colorForFlag, COLOR_NEUTRAL_MID } from '../rolecolors.js';
 
 /**
  * ハズレ寄りプールに合わせた発火率。yokoku-batch3.js / yokoku-bedrock.js と同じ値。
@@ -86,14 +94,11 @@ import { NORMAL_SUBSTATES } from '../modes.js';
  */
 const CHANCE_WEAK = 0.245;
 
-/** 弱の文字色(既存の弱予告と同じ) */
-const COLOR_WEAK = '#8ad4ff';
-/** 中の文字色(役を1つに絞れないとき) */
-const COLOR_MID = '#ffe066';
-/** 成立役の色(U9。yokoku-aruaru.js の FLAG_COLOR と同値) */
-const COLOR_CHERRY = '#ff4d4d';
-const COLOR_MELON = '#4ce0a0';
-const COLOR_LAMBDA = '#ffd95e';
+/**
+ * 中の文字色(**役を1つに絞れない**中版だけで使う中立色)。
+ * 役色は data/rolecolors.js が唯一の正なので、ここには16進を書かない(U62)。
+ */
+const COLOR_MID = COLOR_NEUTRAL_MID;
 
 /**
  * 天井(Auto Recovery)に当たらないゲームの `modeState.games` 一覧。
@@ -138,8 +143,9 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.5 } },
       { at: 0,   layer: 'lcd', action: 'anim',  params: { anim: 'step_up', step: 1 } },
-      { at: 440, layer: 'lcd', action: 'text',
-        params: { text: 'PROVISIONING', sub: 'タスクはまだ起動しきっていない', color: COLOR_WEAK, ms: 800 } },
+      conclusionCue({
+        flag: 'LOSE', text: 'PROVISIONING', sub: 'タスクはまだ起動しきっていない', ms: 800,
+      }),
     ],
   },
   {
@@ -153,9 +159,10 @@ export default [
       { at: 0,   layer: 'sfx',  action: 'synth', params: { preset: 'serverless_up' } },
       { at: 40,  layer: 'lcd',  action: 'anim',  params: { anim: 'step_up', step: 3 } },
       { waitFor: 'stop3', layer: 'sfx', action: 'synth', params: { preset: 'upgrade_chime' } },
-      { waitFor: 'stop3', after: 80, layer: 'overlay', action: 'flash', params: { color: COLOR_LAMBDA, ms: 200 } },
-      { waitFor: 'stop3', after: 120, layer: 'lcd', action: 'text',
-        params: { text: 'RUNNING', sub: 'Fargate — EC2 を1台も持たずに起動した', color: COLOR_LAMBDA, ms: 1300 } },
+      { waitFor: 'stop3', after: 80, layer: 'overlay', action: 'flash', params: { color: colorForFlag('CHANCE'), ms: 200 } },
+      conclusionCue({
+        flag: 'CHANCE', text: 'RUNNING', sub: 'Fargate — EC2 を1台も持たずに起動した', after: 120, ms: 1300,
+      }),
     ],
   },
 
@@ -172,8 +179,9 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.45 } },
       { at: 0,   layer: 'lcd', action: 'anim',  params: { anim: 'checklist_green', index: 1 } },
-      { at: 440, layer: 'lcd', action: 'text',
-        params: { text: 'PUSHING…', sub: 'イメージのレイヤーを送っている', color: COLOR_WEAK, ms: 800 } },
+      conclusionCue({
+        flag: 'LOSE', text: 'PUSHING…', sub: 'イメージのレイヤーを送っている', ms: 800,
+      }),
     ],
   },
   {
@@ -189,8 +197,10 @@ export default [
       { waitFor: 'stop2', layer: 'lcd', action: 'anim', params: { anim: 'checklist_green', index: 2 } },
       { waitFor: 'stop3', layer: 'sfx', action: 'synth', params: { preset: 'upgrade_chime' } },
       { waitFor: 'stop3', layer: 'overlay', action: 'particles', params: { preset: 'spark', x: 360, y: 300, count: 12 } },
-      { waitFor: 'stop3', after: 120, layer: 'lcd', action: 'text',
-        params: { text: 'latest が更新された', sub: 'ECR にイメージが上がり、スキャンも通過', color: COLOR_MID, ms: 1300 } },
+      // レア役全般で出る = 役を1つに絞れないので中立色(U62)
+      conclusionCue({
+        text: 'latest が更新された', sub: 'ECR にイメージが上がり、スキャンも通過', color: COLOR_MID, after: 120, ms: 1300,
+      }),
     ],
   },
 
@@ -208,8 +218,9 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.45 } },
       { at: 0,   layer: 'lcd', action: 'anim',  params: { anim: 'pillar_raise', index: 1, count: 4 } },
-      { at: 440, layer: 'lcd', action: 'text',
-        params: { text: 'マウント待ち', sub: '共有ストレージにまだ誰も繋がっていない', color: COLOR_WEAK, ms: 800 } },
+      conclusionCue({
+        flag: 'LOSE', text: 'マウント待ち', sub: 'Amazon EFS — 共有ストレージにまだ誰も繋がっていない', ms: 800,
+      }),
     ],
   },
   {
@@ -226,8 +237,9 @@ export default [
       { waitFor: 'stop2', layer: 'lcd', action: 'anim', params: { anim: 'pillar_raise', index: 3, count: 4 } },
       { waitFor: 'stop3', layer: 'lcd', action: 'anim', params: { anim: 'pillar_raise', index: 4, count: 4 } },
       { waitFor: 'stop3', layer: 'sfx', action: 'synth', params: { preset: 'upgrade_chime' } },
-      { waitFor: 'stop3', after: 120, layer: 'lcd', action: 'text',
-        params: { text: '全台が同じ場所を見た', sub: 'EFS を同時マウント — 容量は自動で伸びる', color: COLOR_MELON, ms: 1300 } },
+      conclusionCue({
+        flag: 'MELON', text: '全台が同じ場所を見た', sub: 'EFS を同時マウント — 容量は自動で伸びる', after: 120, ms: 1300,
+      }),
     ],
   },
 
@@ -244,8 +256,9 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.5 } },
       { at: 0,   layer: 'lcd', action: 'anim',  params: { anim: 'step_up', step: 1 } },
-      { at: 440, layer: 'lcd', action: 'text',
-        params: { text: '引き上げ申請は審査中', sub: 'クォータはまだ据え置き', color: COLOR_WEAK, ms: 800 } },
+      conclusionCue({
+        flag: 'LOSE', text: '引き上げ申請は審査中', sub: 'クォータはまだ据え置き', ms: 800,
+      }),
     ],
   },
   {
@@ -261,8 +274,10 @@ export default [
       { waitFor: 'stop2', layer: 'lcd', action: 'anim', params: { anim: 'step_up', step: 3 } },
       { waitFor: 'stop3', layer: 'sfx', action: 'synth', params: { preset: 'upgrade_chime' } },
       { waitFor: 'stop3', layer: 'lcd', action: 'anim', params: { anim: 'recover_burst' } },
-      { waitFor: 'stop3', after: 120, layer: 'lcd', action: 'text',
-        params: { text: '上限が引き上げられた', sub: 'Service Quotas — 天井そのものが上がった', color: COLOR_MID, ms: 1300 } },
+      // レア役全般で出る = 役を1つに絞れないので中立色(U62)
+      conclusionCue({
+        text: '上限が引き上げられた', sub: 'Service Quotas — 天井そのものが上がった', color: COLOR_MID, after: 120, ms: 1300,
+      }),
     ],
   },
 
@@ -280,8 +295,9 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'stream_flow', gain: 0.4 } },
       { at: 0,   layer: 'lcd', action: 'anim',  params: { anim: 'cw_graph_appear' } },
-      { at: 440, layer: 'lcd', action: 'text',
-        params: { text: 'バッファに溜め中', sub: 'まだ配信の条件に届いていない', color: COLOR_WEAK, ms: 800 } },
+      conclusionCue({
+        flag: 'LOSE', text: 'バッファに溜め中', sub: 'Data Firehose — まだ配信の条件に届いていない', ms: 800,
+      }),
     ],
   },
   {
@@ -296,8 +312,9 @@ export default [
       { at: 40,  layer: 'lcd',  action: 'anim', params: { anim: 'az_failover' } },
       { waitFor: 'stop3', layer: 'sfx', action: 'synth', params: { preset: 'edge_hit' } },
       { waitFor: 'stop3', after: 60, layer: 'lcd', action: 'anim', params: { anim: 'recover_burst' } },
-      { waitFor: 'stop3', after: 120, layer: 'lcd', action: 'text',
-        params: { text: 'S3 へ着地した', sub: 'バッファがフラッシュされて配信された', color: COLOR_MELON, ms: 1300 } },
+      conclusionCue({
+        flag: 'MELON', text: 'S3 へ着地した', sub: 'Data Firehose のバッファがフラッシュされた', after: 120, ms: 1300,
+      }),
     ],
   },
 
@@ -314,8 +331,9 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.45 } },
       { at: 0,   layer: 'lcd', action: 'anim',  params: { anim: 'cw_graph_appear' } },
-      { at: 420, layer: 'lcd', action: 'text',
-        params: { text: 'キャッシュミス', sub: 'テーブルまで取りに行っている', color: COLOR_WEAK, ms: 800 } },
+      conclusionCue({
+        flag: 'LOSE', text: 'キャッシュミス', sub: 'テーブルまで取りに行っている', ms: 800,
+      }),
     ],
   },
   {
@@ -329,8 +347,10 @@ export default [
       { at: 0,   layer: 'sfx',  action: 'synth', params: { preset: 'dynamo_scale' } },
       { at: 40,  layer: 'lcd',  action: 'anim', params: { anim: 'ttl_zero' } },
       { waitFor: 'stop3', layer: 'sfx', action: 'synth', params: { preset: 'upgrade_chime' } },
-      { waitFor: 'stop3', after: 120, layer: 'lcd', action: 'text',
-        params: { text: 'キャッシュヒット', sub: 'DAX がマイクロ秒で返した', color: COLOR_MID, ms: 1300 } },
+      // レア役全般で出る = 役を1つに絞れないので中立色(U62)
+      conclusionCue({
+        text: 'キャッシュヒット', sub: 'DAX がマイクロ秒で返した', color: COLOR_MID, after: 120, ms: 1300,
+      }),
     ],
   },
 
@@ -346,8 +366,9 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.4 } },
       { at: 0,   layer: 'lcd', action: 'anim',  params: { anim: 'step_up', step: 1 } },
-      { at: 440, layer: 'lcd', action: 'text',
-        params: { text: 'デスクトップ起動待ち', sub: 'WorkSpaces がまだ立ち上がらない', color: COLOR_WEAK, ms: 800 } },
+      conclusionCue({
+        flag: 'LOSE', text: 'デスクトップ起動待ち', sub: 'WorkSpaces がまだ立ち上がらない', ms: 800,
+      }),
     ],
   },
 
@@ -366,9 +387,10 @@ export default [
       { at: 40,  layer: 'lcd',  action: 'anim', params: { anim: 'checklist_green', index: 1 } },
       { waitFor: 'stop2', layer: 'lcd', action: 'anim', params: { anim: 'checklist_green', index: 2 } },
       { waitFor: 'stop3', layer: 'sfx', action: 'synth', params: { preset: 'upgrade_chime' } },
-      { waitFor: 'stop3', after: 80, layer: 'overlay', action: 'flash', params: { color: COLOR_CHERRY, ms: 200 } },
-      { waitFor: 'stop3', after: 120, layer: 'lcd', action: 'text',
-        params: { text: '証拠がそろった', sub: 'Audit Manager がエビデンスを自動収集', color: COLOR_CHERRY, ms: 1300 } },
+      { waitFor: 'stop3', after: 80, layer: 'overlay', action: 'flash', params: { color: colorForFlag('WEAK_CHERRY'), ms: 200 } },
+      conclusionCue({
+        flag: 'WEAK_CHERRY', text: '証拠がそろった', sub: 'Audit Manager がエビデンスを自動収集', after: 120, ms: 1300,
+      }),
     ],
   },
 
@@ -386,8 +408,9 @@ export default [
       { at: 0,   layer: 'sfx',  action: 'synth', params: { preset: 'stream_flow' } },
       { at: 40,  layer: 'lcd',  action: 'anim', params: { anim: 'az_failover' } },
       { waitFor: 'stop3', layer: 'sfx', action: 'synth', params: { preset: 'edge_hit' } },
-      { waitFor: 'stop3', after: 120, layer: 'lcd', action: 'text',
-        params: { text: '一気にさばけた', sub: 'NLB が大量の接続を低遅延で流している', color: COLOR_LAMBDA, ms: 1300 } },
+      conclusionCue({
+        flag: 'CHANCE', text: '一気にさばけた', sub: 'NLB が大量の接続を低遅延で流している', after: 120, ms: 1300,
+      }),
     ],
   },
 
@@ -407,8 +430,10 @@ export default [
       { waitFor: 'stop2', layer: 'lcd', action: 'anim', params: { anim: 'pillar_raise', index: 2, count: 3 } },
       { waitFor: 'stop3', layer: 'lcd', action: 'anim', params: { anim: 'pillar_raise', index: 3, count: 3 } },
       { waitFor: 'stop3', layer: 'sfx', action: 'synth', params: { preset: 'upgrade_chime' } },
-      { waitFor: 'stop3', after: 120, layer: 'lcd', action: 'text',
-        params: { text: '組織にまとまった', sub: 'Organizations — 請求もポリシーも一括', color: COLOR_MID, ms: 1300 } },
+      // レア役全般で出る = 役を1つに絞れないので中立色(U62)
+      conclusionCue({
+        text: '組織にまとまった', sub: 'Organizations — 請求もポリシーも一括', color: COLOR_MID, after: 120, ms: 1300,
+      }),
     ],
   },
 ];

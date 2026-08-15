@@ -225,7 +225,7 @@ export default [
       { at: 200,  layer: 'char',    action: 'pose',  params: { char: 'kiro', pose: 'happy' } },
       { at: 300,  layer: 'lcd',     action: 'text',
         // 「確定」を含むので自動 sticky = 次のレバーONまで残る
-        params: { text: 'ボーナス確定!!', sub: 'ワークフローを完走した', color: '#7bf7d0', ms: 2200, sticky: true } },
+        params: { text: 'ボーナス確定!!', sub: 'Step Functions — ワークフローを完走した', color: '#7bf7d0', ms: 2200, sticky: true } },
       { at: 500,  layer: 'overlay', action: 'particles', params: { preset: 'coin', x: 360, y: 380, count: 26 } },
       { at: 900,  layer: 'voice',   action: 'play',  params: { key: 'kiro_cz_win' } },
     ],

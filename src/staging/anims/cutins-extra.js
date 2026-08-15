@@ -18,11 +18,13 @@ import { getLayerRect } from '../../engine/layers.js';
 
 const FONT_HEAVY = '"Arial Black", "Helvetica Neue", "Hiragino Sans", sans-serif';
 
-/* ══ 文字は液晶の中だけに描く(2026-08-13 ユーザー指示)═══════════════
+/* ══ 描くのは液晶の中だけ(2026-08-13 ユーザー指示 / 2026-08-15 U66-4)══════
  *
  * 「画面(ディスプレイ)の外で文字は表示しないで」。
- * 全画面カットインの集中線・パーティクル・シェイク・キャラは 720×1080 のまま
- * 描いてよいが、**読ませる文字は液晶の表示矩形の中へ収める**。
+ * さらに U66-4 で **液晶の外へ出てよいのはボーナス・RUSH の告知級だけ** と決めたので、
+ * このファイルのカットイン(予告・煽り)は集中線もキャラも液晶の中で完結させる。
+ * 実装の担保は cutins.js の Cutins.draw()(FULLSCREEN_CUTINS 以外は液晶矩形でクリップ)。
+ * クリップされて見えなくなるだけなので、絵の位置は lcdSpot() で液晶内に置くこと。
  *
  * 呼び出し側は従来どおり論理座標の y を渡してよい。ここで
  * 「リール窓帯(430〜660)へ置くつもりで書かれた y」を液晶の下半分へ写像するので、
@@ -48,6 +50,27 @@ function lcdTextSpot(y, size = 40) {
   return { x: r.x + r.w / 2, y: cy, maxWidth: Math.max(60, r.w - 24) };
 }
 
+
+/**
+ * 液晶の中へ **図形** を置くための基準点(2026-08-15 ユーザー指示 U66-4)。
+ *
+ * cutins.js の同名関数と同じ実装。あちらから import すると
+ * cutins.js → cutins-extra.js → cutins.js の循環参照になるので、
+ * lcdTextSpot と同じ流儀でこのファイルにも持つ(統合時に共通化する想定)。
+ * @param {number} [cyRatio] 液晶の高さに対する縦位置(0=上端 1=下端)
+ * @param {number} [cxRatio] 同・横位置
+ */
+function lcdSpot(cyRatio = 0.44, cxRatio = 0.5) {
+  const r = getLayerRect('lcd');
+  return {
+    x: r.x + r.w * cxRatio,
+    y: r.y + r.h * cyRatio,
+    w: r.w,
+    h: r.h,
+    top: r.y,
+    bottom: r.y + r.h,
+  };
+}
 
 const clamp01 = (x) => Math.max(0, Math.min(1, x));
 const easeOutCubic = (x) => 1 - (1 - x) ** 3;
@@ -525,8 +548,8 @@ export const CUTINS_EXTRA = {
   guardduty_alert: {
     ms: 2000,
     draw(ctx, p, params, w, h) {
-      const cx = w / 2;
-      const cy = h * 0.36;
+      // U66-4: 告知級ではないので主役の絵も液晶の中へ(旧: cy = h*0.36 = 液晶の下)
+      const { x: cx, y: cy } = lcdSpot(0.42);
 
       // 緊迫の赤い明滅背景
       ctx.save();
@@ -575,9 +598,10 @@ export const CUTINS_EXTRA = {
         ctx.lineWidth = 5;
         ctx.lineJoin = 'round';
         ctx.strokeStyle = 'rgba(30,0,0,0.85)';
-        ctx.strokeText(shown, sp.x, sp.y);
+        // 液晶の幅で頭打ちにする(U66-4 のクリップで端が切れないように)
+        ctx.strokeText(shown, sp.x, sp.y, sp.maxWidth);
         ctx.fillStyle = '#ff5a5a';
-        ctx.fillText(shown, sp.x, sp.y);
+        ctx.fillText(shown, sp.x, sp.y, sp.maxWidth);
         ctx.restore();
       }
 
@@ -604,8 +628,11 @@ export const CUTINS_EXTRA = {
   waf_shield_block: {
     ms: 1800,
     draw(ctx, p, params, w, h) {
-      const cx = w / 2;
-      const cy = h * 0.36;
+      /*
+       * U66-4(ユーザー指摘の実例)。旧実装は盾を cy = h*0.36(液晶の下端より下)に置き、
+       * 「WAF」の文字ごとリール窓の上へはみ出していた。予告は液晶の中で完結させる。
+       */
+      const { x: cx, y: cy } = lcdSpot(0.42);
 
       // 攻撃線(左から複数飛んでくる)
       ctx.save();
@@ -681,9 +708,9 @@ export const CUTINS_EXTRA = {
         ctx.lineJoin = 'round';
         ctx.strokeStyle = 'rgba(0,10,30,0.85)';
         const sp = lcdTextSpot(512, 28);
-        ctx.strokeText('BLOCKED', sp.x, sp.y);
+        ctx.strokeText('BLOCKED', sp.x, sp.y, sp.maxWidth);
         ctx.fillStyle = '#ffffff';
-        ctx.fillText('BLOCKED', sp.x, sp.y);
+        ctx.fillText('BLOCKED', sp.x, sp.y, sp.maxWidth);
         ctx.restore();
       }
 
@@ -697,8 +724,8 @@ export const CUTINS_EXTRA = {
   iam_admin_badge: {
     ms: 2000,
     draw(ctx, p, params, w, h) {
-      const cx = w / 2;
-      const cy = h * 0.38;
+      // U66-4: サメとバッジを液晶の中へ(旧: cy = h*0.38 = 液晶の外)
+      const { x: cx, y: cy } = lcdSpot(0.46);
 
       // George がせり上がって登場
       const showP = clamp01(p / 0.35);
@@ -751,9 +778,9 @@ export const CUTINS_EXTRA = {
         ctx.lineJoin = 'round';
         ctx.strokeStyle = 'rgba(30,10,0,0.85)';
         const sp = lcdTextSpot(536, 22);
-        ctx.strokeText('AdministratorAccess', sp.x, sp.y);
+        ctx.strokeText('AdministratorAccess', sp.x, sp.y, sp.maxWidth);
         ctx.fillStyle = '#ffe066';
-        ctx.fillText('AdministratorAccess', sp.x, sp.y);
+        ctx.fillText('AdministratorAccess', sp.x, sp.y, sp.maxWidth);
         ctx.restore();
       }
 
@@ -767,8 +794,8 @@ export const CUTINS_EXTRA = {
   cloudtrail_root_login: {
     ms: 2000,
     draw(ctx, p, params, w, h) {
-      const cx = w / 2;
-      const cy = h * 0.36;
+      // U66-4: ログパネルは元から液晶内(下の lr)。閃光の中心もそれに合わせる
+      const { x: cx, y: cy } = lcdSpot(0.42);
       // ログパネルは読ませる文字の塊なので、まるごと液晶の矩形内へ収める
       // (集中線や背景の閃光は全画面のままでよい、というルールの例外側)
       const lr = getLayerRect('lcd');

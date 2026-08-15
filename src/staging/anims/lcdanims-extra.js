@@ -15,7 +15,7 @@
  *
  * 座標の前提(液晶は 440 x 300):
  *   - y 0〜34   … タイトルバー(モード名 / 残りG)…… 使わない
- *   - y 266〜300 … テロップ帯 …………………………… 使わない
+ *   - y 266〜300 … 盤面のルール行(旧テロップ帯の跡地)… 使わない
  *   - lcd.text は (220, 194) にメイン、(220, 220) にサブが出る(lcdanims.js の _drawText)。
  *     y 178〜230 の中央帯はテキストと取り合いになるので、文字を置くなら避ける。
  *   - AS_RUSH は y 74〜108 に DC アイコン列、中央 y 136 に「DC n」、y 159〜173 に
@@ -23,7 +23,9 @@
  *     RUSH 中に出すアニメは左下(x 70〜200 / y 176〜232)か最下段の帯に置く。
  */
 
-import { buildQuizRound } from '../../data/quiz.js';
+import { buildQuizRound, buildReelQuizRound, pickTrivia } from '../../data/quiz.js';
+import { categoryOfService, resolveServiceByQuizAnswer } from '../../data/services.js';
+import { getDexProgress, isLearnEnabled, recordServiceSeen } from '../../data/learnlog.js';
 import { SYMBOLS } from '../../data/symbols.js';
 import { symbolAssets } from '../../engine/assets.js';
 
@@ -263,7 +265,16 @@ function fitFont(ctx, text, maxW, { max = 15, min = 10, heavy = true } = {}) {
 /** 期待度レベル(0=弱 / 1=中 / 2=強)の共通配色 */
 const LEVEL_COLORS = ['#e8f1ff', '#ffe066', '#ff5a5a'];
 
-/* ══ AWSクイズルーレット ═══════════════════════════════
+/* ══ AWSクイズルーレット【休止中・データは保全】═══════════════
+ *
+ * ── 2026-08-15 U53(ユーザー指示)────────────────────────────
+ *   クイズの出題は取りやめ、同じ発生枠を「最初に止めるリール」3択
+ *   (下の reel_pick_choice)へ置き換えた。
+ *   **盤面の描画(aws_quiz_roulette)と 46問のデータ(src/data/quiz.js)は
+ *     消さずに残してある**(改修を大きくしない方針 / 復帰できるように)。
+ *   いま aws_quiz_roulette を再生するシナリオは1本も無い。戻すときは
+ *   data/scenarios/quiz.js に旧シナリオを書き戻すだけでよい(この下は無改造)。
+ *
  * 出題データは src/data/quiz.js。ここは「どう見せるか」だけを持つ。
  * 正解に止めるか誤答に止めるかは params.correct で外(シナリオ)から渡ってくる。
  *
@@ -393,6 +404,130 @@ function quizStateOf(params) {
  * 高速連打で lock フェーズが描画されないまま reveal が来ても破綻しないよう、
  * reveal 側からも同じ関数で着地点を確定できるようにしてある。
  */
+/* ══ AWS豆知識カード(2026-08-15 ユーザー指示 U59)════════════════════
+ *
+ * ボーナス中の**1ゲームおき**に「サービス名 + 1行概要」を1枚のカードで出す。
+ * 盤面は休止中の aws_quiz_roulette を **1枚のカードへ簡略化して流用**したもの
+ * (枠 → 見出し → 大きい文字 → 小さい文字、という縦の組み立てをそのまま使っている)。
+ *
+ * ■ 置き場所(U8: ボーナスの数値と絶対に重ねない)
+ *   render/lcd.js の _drawBonus は、テキスト帯が出ていないとき
+ *     y 79〜125 大ロゴ / y162 獲得枚数 / y190 残りG / y214 ベル説明 / y238 SET
+ *   を描く。**カードは y38〜146 に収めて、y150 より下へ1pxも出さない**。
+ *   = 獲得枚数・残りG・SET は必ず読める。
+ *
+ *   ── 大ロゴとの重なり(2026-08-15 ユーザー指示 U64-8 で解消)──────────
+ *   以前は大ロゴ(y79〜125)がカードの真下に潜って重なっていた。
+ *   いまは render/lcd.js の _drawBonus が **カード再生中だけ**(anims.isPlaying)
+ *   ロゴを 16px へ縮めてヘッダ帯(y17)へ逃がすので、ロゴもカードも両方読める。
+ *   **座標を動かすときは「カードの下端 ≦ 148」を必ず守ること**
+ *   (_drawBonus 側のコメントとセットで見ること)。
+ *
+ * ■ 座布団(V31-08)
+ *   カードの地そのものが不透明の下敷きなので、文字はその上に置けば必ず読める。
+ *   textPlate() は使わない(重なり回避で文字がカードの外へ逃げてしまうため)。
+ *
+ * ■ どのカードを出すか
+ *   data/quiz.js の pickTrivia()。**ゲーム抽選RNGは使わない**(Math.random)。
+ *   再生1回につき1枚だけ引き、params へ控えて毎フレーム引き直さない。
+ */
+
+/** カードの矩形(x, y, w, h)。下端 = 38 + 108 = 146 ≦ 148 */
+const TRIVIA_CARD = { x: 20, y: 38, w: 400, h: 108 };
+
+/**
+ * 小さな丸ピル(カテゴリ / NEW)。2026-08-15 学習強化 L3。
+ *
+ * カードの地(不透明)の上にしか置かないので座布団(textPlate)は使わない。
+ * 文字はピルの中央に置き、**戻り値の幅**で次のピルの置き場所を決められるようにする。
+ *
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {number} x align='left' なら左端 / 'right' なら右端のX
+ * @param {number} y 中心Y
+ * @param {string} text
+ * @param {object} [opt]
+ * @param {number} [opt.size] 文字サイズ(11 前後。これ以上小さくすると読めない)
+ * @param {string} [opt.color] 枠と文字の色
+ * @param {'left'|'right'} [opt.align]
+ * @returns {number} ピルの幅
+ */
+function drawPill(ctx, x, y, text, { size = 11, color = '#7cf3ff', align = 'left' } = {}) {
+  ctx.save();
+  ctx.font = `700 ${size}px ${FONT}`;
+  const pw = textWidth(ctx, text, size) + 12;
+  const ph = size + 6;
+  const px = align === 'right' ? x - pw : x;
+  roundRect(ctx, px, y - ph / 2, pw, ph, ph / 2);
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.fill();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  strokedText(ctx, text, px + pw / 2, y, {
+    size, color, edge: 'rgba(0,10,30,0.9)', heavy: false,
+  });
+  ctx.restore();
+  return pw;
+}
+
+/**
+ * この再生で見せる豆知識を1枚決める。
+ * quizStateOf と同じ作法で params にキャッシュする
+ * (timeline.js の resolveParams はキュー発火ごとに新しいオブジェクトを作るので、
+ *  別の再生へ漏れることはない)。
+ *
+ * ══ AWS図鑑への記録を「ここ」に置く理由(2026-08-15 学習強化 L1)══════
+ * ■ なぜ pickTrivia ではないのか
+ *   pickTrivia は「1枚引く」だけの純粋なデータ関数で、テストからも呼ばれる。
+ *   **引いた = 画面に出した** という意味付けを持つのは演出側なので、
+ *   副作用(記録)はこちらの層に置くのが正しい。
+ * ■ なぜ1再生につき1回で済むのか
+ *   triviaStateOf は ANIM_HEADLINES(play時に1回)と draw(毎フレーム)の
+ *   両方から呼ばれるが、**params.__t のキャッシュにより pickTrivia も記録も
+ *   1再生につき1回しか走らない**。
+ *   dismiss:true の再生は triviaHeadlineOf が早期 return し、draw も先頭で
+ *   return するのでここへ来ない = 二重計上しない。
+ * ■ なぜ別キューから記録できないのか
+ *   engine/timeline.js の resolveParams はキューごとに別オブジェクトを作るため、
+ *   **どのカードが引かれたかを他のキューは知り得ない**。
+ *
+ * 戻り値には図鑑の初出フラグ(first)と進捗(dex)を足して params へ控える。
+ * NEW バッジもカウンタも draw で毎フレーム引き直さないため。
+ *
+ * ■ 図鑑の進捗をここで確定させる理由(2026-08-15 椿レビュー minor)
+ *   getDexProgress() は保存済みの全サービスを毎回数え直す(learnlog の ownedCount)。
+ *   draw から呼ぶと **60fps × カード表示20秒 = 1枚あたり最大1200回**の数え直しになる。
+ *   数字が要るのは「このカードを出した瞬間の進捗」だけで、
+ *   直前の recordServiceSeen を織り込んだ値がここで確定している
+ *   (カード表示中に他所で図鑑が増えることはない = 豆知識カードは
+ *    ボーナス中に1枚ずつしか出ず、クイズの記録は道中でしか走らない)。
+ *   よって1再生1回で足りる。
+ */
+function triviaStateOf(params) {
+  if (params.__t) return params.__t;
+  const picked = pickTrivia({ service: params.service ?? null });
+  const { first } = recordServiceSeen(picked.service, 'trivia');
+  // 元データ(AWS_TRIVIA の要素)は書き換えず、この再生ぶんの控えを作る
+  const state = { ...picked, first, dex: getDexProgress() };
+  // eslint-disable-next-line no-param-reassign
+  params.__t = state;
+  return state;
+}
+
+/**
+ * このカードが液晶に大きく出している文言(U8 の二重表示防止の申告)。
+ *
+ * staging/anims/lcdanims.js の ANIM_HEADLINES から呼ばれる。
+ * ANIM_HEADLINES は **play() の時点** で評価されるので、ここで初めて
+ * カードの中身が決まる(draw は params.__t を読み継ぐだけになる)。
+ * @param {object} params
+ * @returns {string}
+ */
+export function triviaHeadlineOf(params) {
+  if (!params || params.dismiss === true) return '';
+  return triviaStateOf(params).service;
+}
+
 /**
  * 検証・デバッグ用の読み出し口(進行中のクイズ状態)。
  * game/modes/freetier.js の inspectZencho と同じ趣旨で、
@@ -410,6 +545,226 @@ function ensureQuizLockTarget(q) {
   while (QUIZ_SPIN_ORDER[target % QUIZ_SPIN_ORDER.length] !== q.round.stopIndex) target++;
   q.lockFrom = from;
   q.lockTo = target;
+}
+
+/* ══ リール3択クイズ(U64-2 / 2026-08-15 ユーザー指示)════════════════════
+ *
+ * ── 経緯 ────────────────────────────────────────────────────
+ *   U53 で「どのリールから止める?」の押し順当てにしていた枠を、
+ *   U64-2 で **AWSクイズ** に戻した(休止していた46問のデータを活用)。
+ *   出題の枠(発生条件・頻度)は U53 のまま。中身だけがクイズになっている。
+ *
+ * ■ 遊び方
+ *   出題   「◯◯をしたい。どのサービス?」+ 3つの選択肢を **左 / 中 / 右** に表示
+ *   回答    **既存の停止操作がそのまま入力**。第1停止したリール = 選んだ選択肢
+ *   発表    正誤(事実)と 当落(出目) を **別々に** 出す
+ *
+ * ■ 【最重要】正誤と当落は別物 ─ 事実に忠実であること
+ *   正誤 … 「押したリール == 正解のリール」で決まる **事実**。
+ *          正解の位置は演出RNGのシャッフルで毎回変わる(当落は一切見ない)。
+ *   当落 … 出目と抽選で **レバーON時点に確定済み**。クイズは1枚も動かさない。
+ *   したがって次の4通りが全部起きる。盤面はそれを正直に出し分ける:
+ *     当選ゲーム + 正解   → 「正解!!」               + プレート「CZ突入」
+ *     当選ゲーム + 不正解 → 「不正解… 正解は◯」     + プレート「CZ突入」(それでも突入)
+ *     ハズレ版   + 正解   → 「正解!!」+「役は不成立…」
+ *     ハズレ版   + 不正解 → 「不正解… 正解は◯」+「役は不成立…」
+ *   **正誤を当落に合わせて捻じ曲げないこと**(学びが嘘になる)。
+ *   どのシナリオが当選確定 / 非当選確定かは data/scenarios/quiz.js の when 条件が正。
+ *   ここへ渡ってくる params.win がその区別(当落)で、正誤とは無関係。
+ *
+ * ■ 選んだリールの受け取り方
+ *   シナリオが { waitFor:'stop1', params:{ pick:'$stop1.index' } } と書くと、
+ *   engine/timeline.js が控えた stop1 の payload(reelctrl の requestStop の戻り)から
+ *   実際に最初に止めたリールの index(0=左 / 1=中 / 2=右)が届く。
+ *   届かなかった場合(payload 無し等)は名指しを避けて当落だけを出す。
+ */
+
+/** 3択の並び。index はリール番号そのもの(0=左 / 1=中 / 2=右) */
+const PICK_LABELS = ['左', '中', '右'];
+/** キー割当の再掲(engine/input.js の KEY_MAP と同じ。押す手が迷わないように) */
+const PICK_KEYS = ['←', '↓', '→'];
+
+/** 停止操作を待つフェーズの尺[ms]。長考しても盤面が消えない長さ */
+const PICK_WAIT_MS = 20000;
+/** 発表フェーズの既定尺[ms]。正解の場所まで読ませるので押し順当て時代より長い */
+const PICK_REVEAL_MS = 3200;
+/** 判定が出るまでの溜め[ms]。第1停止から一拍おいて発表する */
+const PICK_VERDICT_DELAY_MS = 220;
+/** 判定が出きるまで[ms] */
+const PICK_VERDICT_MS = 360;
+
+/* ── 盤面の縦レイアウト ───────────────────────────────────
+ *   y   3〜  5  枠線
+ *   y   6〜 38  問題文プレート
+ *   y  44〜146  3択のマス(ミニリール / 左中右 / 選択肢)
+ *   y 152〜236  lcd.text の告知プレート ★ここには文字を置かない
+ *   y 248       判定(正解!! / 不正解…)
+ *   y 274       内訳(正解は◯ / 役は不成立…)
+ *   y 292       足元の見出し
+ * ★の帯は LcdAnims が盤面より後に描くので、置いた文字は必ず隠れる。
+ *
+ * compact:true(CZ盤面の上に出す当選版)では **盤面ぜんぶが 0.74 倍** になるため、
+ * 上の y をそのまま使うと判定が告知プレートの裏へ回る(局所 y201 以降が帯に潜る)。
+ * そのため判定まわりだけ compact 用の座標を別に持つ(PICK_VERDICT_LAYOUT)。 */
+const PICK_PAD_X = 12;
+const PICK_COL_GAP = 8;
+const PICK_Q_TOP = 6;
+const PICK_Q_H = 32;
+const PICK_GRID_TOP = 44;
+const PICK_CELL_H = 102;
+/* マス内の縦の取り合い(マス上端からの相対)。重ならないよう必ずこの順に並べる:
+ *   y   8〜 52 … ミニリール(高さ44 / 中心30)
+ *   y  58〜 74 … 左 / 中 / 右 + キー(16px)
+ *   y  80〜 98 … 選択肢のサービス名(最大17px。幅に合わせて詰める) */
+const PICK_REEL_CY = 30;
+const PICK_NAME_Y = 66;
+const PICK_CHOICE_Y = 88;
+
+/**
+ * 判定まわりの座標。compact は「告知プレート(screen y151〜237)の上」に収める。
+ *   compact の局所 y → 画面 y は  2 + y * 0.74  なので、
+ *   局所 y 190 = 画面 143(帯の直前)が実質の下限。ここを超えないこと。
+ */
+const PICK_VERDICT_LAYOUT = {
+  full: { verdictY: 248, verdictSize: 26, detailY: 274, detailSize: 14, headY: 292 },
+  /*
+   * compact は盤面ごと 0.74 倍になるので、**指定サイズ × 0.74 が実際の見た目**。
+   * U39(演出の文字が小さい)を踏まえ、実効 11px を切らないよう大きめに取ってある
+   *   verdict 26 → 実効 19.2px / detail 16 → 実効 11.8px
+   */
+  compact: { verdictY: 162, verdictSize: 26, detailY: 190, detailSize: 16, headY: null },
+};
+/** 進行バー(装飾。告知プレートの裏に回ってよい) */
+const PICK_BAR_Y = 182;
+/** CZ盤面の上に出すときの縮小率(クイズの V3 対応と同じ考え方) */
+const PICK_COMPACT_SCALE = 0.74;
+const PICK_COMPACT_TOP = 2;
+
+/**
+ * 進行中の出題。'ask' で引き直し、'answer' が読み継ぐ。
+ * **当落の情報は一切持たない**(持たせると正誤が当落に引きずられる)。
+ *
+ * `__recorded` は staging/actions.js の learn.quizResult が付ける
+ * 「この出題は学習記録へ数え終わった」印(2026-08-15 椿レビュー major)。
+ * 描画は一切見ない。'ask' で新しい出題に差し替わると自然に消える。
+ * @type {{id:string, question:string, choices:string[], answerIndex:number, __recorded?:boolean}|null}
+ */
+let reelPickActive = null;
+
+/**
+ * この再生で使う出題を返す。
+ * draw() は毎フレーム呼ばれるので params 側にも覚えさせる(triviaStateOf と同じ作法)。
+ * @param {object} params  { phase, quizId }
+ * @param {() => number} [rand] 演出用乱数。既定は Math.random(ゲーム抽選RNGとは別系統)
+ * @returns {{id:string, question:string, choices:string[], answerIndex:number}}
+ */
+function reelPickStateOf(params, rand = Math.random) {
+  if (params.__rp) return params.__rp;
+  const phase = params.phase ?? 'ask';
+  // 'answer' が先に来る(高速停止で ask の描画が1フレームも走らない)場合の保険として、
+  // reelPickActive が空なら引き直す。正解の位置は毎回シャッフルされる
+  if (phase === 'ask' || reelPickActive == null) {
+    reelPickActive = buildReelQuizRound({ quizId: params.quizId ?? null, rand });
+  }
+  params.__rp = reelPickActive;
+  return reelPickActive;
+}
+
+/**
+ * 押したリール番号を 0〜2 に正規化する(届いていなければ -1)。
+ * @param {unknown} raw
+ * @returns {number}
+ */
+function normalizePick(raw) {
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 0 && n <= 2 ? n : -1;
+}
+
+/**
+ * この再生の正誤(事実)。まだ答えていない / 届いていないときは null。
+ * @param {object} params
+ * @returns {{pick:number, answerIndex:number, correct:boolean, round:object}|null}
+ */
+export function reelPickVerdictOf(params) {
+  if (!params || params.phase !== 'answer') return null;
+  const round = reelPickStateOf(params);
+  const pick = normalizePick(params.pick);
+  if (pick < 0) return null;
+  return { pick, answerIndex: round.answerIndex, correct: pick === round.answerIndex, round };
+}
+
+/**
+ * この盤面が大きく出している判定文言(U8 の二重表示防止の申告)。
+ * staging/anims/lcdanims.js の ANIM_HEADLINES から呼ばれる。
+ *
+ * **当落(params.win)ではなく正誤で決まる**。当落の告知は lcd.text 側の担当。
+ * @param {object} params
+ * @returns {string}
+ */
+export function reelPickHeadlineOf(params) {
+  const v = reelPickVerdictOf(params);
+  if (!v) return '';
+  return v.correct ? '正解!!' : '不正解…';
+}
+
+/**
+ * 進行中の出題を **生成せずに** 覗く読み出し口。
+ *
+ * 検証・デバッグ用であると同時に、staging/actions.js の learn.quizResult が
+ * 記録してよいかを判断する砦でもある(2026-08-15 椿レビュー major)。
+ * reelPickStateOf は出題が無ければ**その場で新しく組み立ててしまう**ので、
+ * 「盤面が出題しているか」を知りたいだけの側は必ずこちらを使うこと。
+ * @returns {{id:string, question:string, choices:string[], answerIndex:number, __recorded?:boolean}|null}
+ *   出題していなければ null
+ */
+export function inspectReelPickState() {
+  return reelPickActive;
+}
+
+/**
+ * ミニリールを1本描く(原点はマスの左上)。
+ * 回転中は帯が流れ、止まると1コマに収まる。絵柄そのものは出さない
+ * (ここで特定の絵柄を見せると「その絵柄が揃う」という別の意味になってしまうため)。
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {number} cx マスの中心X
+ * @param {number} cy マスの中心Y
+ * @param {object} opt
+ */
+function drawMiniReel(ctx, cx, cy, { spin = 0, color = '#7cf3ff', running = true, alpha = 1 }) {
+  const rw = 46;
+  const rh = 44;
+  const x = cx - rw / 2;
+  const y = cy - rh / 2;
+  ctx.save();
+  ctx.globalAlpha *= alpha;
+  roundRect(ctx, x, y, rw, rh, 6);
+  ctx.fillStyle = 'rgba(4,10,22,0.9)';
+  ctx.fill();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.6;
+  ctx.stroke();
+
+  // 帯(3コマぶん)。running のときだけ縦に流す
+  ctx.save();
+  roundRect(ctx, x + 2, y + 2, rw - 4, rh - 4, 4);
+  ctx.clip();
+  const pitch = (rh - 4) / 3;
+  const offset = running ? (spin * pitch * 6) % pitch : 0;
+  for (let i = -1; i < 4; i++) {
+    const by = y + 2 + i * pitch + offset;
+    ctx.fillStyle = i % 2 === 0 ? 'rgba(255,255,255,0.30)' : 'rgba(124,243,255,0.20)';
+    ctx.fillRect(x + 2, by, rw - 4, pitch - 2);
+  }
+  ctx.restore();
+
+  // 中段ライン(止まったときの「ここに来る」の目印)
+  ctx.strokeStyle = running ? 'rgba(255,255,255,0.25)' : color;
+  ctx.lineWidth = running ? 1 : 1.8;
+  ctx.beginPath();
+  ctx.moveTo(x + 3, cy);
+  ctx.lineTo(x + rw - 3, cy);
+  ctx.stroke();
+  ctx.restore();
 }
 
 /* ══ Bedrock ストリーミング生成予告の文言 ══════════════
@@ -781,60 +1136,73 @@ function drawSymbolTile(ctx, tile, boxW, boxH) {
 }
 
 /**
- * DeepRacer の車体を1台描く(原点が車の中心)。
- * 既存の deep_racer_run と擬似連 deepracer_race で同じ絵を使うための共通化。
- * @param {number} spin 車輪と LiDAR の回転量(0→1 で1周ぶん程度)
+ * 分散マップの「子の実行」を1本描く(原点がトークンの中心)。
+ *
+ * ══ 2026-08-15 U58 / 廃止サービスの差し替え ═══════════════════════
+ * ここは元 DeepRacer の車体だったが、**DeepRacer は 2025-12-15 に提供終了**。
+ * 演出の骨格(1 → 2 → 4 → 大量が横に走る)はそのまま活かせるので、
+ * 題材を **AWS Step Functions の分散マップ(Distributed Map)** へ移し、
+ * 絵を「並列に走る子の実行」= 実行トークンへ描き替えた。
+ *   ・車輪と LiDAR を外し、Step Functions のステートらしい角丸の箱にする
+ *   ・進行方向の先端に山形(chevron)を付けて「走っている向き」を残す
+ *   ・箱の中の走査線が spin で流れて「処理中」を示す(車輪の回転の代役)
+ * 呼び出し側(distmap_run / distmap_race)は引数も座標も変えていない。
+ *
+ * @param {number} spin 走査線の流れる量(0→1 で1周ぶん程度)
  */
-function drawRacerCar(ctx, { body = '#8ad4ff', spin = 0 } = {}) {
-  const g = ctx.createLinearGradient(0, -9, 0, 6);
+function drawRunToken(ctx, { body = '#8ad4ff', spin = 0 } = {}) {
+  const g = ctx.createLinearGradient(0, -9, 0, 7);
   g.addColorStop(0, '#ffffff');
   g.addColorStop(0.45, body);
   g.addColorStop(1, '#1b4f7a');
-  roundRect(ctx, -20, -8, 40, 14, 5);
+
+  // 実行の箱(Step Functions のステートに見立てた角丸)
+  roundRect(ctx, -20, -7, 34, 14, 4);
   ctx.fillStyle = g;
   ctx.fill();
   ctx.strokeStyle = 'rgba(10,30,60,0.85)';
   ctx.lineWidth = 1.4;
   ctx.stroke();
 
-  // フロントのカメラ
-  ctx.fillStyle = '#14263f';
-  roundRect(ctx, 10, -6, 9, 7, 2);
-  ctx.fill();
-  ctx.fillStyle = '#ff6b6b';
-  ctx.beginPath();
-  ctx.arc(16, -2.5, 1.6, 0, Math.PI * 2);
-  ctx.fill();
-
-  // 上面の LiDAR(くるくる回る)
+  // 中を流れる走査線(処理中であることを示す)
   ctx.save();
-  ctx.translate(-4, -12);
-  ctx.fillStyle = '#e8f1ff';
-  ctx.beginPath();
-  ctx.arc(0, 0, 4, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.rotate(spin * 26);
-  ctx.fillStyle = '#25a97f';
-  ctx.fillRect(0, -1.2, 4.5, 2.4);
+  roundRect(ctx, -20, -7, 34, 14, 4);
+  ctx.clip();
+  ctx.globalAlpha *= 0.55;
+  ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+  ctx.lineWidth = 1.2;
+  for (let i = 0; i < 3; i++) {
+    const lx = -20 + (((spin * 46) + i * 12) % 40);
+    ctx.beginPath();
+    ctx.moveTo(lx, -7);
+    ctx.lineTo(lx - 5, 7);
+    ctx.stroke();
+  }
   ctx.restore();
 
-  // タイヤ
-  for (const wx of [-11, 11]) {
-    ctx.save();
-    ctx.translate(wx, 6);
-    ctx.fillStyle = '#121a2a';
-    ctx.beginPath();
-    ctx.arc(0, 0, 5.2, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.rotate(spin * 34);
-    ctx.strokeStyle = 'rgba(230,240,255,0.85)';
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-    ctx.moveTo(-3.4, 0);
-    ctx.lineTo(3.4, 0);
-    ctx.stroke();
-    ctx.restore();
-  }
+  // 進行方向の山形(どちらへ走っているかを残す)
+  ctx.beginPath();
+  ctx.moveTo(15, -7);
+  ctx.lineTo(22, 0);
+  ctx.lineTo(15, 7);
+  ctx.closePath();
+  ctx.fillStyle = body;
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(10,30,60,0.85)';
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+
+  // 後ろへ伸びる軌跡(並列に走っている感じを出す)
+  ctx.save();
+  ctx.globalAlpha *= 0.45;
+  ctx.strokeStyle = body;
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(-22, 0);
+  ctx.lineTo(-32 - Math.sin(spin * Math.PI * 2) * 3, 0);
+  ctx.stroke();
+  ctx.restore();
 }
 
 export const LCD_ANIMS_EXTRA = {
@@ -1757,13 +2125,14 @@ export const LCD_ANIMS_EXTRA = {
   },
 
   /**
-   * ミニ DeepRacer が液晶の下段を走り抜ける賑やかし。IDEAS.md 2-35
+   * 分散マップの子の実行が液晶の下段を走り抜ける賑やかし。IDEAS.md 2-35
+   * (2026-08-15 U58 で DeepRacer から題材を差し替え。旧ID: deep_racer_run)
    * params: { y=244, dir=1(1:左→右 / -1:右→左), color='#8ad4ff' }
    *
-   * 砂ぼこりが y+8 を中心に最大半径 7.8 まで広がるので、既定値は
+   * 尾を引く光が y+8 を中心に最大半径 7.8 まで広がるので、既定値は
    * テロップ帯(y 266〜)に掛からない 244 にしてある(以前は 256 で 272 まで届いていた)。
    */
-  deep_racer_run: {
+  distmap_run: {
     layer: 'fg', ms: 1700,
     draw(ctx, p, params, w, h) {
       const y = params.y ?? 244;
@@ -1788,7 +2157,7 @@ export const LCD_ANIMS_EXTRA = {
 
       ctx.translate(x, y + bob);
       ctx.scale(dir, 1);
-      drawRacerCar(ctx, { body, spin: p });
+      drawRunToken(ctx, { body, spin: p });
       ctx.restore();
     },
   },
@@ -2125,6 +2494,342 @@ export const LCD_ANIMS_EXTRA = {
   },
 
   /**
+   * リール3択クイズ(2026-08-15 ユーザー指示 U64-2)。
+   *
+   * 休止していた46問(data/quiz.js)を「**左 / 中 / 右のリールで答える**」形で復活させた枠。
+   * 出題 → 第1停止で回答 → 正誤と当落をそれぞれ発表、までを1枚で描く。
+   *
+   * params: { phase='ask', win=false, pick=null, quizId=null, compact=false, hold=false, ms }
+   *   phase  … 'ask' 出題(第1停止を待つ) / 'answer' 発表
+   *   win    … **当落**(このゲームで当選しているか)。正誤とは無関係の値で、
+   *            当選が構造的に確定したシナリオだけが true を渡す。
+   *            true のときは当落を告知プレート(lcd.text『CZ突入』)が言うので、
+   *            盤面は当落に触れない。false のときだけ盤面が「役は不成立…」を出す。
+   *   pick   … 実際に最初に止めたリール(0=左 / 1=中 / 2=右)。届かなければ名指ししない
+   *   quizId … 出題を固定したいとき(?quiz= のデバッグ用)
+   *   compact… CZ盤面の上に出すときの縮小(判定の座標も compact 用へ切り替わる)
+   *   hold   … 判定まで背景の切替を保留する(U42)。描画には使わず、
+   *             lcdanims.js の STAGE_HOLD_ANIMS だけが見る。**モードが変わる出題だけ** true
+   *
+   * シナリオ側は
+   *   at:0          → phase:'ask'
+   *   waitFor stop1 → phase:'answer'(pick:'$stop1.index')
+   * と2行並べるだけでよい。
+   *
+   * **正誤は params では決まらない**(押したリールと正解の位置の一致だけで決まる)。
+   * レイアウトの取り決めはファイル上部の PICK_* 定数のコメントを参照。
+   * y152〜236(lcd.text の告知プレート)には**読ませたい文字を置かない**。
+   */
+  reel_pick_choice: {
+    layer: 'ui', ms: PICK_WAIT_MS,
+    draw(ctx, p, params, w, h) {
+      const round = reelPickStateOf(params);
+      const phase = params.phase ?? 'ask';
+      const answering = phase === 'answer';
+      const ms = params.ms ?? (answering ? PICK_REVEAL_MS : PICK_WAIT_MS);
+      const elapsed = p * ms;
+
+      // 押したリール(-1 = 届いていない)。正誤は「押した == 正解の位置」の事実だけで決まる
+      const pick = answering ? normalizePick(params.pick) : -1;
+      const judged = pick >= 0;
+      const answerIndex = round.answerIndex;
+      const correct = judged && pick === answerIndex;
+      /** 当落(役が成立するか)。**正誤とは別物**。false のときだけ盤面が不成立を言う */
+      const win = params.win === true;
+
+      // 判定の進行(0 のあいだは結果を伏せたまま)
+      const verdictP = answering
+        ? clamp01((elapsed - PICK_VERDICT_DELAY_MS) / PICK_VERDICT_MS)
+        : 0;
+      const verdict = verdictP > 0;
+
+      // 出だしだけ短くフェードイン。末尾は次のフェーズが差し替えるので落とさない
+      let alpha = Math.min(1, elapsed / 160);
+      if (answering && p > 0.9) alpha *= Math.max(0, 1 - (p - 0.9) / 0.1);
+      else if (!answering && p > 0.96) alpha *= Math.max(0, 1 - (p - 0.96) / 0.04);
+      if (alpha <= 0) return;
+
+      const blink = 0.55 + 0.45 * Math.sin((elapsed / 1000) * Math.PI * 3);
+
+      // ── レイアウト ──
+      const cellW = (w - PICK_PAD_X * 2 - PICK_COL_GAP * 2) / 3;
+      const cellX = (i) => PICK_PAD_X + i * (cellW + PICK_COL_GAP);
+
+      const compact = params.compact === true;
+      const LY = compact ? PICK_VERDICT_LAYOUT.compact : PICK_VERDICT_LAYOUT.full;
+      if (compact) {
+        ctx.save();
+        ctx.translate((w - w * PICK_COMPACT_SCALE) / 2, PICK_COMPACT_TOP);
+        ctx.scale(PICK_COMPACT_SCALE, PICK_COMPACT_SCALE);
+      }
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+
+      // ── 全面背景(モード名バーやステージ絵を伏せる = 当落バレ防止にも効く)──
+      ctx.fillStyle = 'rgba(5,9,20,0.94)';
+      ctx.fillRect(0, 0, w, h);
+      ctx.fillStyle = 'rgba(124,243,255,0.04)';
+      for (let y = 0; y < h; y += 6) ctx.fillRect(0, y, w, 2);
+      ctx.strokeStyle = verdict
+        ? (correct ? 'rgba(76,224,160,0.95)' : 'rgba(255,90,90,0.8)')
+        : `rgba(124,243,255,${0.35 + 0.3 * blink})`;
+      ctx.lineWidth = 2.4;
+      ctx.strokeRect(3, 3, w - 6, h - 6);
+
+      /* ── 見出し(足元)。compact は帯に潜るので出さない ──
+       *
+       * 右側の1行は、判定が出るまでは操作案内(第1停止が答え)、
+       * **判定が出たら正解サービスの分類**へ差し替える(2026-08-15 学習強化 L4)。
+       *   ・設問にも選択肢にも無い情報を1つだけ足す = 答え合わせに学びが増える
+       *   ・行は増やさない(既にある行の中身を入れ替えるだけ)ので座席割りは不変
+       *
+       * ■ compact(当選版)に足さない理由
+       *   compact は LY.headY が null で、detailY:190(画面y143)が
+       *   告知プレート直前の実質下限。**行を増やす余地が物理的に無い**。
+       *   加えて体験上も、当選版は直後に CZ が始まって読む時間が無いので、
+       *   ここで分類を足しても読まれずに流れる。 */
+      if (LY.headY != null) {
+        strokedText(ctx, 'AWS QUIZ', 14, LY.headY, {
+          size: 12, color: '#7cf3ff', edge: 'rgba(0,10,30,0.9)', align: 'left',
+        });
+        let footText = '第1停止が答え';
+        let footColor = 'rgba(190,225,255,0.8)';
+        if (verdict && isLearnEnabled()) {
+          const service = resolveServiceByQuizAnswer(round.choices[answerIndex]);
+          const cat = service ? categoryOfService(service) : null;
+          if (cat) {
+            footText = `カテゴリ: ${cat.label}`;
+            footColor = cat.color;
+          }
+        }
+        strokedText(ctx, footText, w - 14, LY.headY, {
+          size: 11, color: footColor, edge: 'rgba(0,10,30,0.9)', align: 'right', heavy: false,
+        });
+      }
+
+      // ── 問題文(上部プレート)。発表中も出したままにして問と答えをつなぐ ──
+      {
+        ctx.save();
+        const qIn = clamp01(elapsed / 240);
+        ctx.globalAlpha = alpha * (answering ? 1 : qIn);
+        const qTop = PICK_Q_TOP + (answering ? 0 : (1 - easeOutCubic(qIn)) * -6);
+        roundRect(ctx, 10, qTop, w - 20, PICK_Q_H, 7);
+        ctx.fillStyle = 'rgba(124,243,255,0.10)';
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(124,243,255,0.35)';
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+        // min は下限フック(11px)以上。compact では ×0.74 されるので下げすぎない
+        const qSize = fitFont(ctx, round.question, w - 40, { max: 19, min: 13 });
+        strokedText(ctx, round.question, w / 2, qTop + PICK_Q_H / 2, {
+          size: qSize, color: '#ffffff', edge: 'rgba(0,10,30,0.95)',
+        });
+        ctx.restore();
+      }
+
+      // ── 3択のマス(左 / 中 / 右 = リール番号そのもの)──
+      for (let i = 0; i < 3; i++) {
+        const x = cellX(i);
+        const y = PICK_GRID_TOP;
+        const pop = answering ? 1 : clamp01((elapsed - 100 - i * 70) / 220);
+        if (pop <= 0) continue;
+
+        const isPick = verdict && judged && i === pick;
+        const isAnswer = verdict && i === answerIndex && verdictP > 0.35;
+        // 決まったマス以外は沈める(どれを選んだか / どれが正解かを一目で分かるようにする)
+        let dim = 1;
+        if (verdict && !isPick && !isAnswer) dim = 0.28;
+
+        let border = 'rgba(255,255,255,0.28)';
+        let label = 'rgba(255,255,255,0.92)';
+        let fill = 'rgba(12,20,38,0.9)';
+        let glow = 0;
+        if (isPick && correct) {
+          // 押したマスが正解(緑 = 正解の色。当落の色ではない)
+          border = '#4ce0a0';
+          label = '#c8ffe4';
+          fill = 'rgba(10,52,38,0.95)';
+          glow = 22 * blink;
+        } else if (isPick) {
+          border = '#ff5a5a';
+          label = '#ffd6d6';
+          fill = 'rgba(74,16,16,0.95)';
+          glow = 18 * blink;
+        } else if (isAnswer) {
+          border = '#4ce0a0';
+          label = '#c8ffe4';
+          fill = 'rgba(10,52,38,0.92)';
+          glow = 12;
+        } else if (!answering) {
+          // 待っている間は3つとも等しく光らせる(どれかが熱い、を匂わせない)
+          border = `rgba(124,243,255,${0.45 + 0.35 * blink})`;
+          fill = 'rgba(16,40,60,0.9)';
+        }
+
+        ctx.save();
+        ctx.globalAlpha = alpha * pop * dim;
+        ctx.translate(x + cellW / 2, y + PICK_CELL_H / 2);
+        let s = answering ? 1 : easeOutBack(pop);
+        if (isPick) s = 1.05 + (blink - 0.55) * 0.03;
+        ctx.scale(s, s);
+        ctx.translate(-cellW / 2, -PICK_CELL_H / 2);
+
+        roundRect(ctx, 0, 0, cellW, PICK_CELL_H, 10);
+        ctx.fillStyle = fill;
+        ctx.fill();
+        ctx.strokeStyle = border;
+        ctx.lineWidth = isPick ? 3 : 1.6;
+        if (glow > 0) { ctx.shadowColor = border; ctx.shadowBlur = glow; }
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // ミニリール(待機中は回り、判定が出たら止まる)
+        drawMiniReel(ctx, cellW / 2, PICK_REEL_CY, {
+          spin: elapsed / 1000 + i * 0.33,
+          color: border,
+          running: !verdict,
+          alpha: 0.95,
+        });
+
+        // どのリールか(左 / 中 / 右 + キー)
+        strokedText(ctx, `${PICK_LABELS[i]}  ${PICK_KEYS[i]}`, cellW / 2, PICK_NAME_Y, {
+          size: 15, color: 'rgba(200,230,255,0.9)', edge: 'rgba(0,10,30,0.95)', heavy: false,
+        });
+        /*
+         * 選択肢(このマスの主役)。長いサービス名は幅に合わせて詰める。
+         * min は **LCD_ANIM_MIN_FONT_PX(11)以上**にすること。
+         * それ未満を返すと lcdanims.js の下限フックが描画時だけ 11px へ持ち上げ、
+         * 測った幅より広く描かれてマスからはみ出す(2026-08-15 実測)。
+         */
+        const choice = round.choices[i] ?? '';
+        const cSize = fitFont(ctx, choice, cellW - 16, { max: 17, min: 11 });
+        strokedText(ctx, choice, cellW / 2, PICK_CHOICE_Y, {
+          size: cSize, color: label, edge: 'rgba(0,10,30,0.95)',
+        });
+
+        // 正解のマスに小さな印(発表後だけ)
+        if (isAnswer) {
+          ctx.globalAlpha = alpha * dim * clamp01((verdictP - 0.35) / 0.25);
+          strokedText(ctx, '正解', cellW - 20, 14, {
+            size: 11, color: '#4ce0a0', edge: 'rgba(0,20,10,0.95)',
+          });
+        }
+        ctx.restore();
+      }
+
+      // ── 進行バー(装飾。告知プレートの裏に回ってよい)──
+      // 待っている間だけ左右に流れて「まだ止めていない」を伝える
+      if (!verdict) {
+        const bx = 60;
+        const bw = w - 120;
+        const t = (elapsed / 1400) % 1;
+        ctx.save();
+        ctx.globalAlpha = alpha * 0.7;
+        ctx.fillStyle = 'rgba(255,255,255,0.10)';
+        roundRect(ctx, bx, PICK_BAR_Y, bw, 5, 2.5);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(124,243,255,0.9)';
+        roundRect(ctx, bx + (bw - 90) * t, PICK_BAR_Y, 90, 5, 2.5);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // ── 判定(正誤。**事実だけ**を言う)──
+      {
+        let text = '第1停止で回答';
+        let col = '#ffffff';
+        let size = 15;
+        if (verdict && judged) {
+          text = correct ? '正解!!' : '不正解…';
+          col = correct ? '#7bffc4' : '#ff5a5a';
+          size = LY.verdictSize;
+        } else if (verdict) {
+          // 押したリールが届かなかった(payload 欠落)。嘘をつかず判定は伏せる
+          text = '';
+        }
+        if (text) {
+          ctx.save();
+          ctx.globalAlpha = alpha * (verdict ? 1 : blink);
+          strokedText(ctx, text, w / 2, LY.verdictY, {
+            size, color: col, edge: 'rgba(0,10,30,0.95)', heavy: true,
+          });
+          ctx.restore();
+        }
+      }
+
+      /* ── 内訳(正解の場所 / 当落)────────────────────────────────
+       * ここが「正誤と当落は別物」を伝える行。
+       *   不正解 … どのリールが正解だったかを必ず教える(学びを残す)
+       *   非当選 … 「役は不成立…」を添える(正解でも成立しないことがある、が伝わる)
+       * 当選版は告知プレートが『CZ突入』を出すので、当落はそちらに任せて書かない。 */
+      if (verdict && verdictP > 0.3) {
+        const parts = [];
+        if (!judged || !correct) {
+          parts.push(`正解は ${PICK_LABELS[answerIndex]}「${round.choices[answerIndex] ?? ''}」`);
+        }
+        if (!win) parts.push('役は不成立…');
+        const detail = parts.join(' — ');
+        if (detail) {
+          ctx.save();
+          ctx.globalAlpha = alpha * clamp01((verdictP - 0.3) / 0.3);
+          const dSize = fitFont(ctx, detail, w - 36, { max: LY.detailSize, min: 11, heavy: false });
+          strokedText(ctx, detail, w / 2, LY.detailY, {
+            size: dSize, color: 'rgba(230,240,255,0.95)', edge: 'rgba(0,10,30,0.95)', heavy: false,
+          });
+          ctx.restore();
+        }
+      }
+
+      /* ── 判定スタンプ(○ / ✕)──
+       * 押すのは **ミニリールの上**(マスの中心だと選択肢の文字を潰す)。 */
+      if (verdict && judged) {
+        const cx = cellX(pick) + cellW / 2;
+        const cy = PICK_GRID_TOP + PICK_REEL_CY;
+        const st2 = easeOutBack(clamp01(verdictP / 0.3));
+        const stampColor = correct ? '#7bffc4' : '#ff5a5a';
+        ctx.save();
+        ctx.globalAlpha = alpha * Math.min(1, verdictP * 6);
+        ctx.translate(cx, cy);
+        ctx.scale(st2, st2);
+        ctx.lineWidth = 5;
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = stampColor;
+        ctx.shadowColor = stampColor;
+        ctx.shadowBlur = 18;
+        if (correct) {
+          ctx.beginPath();
+          ctx.arc(0, 0, 25, 0, Math.PI * 2);
+          ctx.stroke();
+        } else {
+          ctx.beginPath();
+          ctx.moveTo(-18, -18); ctx.lineTo(18, 18);
+          ctx.moveTo(18, -18); ctx.lineTo(-18, 18);
+          ctx.stroke();
+        }
+        ctx.restore();
+
+        if (correct) {
+          ctx.save();
+          ctx.globalCompositeOperation = 'lighter';
+          const r = 20 + easeOutCubic(verdictP) * 200;
+          const g = ctx.createRadialGradient(cx, cy, 2, cx, cy, r);
+          g.addColorStop(0, `rgba(76,224,160,${0.55 * (1 - verdictP)})`);
+          g.addColorStop(1, 'rgba(76,224,160,0)');
+          ctx.fillStyle = g;
+          ctx.beginPath();
+          ctx.arc(cx, cy, r, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+
+      ctx.restore();
+      if (compact) ctx.restore();
+    },
+  },
+
+  /**
    * 絵柄飛来予告。液晶の中を風が吹き、絵柄が1枚舞い込む。
    *
    * **飛んできた絵柄はそのゲームで必ず揃う**(先読み)。
@@ -2220,24 +2925,26 @@ export const LCD_ANIMS_EXTRA = {
   },
 
   /**
-   * DeepRacer 擬似連。ゲーム側の paramChange { param:'deepracer', step, cars, result } を受ける。
+   * 分散マップ擬似連。ゲーム側の paramChange { param:'deepracer', step, cars, result } を受ける。
+   * (2026-08-15 U58 で DeepRacer から題材を差し替え。旧ID: deepracer_race。
+   *  param 名 'deepracer' は scripts/sim.mjs が読む内部の契約キーなので据え置き)
    *
-   * **毎 step で必ず車が走る**。step が上がるほど台数・速度・熱量が上がり、
-   * step4 は画面いっぱいに車が押し寄せる激アツの画になる。
-   * params: { step=1(1〜4), cars=step(1〜12), label=null('×2' 等の擬似連カウント) }
+   * **毎 step で必ず子の実行が走る**。step が上がるほど本数・速度・熱量が上がり、
+   * step4 は画面いっぱいに実行が押し寄せる激アツの画になる。
+   * params: { step=1(1〜4), cars=step(1〜12 / 同時に走る本数), label=null('×2' 等の擬似連カウント) }
    *
    * ここは「走る画」だけを担当し、突入・確定は**一切断言しない**。
    * 結果告知は result 付きイベントに紐づくシナリオ(dr_pseudo_result_*)の担当。
    *
    * 配置(2026-08-14 検証指摘: コメントと実装がズレていたので実測に合わせて直した):
-   *   走行レーン  laneTop y94 から laneH(通常18 / step4は14)刻みで最大4レーン
-   *               → 車体の中心は最大 y148、砂ぼこり(y+8・半径最大7.6)まで含めて y164 まで。
+   *   実行レーン  laneTop y94 から laneH(通常18 / step4は14)刻みで最大4レーン
+   *               → トークンの中心は最大 y148、尾の光(y+8・半径最大7.6)まで含めて y164 まで。
    *               lcd.text のプレート(y168〜236)には掛からない。
    *   擬似連カウント 上部 y62(冒頭だけ大きく出て走り出しと同時に消える)。
    *   ※ 以前は「y100〜158」と書いてあったが、実装は laneTop 104 + 20×3 + 6 = y170 まで
    *      伸びていてプレートに掛かっていた。数値を触るときはこのコメントも直すこと。
    */
-  deepracer_race: {
+  distmap_race: {
     layer: 'fg', ms: 2200,
     draw(ctx, p, params, w, h) {
       const step = Math.round(clamp(params.step ?? 1, 1, 4));
@@ -2284,18 +2991,18 @@ export const LCD_ANIMS_EXTRA = {
         ctx.restore();
       }
 
-      // ── 車 ──
+      // ── 子の実行(並列に走るトークン)──
       for (let i = 0; i < cars; i++) {
         const lane = i % lanes;
         const y = laneTop + lane * laneH + (step >= 4 ? 0 : 6);
-        // 台ごとに出発をずらして隊列に見せる
+        // 1本ごとに出発をずらして隊列に見せる
         const delay = (i / cars) * 0.32;
         const t = clamp01((p - delay) / (1 - delay * 0.6));
         if (t <= 0) continue;
         const x = -46 + t * (w + 92) * 1.0;
         const bob = Math.sin(p * Math.PI * 14 + i) * 1.6;
 
-        // 砂ぼこり
+        // 後ろに散る光(旧: 砂ぼこり)
         ctx.save();
         ctx.globalAlpha = alpha * (step >= 3 ? 0.5 : 0.34);
         for (let k = 0; k < (step >= 3 ? 4 : 3); k++) {
@@ -2311,7 +3018,7 @@ export const LCD_ANIMS_EXTRA = {
         ctx.translate(x, y + bob);
         const sc = step >= 4 ? 0.82 : 1;
         ctx.scale(sc, sc);
-        drawRacerCar(ctx, { body: i === 0 ? COLOR : '#8ad4ff', spin: p * SPEED });
+        drawRunToken(ctx, { body: i === 0 ? COLOR : '#8ad4ff', spin: p * SPEED });
         ctx.restore();
       }
 
@@ -2734,24 +3441,38 @@ export const LCD_ANIMS_EXTRA = {
         ctx.restore();
       }
 
-      // ── 結果表示 ──
-      if (verdictP > 0) {
-        const label = ok ? '継続!!' : 'UNHEALTHY';
+      /* ── 結果表示 ────────────────────────────────────────────────
+       *
+       * ── 「同時に出す告知は1枚」(2026-08-15 ユーザー指示 U64-7)────────────
+       * 失敗側(RUSH 終了)は以前ここに 'UNHEALTHY' を y148 で描いており、
+       * ちょうどその上へ **ポップアップ「RUSH 終了 / 引き戻しに期待」が重なって
+       * 2枚**出ていた(y151〜236 は lcd.text の告知プレートの席)。
+       *
+       * どちらも同じ出来事なので、**文字はポップアップ側1枚に寄せた**:
+       *   ・盤面(ここ)は失敗のとき **文字を1つも描かない**。
+       *     赤い枠・止まった心電図・赤いフラッシュだけで「落ちた」を見せる
+       *   ・言葉は data/scenarios/rushes.js の rush_end_all が出す
+       *     lcd.text『RUSH 終了 / 引き戻しに期待』1枚だけ
+       * 盤面に文字を戻すと、そのポップアップと必ず重なる(位置を変えても、
+       * プレートは文言の行数で上端が y124 まで伸びる)。**戻さないこと。**
+       * 継続側(ok:true)は upper.js / cz.js がテキストを出さない約束なので従来どおり。 */
+      if (verdictP > 0 && ok) {
+        const label = '継続!!';
         const s2 = easeOutBack(clamp01(verdictP / 0.32));
-        const pulse = ok ? 1 + Math.sin(p * Math.PI * 14) * 0.03 : 1;
+        const pulse = 1 + Math.sin(p * Math.PI * 14) * 0.03;
         ctx.save();
         ctx.globalAlpha = alpha;
         ctx.translate(w / 2, 148);
         ctx.scale(s2 * pulse, s2 * pulse);
         // 液晶の幅に収まる大きさまで詰める
-        const size = ok ? 54 : 34;
         strokedText(ctx, label, 0, 0, {
-          size: Math.min(size, Math.floor((w - 40) / Math.max(1, label.length) * 1.7)),
-          color: ok ? '#7bffc4' : '#ff8a8a',
+          size: Math.min(54, Math.floor((w - 40) / Math.max(1, label.length) * 1.7)),
+          color: '#7bffc4',
           edge: 'rgba(0,20,10,0.95)',
         });
         ctx.restore();
-
+      }
+      if (verdictP > 0) {
         // 継続時は付与G数を添える
         if (ok && addGames > 0 && verdictP > 0.28) {
           const ap = clamp01((verdictP - 0.28) / 0.3);
@@ -3682,6 +4403,126 @@ export const LCD_ANIMS_EXTRA = {
         ctx.globalAlpha = clamp01((0.6 - cover) / 0.6);
         strokedText(ctx, after, w / 2, mid - 46, { size: 17, color, edge: 'rgba(0,10,30,0.9)' });
       }
+
+      ctx.restore();
+    },
+  },
+
+  /**
+   * AWS豆知識カード(U59)。ボーナス中の1ゲームおきに1枚だけ出す。
+   * params: { service=null(固定したいとき), dismiss=false, ms }
+   *
+   * ■ 寿命
+   *   ms は長め(既定20秒)にしてあり、**次のゲームのレバーONで
+   *   dismiss:true の再生に差し替えられて消える**
+   *   (data/scenarios/trivia.js の waitFor:'leverOn' キュー)。
+   *   LcdAnims.play は同じIDのアニメを重ねずに差し替えるので、
+   *   差し替えた瞬間に前のカードは消える。
+   *   レバーが来ないまま尺切れになっても自然に消えるので固まらない。
+   *
+   * ■ レイアウト(TRIVIA_CARD を参照。下端は必ず 148 以下)
+   *   y  50  見出し「AWS 豆知識」+ アクセントバー / NEW ピル / 右端にカテゴリピル
+   *   y  82  サービス名(幅に合わせて 21px → 14px まで詰める)
+   *   y 116  1行概要(16px → 13px まで詰める)
+   *   y 136  AWS図鑑カウンタ(右寄せ・小さく薄く。カード下端 146 の内側)
+   *
+   * ■ 学習の付加情報(2026-08-15 学習強化 L3)
+   *   カテゴリピル / NEW / 図鑑カウンタの3つは **?learn=off で全部消える**
+   *   (消すと U59 当時の見た目に戻る)。どれも乱数を引かず、
+   *   数字は data/learnlog.js が解決済みの値をそのまま出す。
+   */
+  aws_trivia_card: {
+    layer: 'ui', ms: 20000,
+    draw(ctx, p, params, w, h) {
+      if (params.dismiss === true) return;
+      const card = triviaStateOf(params);
+      const ms = params.ms ?? 20000;
+      const elapsed = p * ms;
+
+      // 出だしだけふわっと。末尾は差し替え or 尺切れで消えるので落とさない
+      const inP = clamp01(elapsed / 260);
+      let alpha = inP;
+      if (p > 0.94) alpha *= Math.max(0, 1 - (p - 0.94) / 0.06);
+      if (alpha <= 0) return;
+
+      const { x, y: cardY, w: cw, h: ch } = TRIVIA_CARD;
+      // 出だしは少し上から降りてくる(枠線に潜らない 6px まで)
+      const y = cardY + (1 - easeOutCubic(inP)) * -6;
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+
+      // ── カードの地(これがそのまま文字の下敷きになる)──
+      roundRect(ctx, x, y, cw, ch, 10);
+      ctx.fillStyle = 'rgba(4,10,22,0.94)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(124,243,255,0.55)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      // 走査線(クイズ盤面と同じ質感)
+      ctx.save();
+      roundRect(ctx, x, y, cw, ch, 10);
+      ctx.clip();
+      ctx.fillStyle = 'rgba(124,243,255,0.04)';
+      for (let ly = y; ly < y + ch; ly += 6) ctx.fillRect(x, ly, cw, 2);
+      ctx.restore();
+
+      // ── 見出し ──
+      ctx.fillStyle = 'rgba(124,243,255,0.85)';
+      ctx.fillRect(x + 14, y + 8, 3, 14);
+      const HEAD = 'AWS 豆知識';
+      strokedText(ctx, HEAD, x + 24, y + 15, {
+        size: 12, color: '#7cf3ff', edge: 'rgba(0,10,30,0.9)', align: 'left',
+      });
+
+      /* ── 学習の付加情報(L3)。?learn=off のときは3つとも描かない ──
+       * カテゴリ … 「どの分野のサービスか」という、カード本文には無い情報を1つだけ足す
+       * NEW      … 図鑑に**初めて入った**ときだけ(2回目以降は出ない)
+       * カウンタ … 集めている感。数字は learnlog の解決済みの値をそのまま出す */
+      if (isLearnEnabled()) {
+        // カテゴリピルは見出し行の右端(サービス名の行には降ろさない)
+        const cat = categoryOfService(card.service);
+        drawPill(ctx, x + cw - 14, y + 15, cat.label, { size: 11, color: cat.color, align: 'right' });
+
+        // NEW は見出しの直後。見出しの実幅を測ってから置く(重ならないように)
+        if (card.first === true) {
+          ctx.save();
+          ctx.font = `900 12px ${FONT_HEAVY}`;
+          const headW = textWidth(ctx, HEAD, 12);
+          ctx.restore();
+          drawPill(ctx, x + 24 + headW + 8, y + 15, 'NEW', { size: 10, color: '#ffe066' });
+        }
+
+        // 図鑑カウンタ(カード下端 y+108 の内側。画面yでは 136)。
+        // 数え直しは triviaStateOf が1再生に1回だけ済ませている(毎フレーム引かない)
+        const dex = card.dex;
+        ctx.save();
+        ctx.globalAlpha = alpha * 0.6;
+        strokedText(ctx, `AWS図鑑 ${dex.owned}/${dex.total}`, x + cw - 16, y + 98, {
+          size: 10, color: '#9fd8ff', edge: 'rgba(0,10,30,0.9)', align: 'right', heavy: false,
+        });
+        ctx.restore();
+      }
+
+      // ── サービス名(主役。幅に合わせて詰める)──
+      const nameSize = fitFont(ctx, card.service, cw - 34, { max: 21, min: 14 });
+      strokedText(ctx, card.service, x + cw / 2, y + 46, {
+        size: nameSize, color: '#ffffff', edge: 'rgba(0,10,30,0.95)',
+      });
+
+      // 区切り線
+      ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x + 22, y + 64);
+      ctx.lineTo(x + cw - 22, y + 64);
+      ctx.stroke();
+
+      // ── 1行概要(読ませたい本文)──
+      const lineSize = fitFont(ctx, card.oneLiner, cw - 34, { max: 16, min: 13, heavy: false });
+      strokedText(ctx, card.oneLiner, x + cw / 2, y + 82, {
+        size: lineSize, color: '#cfe6ff', edge: 'rgba(0,10,30,0.95)', heavy: false,
+      });
 
       ctx.restore();
     },

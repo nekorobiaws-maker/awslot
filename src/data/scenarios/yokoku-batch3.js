@@ -63,13 +63,26 @@
  *  CloudFormationのCREATE_COMPLETE / Shieldの自動緩和 / CloudWatchの異常検知バンド /
  *  Route 53ヘルスチェックの複数チェッカー / re:Postの承認された回答)。
  *
- * ══ 色(U9)════════════════════════════════════════════════════════
+ * ══ 色と結論のライフサイクル(U9 → U57 / U62)══════════════════════
  * 成立役を1つに絞れる中版は **その役の色** を使う(色が出た = その役が成立した)。
- * 役をまたぐ中版(rare:true)は既存の中色(#ffe066)。弱は既存どおり #8ad4ff。
+ * 役をまたぐ中版(rare:true / 2役)は役色を使わず中立色(COLOR_MID)にする。
+ * 弱は「このゲームは当たらない」を言い切る行なので **ハズレ色 = 白**(U62。
+ * 以前の #8ad4ff は「弱予告の色」であって役色ではなかった)。
+ *
+ * 弱の結論も中の結論も conclusionCue() で作る = **第3停止で出て、
+ * 次のゲームのレバーONで消える**(U57)。以前は弱だけ at:420〜520 で
+ * 第3停止より前に「当たらない」と言い切っていた。
  */
 
 // 天井(Auto Recovery)のゲーム数。NOT_CEILING_GAME の算出に使う(data/modes.js が唯一の正)
 import { NORMAL_SUBSTATES } from '../modes.js';
+/*
+ * 結論行の作法(U57)と役色(U62)は data/rolecolors.js が唯一の正。
+ *   弱 = 「このゲームは当たらない」の言い切り → ハズレ色(白)
+ *   中 = 成立役が1つに決まるものだけ役色。絞れないものは中立色(COLOR_MID)
+ * どちらも **第3停止で出て、次のゲームのレバーONで消える**。
+ */
+import { conclusionCue, colorForFlag, COLOR_NEUTRAL_MID } from '../rolecolors.js';
 
 /**
  * ハズレ寄りプールに合わせた発火率。yokoku-batch4.js / yokoku-bedrock.js と同値。
@@ -81,14 +94,11 @@ import { NORMAL_SUBSTATES } from '../modes.js';
  */
 const CHANCE_WEAK = 0.245;
 
-/** 弱の文字色(既存の弱予告と同じ) */
-const COLOR_WEAK = '#8ad4ff';
-/** 中の文字色(役を1つに絞れないとき) */
-const COLOR_MID = '#ffe066';
-/** 成立役の色(U9。yokoku-aruaru.js の FLAG_COLOR と同値) */
-const COLOR_CHERRY = '#ff4d4d';
-const COLOR_MELON = '#4ce0a0';
-const COLOR_LAMBDA = '#ffd95e';
+/**
+ * 中の文字色(**役を1つに絞れない**中版だけで使う中立色)。
+ * 役色は data/rolecolors.js が唯一の正なので、ここには16進を書かない(U62)。
+ */
+const COLOR_MID = COLOR_NEUTRAL_MID;
 
 /**
  * 天井(Auto Recovery)に当たらないゲームの `modeState.games` 一覧。
@@ -144,8 +154,7 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.5 } },
       { at: 0,   layer: 'lcd', action: 'anim',  params: { anim: 'step_up', step: 1 } },
-      { at: 420, layer: 'lcd', action: 'text',
-        params: { text: '暗号文のまま', sub: 'データキーを復号できていない', color: COLOR_WEAK, ms: 800 } },
+      conclusionCue({ flag: 'LOSE', text: '暗号文のまま', sub: 'データキーを復号できていない', ms: 800 }),
     ],
   },
   {
@@ -160,9 +169,11 @@ export default [
       { at: 0,   layer: 'sfx',  action: 'synth', params: { preset: 'charge_up' } },
       { at: 40,  layer: 'lcd',  action: 'anim',  params: { anim: 'step_up', step: 3 } },
       { waitFor: 'stop3', layer: 'sfx', action: 'synth', params: { preset: 'upgrade_chime' } },
-      { waitFor: 'stop3', after: 80, layer: 'overlay', action: 'flash', params: { color: COLOR_CHERRY, ms: 200 } },
-      { waitFor: 'stop3', after: 120, layer: 'lcd', action: 'text',
-        params: { text: '復号できた', sub: 'KMS がデータキーを開けた', color: COLOR_CHERRY, ms: 1300 } },
+      { waitFor: 'stop3', after: 80, layer: 'overlay', action: 'flash',
+        params: { color: colorForFlag('WEAK_CHERRY'), ms: 200 } },
+      conclusionCue({
+        flag: 'WEAK_CHERRY', text: '復号できた', sub: 'KMS がデータキーを開けた', after: 120, ms: 1300,
+      }),
     ],
   },
 
@@ -180,8 +191,7 @@ export default [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.5 } },
       { at: 0,   layer: 'lcd', action: 'anim',
         params: { anim: 'cw_meter_swing', to: 0.3, over: false, label: 'COVERAGE', sub: 'まだオンデマンド' } },
-      { at: 460, layer: 'lcd', action: 'text',
-        params: { text: 'カバー率 低め', sub: '割引はまだ効いていない', color: COLOR_WEAK, ms: 800 } },
+      conclusionCue({ flag: 'LOSE', text: 'カバー率 低め', sub: '割引はまだ効いていない', ms: 800 }),
     ],
   },
   {
@@ -196,8 +206,10 @@ export default [
       { at: 40,  layer: 'lcd',  action: 'anim',
         params: { anim: 'cw_meter_swing', to: 0.92, over: true, label: 'COVERAGE', sub: 'コミット適用中', ms: 1700 } },
       { waitFor: 'stop3', layer: 'sfx', action: 'synth', params: { preset: 'upgrade_chime' } },
-      { waitFor: 'stop3', after: 120, layer: 'lcd', action: 'text',
-        params: { text: '割引が効いた', sub: 'Savings Plans でカバー率が上がった', color: COLOR_MELON, ms: 1300 } },
+      conclusionCue({
+        flag: 'MELON', text: '割引が効いた', sub: 'Savings Plans でカバー率が上がった',
+        after: 120, ms: 1300,
+      }),
     ],
   },
 
@@ -213,8 +225,7 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'checklist_ok', gain: 0.55 } },
       { at: 0,   layer: 'lcd', action: 'anim',  params: { anim: 'checklist_green', index: 1 } },
-      { at: 420, layer: 'lcd', action: 'text',
-        params: { text: 'OPTIMIZED', sub: '推奨なし — いまのままで足りている', color: COLOR_WEAK, ms: 800 } },
+      conclusionCue({ flag: 'LOSE', text: 'OPTIMIZED', sub: '推奨なし — いまのままで足りている', ms: 800 }),
     ],
   },
 
@@ -231,8 +242,11 @@ export default [
       { at: 0,   layer: 'sfx',  action: 'synth', params: { preset: 'contract_sign', gain: 0.7 } },
       { at: 100, layer: 'lcd',  action: 'anim', params: { anim: 'reserved_sign', label: 'BACKUP VAULT' } },
       { waitFor: 'stop3', layer: 'sfx', action: 'synth', params: { preset: 'upgrade_chime' } },
-      { waitFor: 'stop3', after: 100, layer: 'lcd', action: 'text',
-        params: { text: '復旧ポイント確保', sub: 'いつでも戻せる状態にした', color: COLOR_MID, ms: 1300 } },
+      // 強チェリーとチャンス目の両方で出る = 役を1つに絞れないので中立色(U62)
+      conclusionCue({
+        text: 'AWS Backup — 復旧ポイント確保', sub: 'いつでも戻せる状態にした',
+        color: COLOR_MID, after: 100, ms: 1300,
+      }),
     ],
   },
 
@@ -250,11 +264,10 @@ export default [
       { at: 0,   layer: 'sfx',  action: 'synth', params: { preset: 'stream_flow' } },
       { at: 40,  layer: 'lcd',  action: 'anim', params: { anim: 'all_regions_light' } },
       { waitFor: 'stop3', layer: 'sfx', action: 'synth', params: { preset: 'edge_hit' } },
-      { waitFor: 'stop3', after: 100, layer: 'lcd', action: 'text',
-        params: {
-          text: 'エニーキャストIPで直行', sub: '最寄りのエッジからAWSの網に乗った',
-          color: COLOR_LAMBDA, ms: 1400,
-        } },
+      conclusionCue({
+        flag: 'CHANCE', text: 'エニーキャストIPで直行', sub: '最寄りのエッジからAWSの網に乗った',
+        after: 100, ms: 1400,
+      }),
     ],
   },
 
@@ -269,8 +282,7 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.5 } },
       { at: 0,   layer: 'lcd', action: 'anim', params: { anim: 'deploy_progress', from: 0, to: 0.45 } },
-      { at: 460, layer: 'lcd', action: 'text',
-        params: { text: 'CREATE_IN_PROGRESS', sub: 'スタックはまだ途中', color: COLOR_WEAK, ms: 800 } },
+      conclusionCue({ flag: 'LOSE', text: 'CREATE_IN_PROGRESS', sub: 'スタックはまだ途中', ms: 800 }),
     ],
   },
   {
@@ -285,8 +297,11 @@ export default [
       { at: 40,  layer: 'lcd',  action: 'anim', params: { anim: 'deploy_progress', from: 0, to: 1, ms: 1700 } },
       { waitFor: 'stop3', layer: 'sfx', action: 'synth', params: { preset: 'upgrade_chime' } },
       { waitFor: 'stop3', layer: 'overlay', action: 'particles', params: { preset: 'spark', x: 360, y: 300, count: 14 } },
-      { waitFor: 'stop3', after: 120, layer: 'lcd', action: 'text',
-        params: { text: 'CREATE_COMPLETE', sub: '一式まとめて出来上がった', color: COLOR_MID, ms: 1300 } },
+      // レア役全般で出る = 役を1つに絞れないので中立色(U62)
+      conclusionCue({
+        text: 'CREATE_COMPLETE', sub: '一式まとめて出来上がった',
+        color: COLOR_MID, after: 120, ms: 1300,
+      }),
     ],
   },
 
@@ -342,8 +357,7 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.45 } },
       { at: 0,   layer: 'lcd', action: 'anim', params: { anim: 'cw_graph_rise', step: 2 } },
-      { at: 440, layer: 'lcd', action: 'text',
-        params: { text: 'バンド内', sub: '想定の範囲で推移している', color: COLOR_WEAK, ms: 800 } },
+      conclusionCue({ flag: 'LOSE', text: 'バンド内', sub: 'CloudWatch 異常検出 — 想定の範囲で推移している', ms: 800 }),
     ],
   },
   {
@@ -360,8 +374,10 @@ export default [
       { waitFor: 'stop3', layer: 'sfx', action: 'synth', params: { preset: 'alarm_beep' } },
       { waitFor: 'stop3', layer: 'lcd', action: 'anim',
         params: { anim: 'cw_meter_swing', to: 0.95, over: true, label: 'ANOMALY', sub: 'バンド超過', ms: 1500 } },
-      { waitFor: 'stop3', after: 150, layer: 'lcd', action: 'text',
-        params: { text: 'バンドを突き抜けた', sub: 'CloudWatch が異常を検知', color: COLOR_MID, ms: 1300 } },
+      conclusionCue({
+        text: 'バンドを突き抜けた', sub: 'CloudWatch が異常を検知',
+        color: COLOR_MID, after: 150, ms: 1300,
+      }),
     ],
   },
 
@@ -379,8 +395,7 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.5 } },
       { at: 0,   layer: 'lcd', action: 'anim', params: { anim: 'health_check', ok: false, label: 'CHECKER 1/3 NG' } },
-      { at: 520, layer: 'lcd', action: 'text',
-        params: { text: 'まだ切り替わらない', sub: '他のチェッカーは正常のまま', color: COLOR_WEAK, ms: 800 } },
+      conclusionCue({ flag: 'LOSE', text: 'まだ切り替わらない', sub: '他のチェッカーは正常のまま', ms: 800 }),
     ],
   },
 
@@ -399,8 +414,10 @@ export default [
       { at: 40,  layer: 'lcd',  action: 'anim', params: { anim: 'checklist_green', index: 1 } },
       { waitFor: 'stop2', layer: 'lcd', action: 'anim', params: { anim: 'checklist_green', index: 2 } },
       { waitFor: 'stop3', layer: 'sfx', action: 'synth', params: { preset: 'upgrade_chime' } },
-      { waitFor: 'stop3', after: 120, layer: 'lcd', action: 'text',
-        params: { text: '回答が承認された', sub: 're:Post — 詳しい人が現れた', color: COLOR_MID, ms: 1300 } },
+      conclusionCue({
+        text: '回答が承認された', sub: 're:Post — 詳しい人が現れた',
+        color: COLOR_MID, after: 120, ms: 1300,
+      }),
     ],
   },
 ];

@@ -828,8 +828,25 @@ body.is-ama .result-session[data-ama-label]::after {
 .result-score[data-sign="plus"] { color: #ffe58a; }
 .result-score[data-sign="minus"] { color: #9fb2d8; text-shadow: 0 0 18px rgba(120, 150, 220, 0.7); }
 .result-rank {
-  margin: 4px 0 14px;
+  margin: 4px 0 2px;
   font-size: 14px; font-weight: 900; letter-spacing: 0.1em;
+}
+
+/* ── 称号(2026-08-15 U56)────────────────────────────────────
+ * RANK 行の直下に **別の行** で置く。
+ * ユーザー指示は「派手な演出は不要(シンプルに)」なので、
+ * 発光もアニメーションも付けず、色だけを称号ごとに変える
+ * (色は data/titles.js が持ち、JS が style.color で当てる)。
+ * DOM は render/resultpanel.js が作って挿す(index.html には無い)。 */
+.result-honor {
+  margin: 0 0 12px;
+  font-size: 13px; font-weight: 800; letter-spacing: 0.06em;
+}
+.result-honor-note {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0;
+  color: rgba(255, 255, 255, 0.55);
 }
 
 .result-detail {
@@ -845,6 +862,172 @@ body.is-ama .result-session[data-ama-label]::after {
 }
 .result-detail dt { color: rgba(255, 255, 255, 0.68); }
 .result-detail dd { margin: 0; text-align: right; font-weight: 700; color: #ffe9b0; }
+
+/* ── 学習サマリー(2026-08-15 学習コンテンツ強化 L5)──────────
+ *
+ * 位置は .result-detail の **直後**・.result-again の **前**。
+ * この並び(成績 → 学び → もう一度やる)を崩さないこと。
+ *
+ * DOM は render/resultpanel.js が <details> ごと作って挿す
+ * (index.html には無い。称号 .result-honor と同じ作法)。
+ *
+ * 高さの約束:
+ *   .result-card は max-height:100%; overflow:auto なので縦に伸びても
+ *   破綻はしないが、伸ばしすぎると「もう一度やる」がカードの下へ隠れて
+ *   スクロールしないと押せなくなる。そのため **本文は 160px で頭打ち**にし、
+ *   はみ出す分は本文の中だけをスクロールさせる。
+ *   縦が短い窓(スマホ横持ち等)ではさらに詰める(下の @media)。 */
+.result-learn {
+  margin: 0 0 14px;
+  padding: 7px 12px 9px;
+  border-radius: 12px;
+  border: 1px solid rgba(124, 243, 255, 0.28);
+  background: rgba(0, 0, 0, 0.3);
+  text-align: left;
+}
+.result-learn[hidden] { display: none; }
+
+/* 1行ダイジェスト。閉じていてもここだけで要約が伝わる文言を JS が入れる */
+.result-learn-summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #7cf3ff;
+  /* 三角マーカーを行内に置く(list-style:none にすると開閉の手がかりが消える) */
+  list-style-position: inside;
+}
+.result-learn-summary:focus-visible {
+  outline: 3px solid #7bf7d0;
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+.result-learn-body {
+  max-height: 200px;
+  overflow-y: auto;
+  margin-top: 8px;
+  padding-right: 4px;
+}
+/* 続きがあることに気づけるよう、細いスクロールバーを常に見せる。
+   色を指定しないと macOS では触るまで出ない(重なり表示)ので、
+   「見切れているのに気づかない」が起きる。
+   2026-08-15 しおん検定 G1: チップ枠の入れ子スクロールは廃止し、
+   スクロールは本文(外側)1本だけにした(チップ上限 8→6 とセットの修正)。 */
+.result-learn-body {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(124, 243, 255, 0.45) transparent;
+}
+.result-learn-head {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.6);
+}
+.result-learn-none {
+  margin: 0 0 10px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+/* サービスのチップ。枠色はカテゴリ色を JS が style.borderColor で当てる
+   (data/services.js の CATEGORIES → learnlog が digest に載せて渡す)。
+   件数が増えても崩れないよう flex-wrap で折り返す。
+
+   2026-08-15 しおん検定 G1 で入れ子スクロールを廃止:
+   チップ上限を8→6件(resultpanel.js の LEARN_CHIP_MAX)に絞ったので
+   実測2行(約56px)に収まり、高さ上限もチップ側のスクロールも不要になった。
+   溢れは「ほか n件」テキストが受け、スクロールは本文(外側)1本だけ。 */
+.result-learn-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+.result-learn-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(200, 210, 232, 0.5);
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 11px;
+  line-height: 1.5;
+  color: #eaf0ff;
+}
+.result-learn-chip.is-more {
+  border-style: dashed;
+  color: rgba(255, 255, 255, 0.5);
+}
+.result-learn-chip-name { font-weight: 700; color: inherit; }
+a.result-learn-chip-name {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+a.result-learn-chip-name:hover { color: #fff; }
+a.result-learn-chip-name:focus-visible {
+  outline: 2px solid #7bf7d0;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.result-learn-chip-cat { font-size: 10px; opacity: 0.9; }
+.result-learn-chip-new {
+  padding: 0 5px;
+  border-radius: 4px;
+  background: #ffd166;
+  color: #40200a;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+}
+
+.result-learn-dl {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 3px 12px;
+  margin: 0;
+  font-size: 11px;
+}
+.result-learn-dl dt { color: rgba(255, 255, 255, 0.62); }
+.result-learn-dl dd {
+  margin: 0;
+  text-align: right;
+  font-weight: 700;
+  color: #d8e6ff;
+}
+
+/* 学習バッジ。スコアの称号(.result-honor)とは色を変えて、
+   段位が2種類あることが一目で分かるようにする(称号=金 / 学習=水色)。 */
+.result-learn-badges {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: flex-end;
+}
+.result-learn-badge {
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(124, 243, 255, 0.55);
+  background: rgba(124, 243, 255, 0.12);
+  color: #bff6ff;
+  font-size: 10px;
+  font-weight: 800;
+}
+.result-learn-badge-none {
+  color: rgba(255, 255, 255, 0.45);
+  font-weight: 600;
+}
+
+/* 縦が短い窓では本文をさらに詰める。
+   ここを削ると「もう一度やる」がカードの下へ隠れる。 */
+@media (max-height: 720px) {
+  /* G1: チップの入れ子スクロールは廃止(上のコメント参照)。低背面でも本文1本 */
+  .result-learn-body { max-height: 128px; }
+}
 
 /* 2026-08-15 U47: 「なまえ」入力(.result-form / .result-name)・
    「殿堂入り」ボタン(.result-hof)・端末内ランキング(.result-hof-*)・
@@ -877,6 +1060,17 @@ body.is-ama .result-session[data-ama-label]::after {
   margin: 8px 0 0;
   font-size: 11px;
   color: rgba(255, 255, 255, 0.5);
+}
+
+/* ── 権利表記(2026-08-15 U56)──────────────────────────────
+ * 「本作は Amazon Web Services, Inc. とは関係のない非公式ファン作品です。」
+ * カードのいちばん下に小さく置く。読めなくなるほど薄くはしない
+ * (誤解を避けるための一文なので、目立たないが読める濃さにする)。 */
+.result-disclaimer {
+  margin: 12px 0 0;
+  font-size: 10px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.42);
 }
 
 /* ── リザルト中は筐体の外のUIも一緒に暗転させる(2026-08-15 V31-09)──
@@ -1332,30 +1526,13 @@ body.debug .debug-bar { display: flex; }
 }
 
 /* ══════════════════════════════════════════════════════════
- * ページ全体の暗転(#page-blackout)
+ * ページ全体の暗転(#page-blackout)は撤去した(2026-08-15 U60)
  *
- * 2026-08-14 検証指摘 V21-06「フリーズの暗転が筐体の中だけ」。
- * 要素そのものは **筐体と同じ位置・同じ大きさ**(JS が毎フレーム合わせる)で、
- * 背景は塗らず、外向きの巨大な box-shadow でページの残り全部を黒くする。
- * こうすると筐体の中は Canvas 側の暗転が担当したまま、
- * カットインや「神の声」がこのレイヤーに邪魔されない。
- *
- * z-index は #viewport(1)・#controls-guide(2)・#mobile-*(2)より上、
- * #boot-screen(40)より下。
+ * V21-06 でフリーズの暗転を筐体の外まで広げていたが、
+ * ユーザー指示 U60 で **暗転は液晶(LCD)の中だけ** に戻した。
+ * 筐体・リール・HOW TO PLAY プレート・ホール背景は明るいままにする。
+ * 対応する DOM 生成とスタイル参照は render/overlay.js から削除済み。
  * ══════════════════════════════════════════════════════════ */
-#page-blackout {
-  position: fixed;
-  left: 0;
-  top: 0;
-  width: 0;
-  height: 0;
-  z-index: 30;
-  display: none;
-  opacity: 0;
-  background: transparent;
-  box-shadow: 0 0 0 100vmax #000;
-  pointer-events: none;
-}
 
 /* ══════════════════════════════════════════════════════════
  * スマホ縦持ちなどの上下余白の飾り(#mobile-title / #mobile-rule)

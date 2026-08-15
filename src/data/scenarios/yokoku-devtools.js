@@ -74,8 +74,8 @@ export default [
     cues: [
       { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'BUILD STARTED', sub: 'CodeBuildが起動した', color: '#8ad4ff', ms: 500 } },
       { at: 30,  layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick', gain: 0.5 } },
-      { at: 500, layer: 'lcd', action: 'anim',  params: { anim: 'step_up', step: 1 } },
-      { at: 750, layer: 'lcd', action: 'text',  params: { text: 'COMPILING 38%', sub: 'コンパイル中…', color: '#8ad4ff', ms: 600 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'anim',  params: { anim: 'step_up', step: 1 } },
+      { waitFor: 'stop3', after: 250, layer: 'lcd', action: 'text',  params: { text: 'COMPILING 38%', sub: 'コンパイル中…', color: '#8ad4ff', ms: 600 } },
     ],
   },
   {
@@ -108,7 +108,7 @@ export default [
     cues: [
       { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'PUBLISHING…', sub: 'パッケージを公開中', color: '#8ad4ff', ms: 550 } },
       { at: 30,  layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.5 } },
-      { at: 600, layer: 'lcd', action: 'text',  params: { text: 'PACKAGE ×1', sub: '1件だけ公開された', color: '#8ad4ff', ms: 500 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: 'PACKAGE ×1', sub: '1件だけ公開された', color: '#8ad4ff', ms: 500 } },
     ],
   },
   {
@@ -121,9 +121,9 @@ export default [
       { at: 0,   layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
       { at: 0,   layer: 'lcd',  action: 'text',    params: { text: 'PUBLISHING…', sub: '複数パッケージを公開中', color: '#ffe066', ms: 600 } },
       { at: 40,  layer: 'sfx',  action: 'synth',   params: { preset: 'announce' } },
-      { at: 700, layer: 'lcd',  action: 'particles', params: { preset: 'stream', x: 200, y: 200, count: 12 } },
-      { at: 720, layer: 'sfx',  action: 'synth',   params: { preset: 'upgrade_chime' } },
-      { at: 900, layer: 'lcd',  action: 'text',    params: { text: 'PACKAGE ×5', sub: '依存関係もすべて解決', color: '#ffe066', ms: 1000 } },
+      { waitFor: 'stop3', layer: 'lcd',  action: 'particles', params: { preset: 'stream', x: 200, y: 200, count: 12 } },
+      { waitFor: 'stop3', after: 20, layer: 'sfx',  action: 'synth',   params: { preset: 'upgrade_chime' } },
+      { waitFor: 'stop3', after: 200, layer: 'lcd',  action: 'text',    params: { text: 'PACKAGE ×5', sub: '依存関係もすべて解決', color: '#ffe066', ms: 1000 } },
     ],
   },
 
@@ -138,7 +138,7 @@ export default [
     cues: [
       { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'REVIEWING…', sub: 'コードレビュー中', color: '#8ad4ff', ms: 600 } },
       { at: 30,  layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick', gain: 0.5 } },
-      { at: 650, layer: 'lcd', action: 'text',  params: { text: 'FINDING ×1', sub: '軽微な指摘が残った', color: '#8ad4ff', ms: 500 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: 'FINDING ×1', sub: '軽微な指摘が残った', color: '#8ad4ff', ms: 500 } },
     ],
   },
   {
@@ -151,11 +151,11 @@ export default [
       { at: 0,    layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
       { at: 0,    layer: 'lcd',  action: 'text',    params: { text: 'REVIEWING…', sub: 'コードレビュー中', color: '#ffe066', ms: 600 } },
       { at: 40,   layer: 'sfx',  action: 'synth',   params: { preset: 'countdown_tick' } },
-      { at: 700,  layer: 'lcd',  action: 'anim',    params: { anim: 'checklist_green', index: 1 } },
-      { at: 740,  layer: 'sfx',  action: 'synth',   params: { preset: 'checklist_ok' } },
-      { at: 900,  layer: 'lcd',  action: 'anim',    params: { anim: 'checklist_green', index: 2 } },
-      { at: 940,  layer: 'sfx',  action: 'synth',   params: { preset: 'checklist_ok' } },
-      { at: 1100, layer: 'lcd',  action: 'text',    params: { text: 'ALL RESOLVED', sub: '指摘がすべて解消した', color: '#ffe066', ms: 1000 } },
+      { waitFor: 'stop3',  layer: 'lcd',  action: 'anim',    params: { anim: 'checklist_green', index: 1 } },
+      { waitFor: 'stop3', after: 40,  layer: 'sfx',  action: 'synth',   params: { preset: 'checklist_ok' } },
+      { waitFor: 'stop3', after: 200,  layer: 'lcd',  action: 'anim',    params: { anim: 'checklist_green', index: 2 } },
+      { waitFor: 'stop3', after: 240,  layer: 'sfx',  action: 'synth',   params: { preset: 'checklist_ok' } },
+      { waitFor: 'stop3', after: 400, layer: 'lcd',  action: 'text',    params: { text: 'ALL RESOLVED', sub: '指摘がすべて解消した', color: '#ffe066', ms: 1000 } },
     ],
   },
 
@@ -241,8 +241,8 @@ export default [
     cues: [
       { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'amplify push', sub: 'デプロイを開始した', color: '#8ad4ff', ms: 550 } },
       { at: 30,  layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.5 } },
-      { at: 550, layer: 'lcd', action: 'anim',  params: { anim: 'cw_meter_swing', to: 0.32, over: false, label: 'PUSH PROGRESS', sub: 'HOSTING', ms: 900 } },
-      { at: 900, layer: 'lcd', action: 'text',  params: { text: 'PUSHING 32%', sub: 'まだ途中…', color: '#8ad4ff', ms: 500 } },
+      { waitFor: 'stop1', layer: 'lcd', action: 'anim',  params: { anim: 'cw_meter_swing', to: 0.32, over: false, label: 'PUSH PROGRESS', sub: 'HOSTING', ms: 900 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: 'PUSHING 32%', sub: 'まだ途中…', color: '#8ad4ff', ms: 500 } },
     ],
   },
   {
@@ -255,8 +255,8 @@ export default [
       { at: 0,    layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
       { at: 0,    layer: 'lcd',  action: 'text',    params: { text: 'amplify push', sub: 'ホスティングを更新中', color: '#ffe066', ms: 600 } },
       { at: 40,   layer: 'sfx',  action: 'synth',   params: { preset: 'dynamo_scale' } },
-      { at: 700,  layer: 'lcd',  action: 'anim',    params: { anim: 'cw_meter_swing', to: 0.81, over: false, label: 'PUSH PROGRESS', sub: 'HOSTING', ms: 1600 } },
-      { at: 1500, layer: 'lcd',  action: 'text',    params: { text: 'PUSHING 81%', sub: 'あと少しで反映', color: '#ffe066', ms: 900 } },
+      { waitFor: 'stop1',  layer: 'lcd',  action: 'anim',    params: { anim: 'cw_meter_swing', to: 0.81, over: false, label: 'PUSH PROGRESS', sub: 'HOSTING', ms: 1600 } },
+      { waitFor: 'stop3', layer: 'lcd',  action: 'text',    params: { text: 'PUSHING 81%', sub: 'あと少しで反映', color: '#ffe066', ms: 900 } },
     ],
   },
 
@@ -271,7 +271,7 @@ export default [
     cues: [
       { at: 0,   layer: 'lcd', action: 'anim',  params: { anim: 'health_check', ok: false, label: 'SUBSCRIBING' } },
       { at: 30,  layer: 'sfx', action: 'synth', params: { preset: 'health_check', gain: 0.5 } },
-      { at: 700, layer: 'lcd', action: 'text',  params: { text: 'PENDING', sub: 'まだ接続できていない', color: '#8ad4ff', ms: 500 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: 'PENDING', sub: 'まだ接続できていない', color: '#8ad4ff', ms: 500 } },
     ],
   },
   {
@@ -284,7 +284,7 @@ export default [
       { at: 0,   layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
       { at: 0,   layer: 'lcd',  action: 'anim',    params: { anim: 'health_check', ok: true, label: 'SUBSCRIBED' } },
       { at: 40,  layer: 'sfx',  action: 'synth',   params: { preset: 'health_check' } },
-      { at: 700, layer: 'lcd',  action: 'text',    params: { text: 'GraphQL接続確立', sub: 'リアルタイム同期が繋がった', color: '#ffe066', ms: 1000 } },
+      { waitFor: 'stop3', layer: 'lcd',  action: 'text',    params: { text: 'GraphQL接続確立', sub: 'リアルタイム同期が繋がった', color: '#ffe066', ms: 1000 } },
     ],
   },
 
@@ -299,8 +299,8 @@ export default [
     cues: [
       { at: 0,    layer: 'lcd', action: 'text',  params: { text: 'SCHEDULE 5秒前', sub: '次の実行を待機中', color: '#8ad4ff', ms: 500 } },
       { at: 30,   layer: 'sfx', action: 'synth', params: { preset: 'ttl_tick', gain: 0.5 } },
-      { at: 500,  layer: 'lcd', action: 'text',  params: { text: 'SCHEDULE 3秒前', sub: 'カウントダウン中', color: '#8ad4ff', ms: 500 } },
-      { at: 1000, layer: 'lcd', action: 'text',  params: { text: '延期', sub: '今回は実行されず', color: '#8ad4ff', ms: 500 } },
+      { waitFor: 'stop1',  layer: 'lcd', action: 'text',  params: { text: 'SCHEDULE 3秒前', sub: 'カウントダウン中', color: '#8ad4ff', ms: 500 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: '延期', sub: 'EventBridge Scheduler — 今回は実行されず', color: '#8ad4ff', ms: 500 } },
     ],
   },
   {
@@ -313,11 +313,11 @@ export default [
       { at: 0,    layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
       { at: 0,    layer: 'sfx',  action: 'synth',   params: { preset: 'ttl_tick' } },
       { at: 0,    layer: 'lcd',  action: 'text',    params: { text: 'SCHEDULE 3秒前', sub: 'カウントダウン中', color: '#ffe066', ms: 500 } },
-      { at: 500,  layer: 'sfx',  action: 'synth',   params: { preset: 'ttl_tick' } },
-      { at: 500,  layer: 'lcd',  action: 'text',    params: { text: 'SCHEDULE 1秒前', sub: 'まもなく実行', color: '#ffe066', ms: 500 } },
-      { at: 1000, layer: 'lcd',  action: 'anim',    params: { anim: 'ttl_zero', ms: 1000 } },
-      { at: 1020, layer: 'sfx',  action: 'synth',   params: { preset: 'ttl_zero' } },
-      { at: 1300, layer: 'lcd',  action: 'text',    params: { text: 'SCHEDULE FIRED', sub: 'スケジュールが実行された', color: '#ffe066', ms: 1000 } },
+      { waitFor: 'stop1',  layer: 'sfx',  action: 'synth',   params: { preset: 'ttl_tick' } },
+      { waitFor: 'stop1',  layer: 'lcd',  action: 'text',    params: { text: 'SCHEDULE 1秒前', sub: 'まもなく実行', color: '#ffe066', ms: 500 } },
+      { waitFor: 'stop2', layer: 'lcd',  action: 'anim',    params: { anim: 'ttl_zero', ms: 1000 } },
+      { waitFor: 'stop2', after: 20, layer: 'sfx',  action: 'synth',   params: { preset: 'ttl_zero' } },
+      { waitFor: 'stop3', layer: 'lcd',  action: 'text',    params: { text: 'SCHEDULE FIRED', sub: 'スケジュールが実行された', color: '#ffe066', ms: 1000 } },
     ],
   },
 
@@ -332,7 +332,7 @@ export default [
     cues: [
       { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'RUN COMMAND', sub: 'コマンドを配信中', color: '#8ad4ff', ms: 550 } },
       { at: 30,  layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.5 } },
-      { at: 600, layer: 'lcd', action: 'text',  params: { text: '1 / 3 実行完了', sub: 'まだ全部は終わってない', color: '#8ad4ff', ms: 500 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: '1 / 3 実行完了', sub: 'SSM Run Command — まだ全部は終わってない', color: '#8ad4ff', ms: 500 } },
     ],
   },
   {
@@ -345,13 +345,13 @@ export default [
       { at: 0,    layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
       { at: 0,    layer: 'lcd',  action: 'text',    params: { text: 'RUN COMMAND', sub: '全インスタンスへ配信中', color: '#ffe066', ms: 600 } },
       { at: 40,   layer: 'sfx',  action: 'synth',   params: { preset: 'countdown_tick' } },
-      { at: 700,  layer: 'lcd',  action: 'anim',    params: { anim: 'checklist_green', index: 1 } },
-      { at: 740,  layer: 'sfx',  action: 'synth',   params: { preset: 'checklist_ok' } },
-      { at: 900,  layer: 'lcd',  action: 'anim',    params: { anim: 'checklist_green', index: 2 } },
-      { at: 940,  layer: 'sfx',  action: 'synth',   params: { preset: 'checklist_ok' } },
-      { at: 1100, layer: 'lcd',  action: 'anim',    params: { anim: 'checklist_green', index: 3 } },
-      { at: 1140, layer: 'sfx',  action: 'synth',   params: { preset: 'upgrade_chime' } },
-      { at: 1300, layer: 'lcd',  action: 'text',    params: { text: '3 / 3 実行完了', sub: '全インスタンスに反映', color: '#ffe066', ms: 1000 } },
+      { waitFor: 'stop3',  layer: 'lcd',  action: 'anim',    params: { anim: 'checklist_green', index: 1 } },
+      { waitFor: 'stop3', after: 40,  layer: 'sfx',  action: 'synth',   params: { preset: 'checklist_ok' } },
+      { waitFor: 'stop3', after: 200,  layer: 'lcd',  action: 'anim',    params: { anim: 'checklist_green', index: 2 } },
+      { waitFor: 'stop3', after: 240,  layer: 'sfx',  action: 'synth',   params: { preset: 'checklist_ok' } },
+      { waitFor: 'stop3', after: 400, layer: 'lcd',  action: 'anim',    params: { anim: 'checklist_green', index: 3 } },
+      { waitFor: 'stop3', after: 440, layer: 'sfx',  action: 'synth',   params: { preset: 'upgrade_chime' } },
+      { waitFor: 'stop3', after: 600, layer: 'lcd',  action: 'text',    params: { text: '3 / 3 実行完了', sub: '全インスタンスに反映', color: '#ffe066', ms: 1000 } },
     ],
   },
 
@@ -366,7 +366,7 @@ export default [
     cues: [
       { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'CONFIG RULE 評価中', sub: '構成変更を検出中', color: '#8ad4ff', ms: 600 } },
       { at: 30,  layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick', gain: 0.5 } },
-      { at: 650, layer: 'lcd', action: 'text',  params: { text: 'NON_COMPLIANT ×1', sub: '軽微な差分のみ', color: '#8ad4ff', ms: 500 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: 'NON_COMPLIANT ×1', sub: '軽微な差分のみ', color: '#8ad4ff', ms: 500 } },
     ],
   },
   {
@@ -379,9 +379,9 @@ export default [
       { at: 0,   layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
       { at: 0,   layer: 'lcd',  action: 'text',    params: { text: 'CONFIG RULE 評価中', sub: '構成変更を検出中', color: '#ffe066', ms: 600 } },
       { at: 40,  layer: 'sfx',  action: 'synth',   params: { preset: 'countdown_tick' } },
-      { at: 700, layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 200, y: 200, count: 14 } },
-      { at: 720, layer: 'sfx',  action: 'synth',   params: { preset: 'alarm_beep', gain: 0.6 } },
-      { at: 900, layer: 'lcd',  action: 'text',    params: { text: 'NON_COMPLIANT ×7', sub: '大量の構成変更を検出', color: '#ff8a00', ms: 1000 } },
+      { waitFor: 'stop3', layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 200, y: 200, count: 14 } },
+      { waitFor: 'stop3', after: 20, layer: 'sfx',  action: 'synth',   params: { preset: 'alarm_beep', gain: 0.6 } },
+      { waitFor: 'stop3', after: 200, layer: 'lcd',  action: 'text',    params: { text: 'NON_COMPLIANT ×7', sub: '大量の構成変更を検出', color: '#ff8a00', ms: 1000 } },
     ],
   },
 
@@ -396,8 +396,8 @@ export default [
     cues: [
       { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'PRODUCT 起動中', sub: 'カタログから起動を要求', color: '#8ad4ff', ms: 550 } },
       { at: 30,  layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.5 } },
-      { at: 600, layer: 'lcd', action: 'anim',  params: { anim: 'checklist_green', index: 1 } },
-      { at: 700, layer: 'lcd', action: 'text',  params: { text: 'PROVISIONING 1/4', sub: 'まだ途中で止まっている', color: '#8ad4ff', ms: 500 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'anim',  params: { anim: 'checklist_green', index: 1 } },
+      { waitFor: 'stop3', after: 100, layer: 'lcd', action: 'text',  params: { text: 'PROVISIONING 1/4', sub: 'まだ途中で止まっている', color: '#8ad4ff', ms: 500 } },
     ],
   },
   {
@@ -429,8 +429,8 @@ export default [
     cues: [
       { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'ENV TEMPLATE適用中', sub: '環境テンプレートを展開', color: '#8ad4ff', ms: 600 } },
       { at: 30,  layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.5 } },
-      { at: 600, layer: 'lcd', action: 'anim',  params: { anim: 'pillar_raise', index: 1, count: 4 } },
-      { at: 700, layer: 'lcd', action: 'text',  params: { text: 'STACK 1/4', sub: 'まだ途中で止まっている', color: '#8ad4ff', ms: 500 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'anim',  params: { anim: 'pillar_raise', index: 1, count: 4 } },
+      { waitFor: 'stop3', after: 100, layer: 'lcd', action: 'text',  params: { text: 'STACK 1/4', sub: 'まだ途中で止まっている', color: '#8ad4ff', ms: 500 } },
     ],
   },
   {
@@ -462,7 +462,7 @@ export default [
     cues: [
       { at: 0,   layer: 'lcd', action: 'text',  params: { text: '$ aws s3 ls', color: '#8ad4ff', ms: 500 } },
       { at: 30,  layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.4 } },
-      { at: 550, layer: 'lcd', action: 'text',  params: { text: '$ echo ok', sub: '当たり障りのない操作', color: '#8ad4ff', ms: 500 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: '$ echo ok', sub: '当たり障りのない操作', color: '#8ad4ff', ms: 500 } },
     ],
   },
   {
@@ -475,9 +475,9 @@ export default [
       { at: 0,    layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
       { at: 0,    layer: 'lcd',  action: 'text',    params: { text: '$ aws ec2 run-instances', color: '#ffe066', ms: 550 } },
       { at: 40,   layer: 'sfx',  action: 'synth',   params: { preset: 'ui_select' } },
-      { at: 650,  layer: 'lcd',  action: 'text',    params: { text: '$ aws autoscaling set-desired-capacity --desired-capacity 8', sub: '台数を増やす気配がする', color: '#ffe066', ms: 900 } },
-      { at: 1600, layer: 'sfx',  action: 'synth',   params: { preset: 'charge_up', gain: 0.6 } },
-      { at: 1650, layer: 'lcd',  action: 'text',    params: { text: 'Enterキー待ち…', sub: '実行するかはまだ分からない', color: '#ffe066', ms: 900 } },
+      { waitFor: 'stop1',  layer: 'lcd',  action: 'text',    params: { text: '$ aws autoscaling set-desired-capacity --desired-capacity 8', sub: '台数を増やす気配がする', color: '#ffe066', ms: 900 } },
+      { waitFor: 'stop3', layer: 'sfx',  action: 'synth',   params: { preset: 'charge_up', gain: 0.6 } },
+      { waitFor: 'stop3', after: 50, layer: 'lcd',  action: 'text',    params: { text: 'Enterキー待ち…', sub: '実行するかはまだ分からない', color: '#ffe066', ms: 900 } },
     ],
   },
 
@@ -492,7 +492,7 @@ export default [
     cues: [
       { at: 0,    layer: 'lcd', action: 'anim',  params: { anim: 'cw_meter_swing', to: 0.55, over: false, label: 'LICENSE USE', sub: '残り枠を確認中', ms: 1200 } },
       { at: 30,   layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick', gain: 0.5 } },
-      { at: 1100, layer: 'lcd', action: 'text',  params: { text: '残り枠あり', sub: '今回は特に動きなし', color: '#8ad4ff', ms: 500 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: 'License Manager — 残り枠あり', sub: '同時実行ライセンスは上限まで余裕', color: '#8ad4ff', ms: 500 } },
     ],
   },
   {
@@ -505,10 +505,10 @@ export default [
       { at: 0,    layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
       { at: 0,    layer: 'lcd',  action: 'anim',    params: { anim: 'cw_meter_swing', to: 0.92, over: false, label: 'LICENSE USE', sub: '上限に接近中', ms: 1300 } },
       { at: 40,   layer: 'sfx',  action: 'synth',   params: { preset: 'countdown_tick' } },
-      { at: 1200, layer: 'sfx',  action: 'synth',   params: { preset: 'contract_sign' } },
-      { at: 1250, layer: 'lcd',  action: 'anim',    params: { anim: 'reserved_sign', label: 'LICENSED', ms: 1400 } },
-      { at: 1600, layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 220, y: 150, count: 12 } },
-      { at: 1700, layer: 'lcd',  action: 'text',    params: { text: '空き枠を確保', sub: 'ぎりぎりで割当に成功', color: '#ffe066', ms: 1000 } },
+      { waitFor: 'stop1', layer: 'sfx',  action: 'synth',   params: { preset: 'contract_sign' } },
+      { waitFor: 'stop1', after: 50, layer: 'lcd',  action: 'anim',    params: { anim: 'reserved_sign', label: 'LICENSED', ms: 1400 } },
+      { waitFor: 'stop3', layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 220, y: 150, count: 12 } },
+      { waitFor: 'stop3', after: 100, layer: 'lcd',  action: 'text',    params: { text: 'License Manager — 空き枠を確保', sub: '上限ぎりぎりで割当に成功', color: '#ffe066', ms: 1000 } },
     ],
   },
 ];

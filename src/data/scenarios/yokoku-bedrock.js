@@ -34,6 +34,12 @@
  * 結果対応の tier(例 'cherry' / 'melon' / 'broken')を追加し、
  * このファイルの when 条件をそのまま tier の出し分けに使えばよい。
  *
+ * ══ 結論のライフサイクルと色(U57 / U62)══════════════════════════
+ * 「生成された1行」は **そのゲームの結論** なので、
+ *   出す = 第3停止(元からここ)/ 消える = 次のゲームのレバーON /
+ *   色  = data/rolecolors.js の役色(ハズレ系は白)
+ * を conclusionCue() で1本にまとめて満たしている。
+ *
  * ══ 発火量(U5)═══════════════════════════════════════════════════
  * ハズレ系は chance: CHANCE_WEAK。ハズレ寄りプールの他の弱予告と同じ値を使っている。
  * 成立系は他のレア役予告と同じく chance なし(レア役プールは元から必ず1本出る)。
@@ -45,26 +51,25 @@
 
 // 天井(Auto Recovery)のゲーム数。data/modes.js が唯一の正
 import { NORMAL_SUBSTATES } from '../modes.js';
+/*
+ * 役色と結論行の作法は data/rolecolors.js が唯一の正(U57 / U62)。
+ * 以前はこのファイルが COLOR_CHERRY … と写しを持っていたが、
+ * 同じ値が4ファイルに散って「チャンス目が黄の場所と金の場所に分かれる」
+ * といったズレが出たので集約した。**ここに16進を書かないこと**。
+ */
+import { ROLE_COLORS, colorForFlag, conclusionCue } from '../rolecolors.js';
 
 /** ハズレ寄りプールに合わせた発火率(yokoku-batch3.js / batch4.js と同値) */
 const CHANCE_WEAK = 0.245;
 
-/** 成立役の色(U9。yokoku-aruaru.js の FLAG_COLOR と同値) */
-const COLOR_CHERRY = '#ff4d4d';
-const COLOR_MELON = '#4ce0a0';
-const COLOR_LAMBDA = '#ffd95e';
-const COLOR_SHARK = '#8ad4ff';
 /**
- * Bedrock 役の色(U9)。yokoku-aruaru.js の FLAG_COLOR.BEDROCK と同値。
- * クイズ導入で使う。
+ * Bedrock 役の色。クイズ導入(休止中)で使う。
  * ※ 以前ここは #8ad4ff(= サメ揃いの色)だった。同じファイルの中で
  *   「水色 = サメ揃い成立」と「水色 = Bedrock のクイズ導入」が同居しており、
  *   U9(色が出た = その役が成立した)に反していたので Bedrock 色へ直した
- *   (2026-08-15 検証指摘)。
+ *   (2026-08-15 検証指摘)。値は ROLE_COLORS.ALARM を参照する。
  */
-const COLOR_BEDROCK = '#38e8c8';
-/** 壊れた出力の色(何も成立していないので役色は使わない) */
-const COLOR_BROKEN = '#8aa0b4';
+const COLOR_BEDROCK = ROLE_COLORS.ALARM;
 
 /**
  * 天井(Auto Recovery)に当たらないゲームの `modeState.games` 一覧。
@@ -111,9 +116,13 @@ const LOSE_WHEN = {
 };
 
 /**
- * クイズ盤面の導入で使う「生成された1行」。
- * data/scenarios/quiz.js が出題シナリオの頭でそのまま使う
- * (= クイズが必ず始まるところでしか出ないので「クイズの時間です」が嘘にならない)。
+ * クイズ盤面の導入で使う「生成された1行」。【休止中・文言は保全】
+ *
+ * data/scenarios/quiz.js が出題シナリオの頭で使っていたが、
+ * U53(2026-08-15)でクイズの発生を止めたため **いまは誰も参照していない**。
+ * 後継のリール3択は問いかけを盤面(reel_pick_choice)自身が出すので、
+ * 導入のテキスト帯を使わない(告知プレートを「CZ突入」のために空けておくため)。
+ * クイズを戻すときはこの定数もそのまま使える。
  */
 export const BEDROCK_QUIZ_INTRO = {
   text: 'クイズの時間です',
@@ -140,9 +149,11 @@ export default [
       ...BOOT_CUES,
       { at: 0, layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
       { waitFor: 'stop3', layer: 'sfx', action: 'synth', params: { preset: 'upgrade_chime' } },
-      { waitFor: 'stop3', after: 80, layer: 'overlay', action: 'flash', params: { color: COLOR_CHERRY, ms: 200 } },
-      { waitFor: 'stop3', after: 140, layer: 'lcd', action: 'text',
-        params: { text: 'IAM が設定されます', sub: '推論の結果、権限が用意された', color: COLOR_CHERRY, ms: 1400 } },
+      { waitFor: 'stop3', after: 80, layer: 'overlay', action: 'flash',
+        params: { color: colorForFlag('WEAK_CHERRY'), ms: 200 } },
+      conclusionCue({
+        flag: 'WEAK_CHERRY', text: 'IAM が設定されます', sub: '推論の結果、権限が用意された',
+      }),
     ],
   },
 
@@ -156,10 +167,12 @@ export default [
       ...BOOT_CUES,
       { at: 0, layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
       { waitFor: 'stop3', layer: 'sfx', action: 'synth', params: { preset: 'upgrade_chime' } },
-      { waitFor: 'stop3', after: 80, layer: 'overlay', action: 'flash', params: { color: COLOR_MELON, ms: 200 } },
+      { waitFor: 'stop3', after: 80, layer: 'overlay', action: 'flash',
+        params: { color: colorForFlag('MELON'), ms: 200 } },
       // 生成AIが世間話を返してくる、というネタ。スイカ(S3)が成立したときだけ出る
-      { waitFor: 'stop3', after: 140, layer: 'lcd', action: 'text',
-        params: { text: 'スイカの美味しい季節ですね', sub: '推論の結果、世間話が出力された', color: COLOR_MELON, ms: 1400 } },
+      conclusionCue({
+        flag: 'MELON', text: 'スイカの美味しい季節ですね', sub: '推論の結果、世間話が出力された',
+      }),
     ],
   },
 
@@ -176,8 +189,12 @@ export default [
       ...BOOT_CUES,
       { at: 0, layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
       { waitFor: 'stop3', layer: 'sfx', action: 'synth', params: { preset: 'charge_up' } },
-      { waitFor: 'stop3', after: 140, layer: 'lcd', action: 'text',
-        params: { text: 'チャンスかもしれません', sub: 'チャンスゾーンの抽選を受けている', color: COLOR_LAMBDA, ms: 1400 } },
+      /*
+       * 2026-08-15 ユーザー指示 U64-3: サブ行「チャンスゾーンの抽選を受けている」を削除。
+       * 内部の抽選過程は画面に出す情報ではない(見えているのは成立役だけ)ため、
+       * 生成された1行だけを残す。**サブ行を書き戻さないこと**。
+       */
+      conclusionCue({ flag: 'CHANCE', text: 'チャンスかもしれません', sub: 'Amazon Bedrock の生成結果' }),
     ],
   },
 
@@ -191,9 +208,12 @@ export default [
       ...BOOT_CUES,
       { at: 0, layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
       { waitFor: 'stop3', layer: 'sfx', action: 'synth', params: { preset: 'shark_swim' } },
-      { waitFor: 'stop3', after: 80, layer: 'overlay', action: 'flash', params: { color: COLOR_SHARK, ms: 220 } },
-      { waitFor: 'stop3', after: 160, layer: 'lcd', action: 'text',
-        params: { text: 'サメの群れが近づいています', sub: '推論の結果、周囲の警戒レベルが上がった', color: COLOR_SHARK, ms: 1500 } },
+      { waitFor: 'stop3', after: 80, layer: 'overlay', action: 'flash',
+        params: { color: colorForFlag('SHARK'), ms: 220 } },
+      conclusionCue({
+        flag: 'SHARK', text: 'サメの群れが近づいています', sub: '推論の結果、周囲の警戒レベルが上がった',
+        after: 160, ms: 1500,
+      }),
     ],
   },
 
@@ -214,13 +234,14 @@ export default [
     cues: [
       ...BOOT_CUES,
       { waitFor: 'stop3', layer: 'sfx', action: 'synth', params: { preset: 'error_buzz', gain: 0.4 } },
-      { waitFor: 'stop3', after: 120, layer: 'lcd', action: 'text',
-        params: {
-          // ユーザー指定の文字列をそのまま(半角と全角、かなと漢字が混ざった壊れ方)
-          text: 'gらlkrj晴lかjgらlk４エフェ４亜kれ',
-          sub: '出力が壊れた — 推論をやり直します',
-          color: COLOR_BROKEN, ms: 1300,
-        } },
+      // ユーザー指定の文字列をそのまま(半角と全角、かなと漢字が混ざった壊れ方)。
+      // ハズレ断定なので色は白(U62)
+      conclusionCue({
+        flag: 'LOSE',
+        text: 'gらlkrj晴lかjgらlk４エフェ４亜kれ',
+        sub: '出力が壊れた — 推論をやり直します',
+        after: 120, ms: 1300,
+      }),
     ],
   },
 
@@ -235,12 +256,12 @@ export default [
     cues: [
       ...BOOT_CUES,
       { waitFor: 'stop3', layer: 'sfx', action: 'synth', params: { preset: 'error_buzz', gain: 0.32 } },
-      { waitFor: 'stop3', after: 120, layer: 'lcd', action: 'text',
-        params: {
-          text: '今回は何も生成できませんでした',
-          sub: '出力は空。次のプロンプトへ',
-          color: COLOR_BROKEN, ms: 1200,
-        } },
+      conclusionCue({
+        flag: 'LOSE',
+        text: '今回は何も生成できませんでした',
+        sub: '出力は空。次のプロンプトへ',
+        after: 120, ms: 1200,
+      }),
     ],
   },
 ];

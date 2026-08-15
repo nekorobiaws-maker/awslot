@@ -17,6 +17,32 @@ const REEL_COUNT = 3;
 const VIEW_ROWS = 3;
 const BLUR_MAX_OFFSET = 20;
 
+/* ══ 始動のピク止め(2026-08-15 ユーザー指示 U64-6)═══════════════════
+ *
+ * Lambda のコールドスタート予告で「レバーONの直後にリールが一瞬だけ動いて止まり、
+ * 一拍おいてから回り出す」を出す。**これは見た目だけの演出**:
+ *
+ *   ・game/reelctrl.js の Reel.position / speed には1ミリも触らない
+ *     (触ると押した瞬間の位置が変わる = 出目が変わる)
+ *   ・止めているのは「どこを描くか」だけ。停止制御・引き込み・成立役は完全に不変
+ *   ・scripts/compare-drivers.mjs は reelView をスタブにしているので、
+ *     この演出が入っても4ドライバの一致は動かない(= 出目不変の機械的な証明)
+ *
+ * リールは論理的には回り続けているので、ピク止めが明けた瞬間に描画位置が飛ぶ。
+ * 明けた直後は全速のモーションブラーが乗っているため、飛びは目に見えない。
+ * 万一この間に停止ボタンが押されたら(見た目は止まっているので普通は押さない)、
+ * その瞬間にピク止めを解除して本当の位置へ戻す(update() の pressed 判定)。
+ */
+
+/** ピク止めの既定の長さ[ms] */
+const STALL_MS = 1000;
+/** 「ピクッ」と動く時間[ms]。ここを過ぎたら止まって見える */
+const STALL_TWITCH_MS = 130;
+/** 「ピクッ」で進むコマ数(1コマ未満。回り出したとは見えない量) */
+const STALL_TWITCH_STEPS = 0.45;
+/** ピク止めの上限[ms](演出データが極端な値を書いても進行を止めない) */
+const STALL_MAX_MS = 2500;
+
 /* ── UI画像の切り出し位置 ──────────────────────
  * 生成画像には余白や別パーツが写り込んでいるので、
  * 使う部分だけを src 矩形で切り出して合成する。 */
@@ -66,6 +92,54 @@ export class ReelView {
     this.winRare = false;
     /** リールごとの停止フラッシュ残り時間(ms) */
     this.stopFlash = [0, 0, 0];
+    /**
+     * 始動のピク止め(見た目だけ)。走っていないときは null。
+     * @type {{elapsed:number, ms:number, twitchMs:number, steps:number, from:number[]}|null}
+     */
+    this.stallState = null;
+  }
+
+  /**
+   * 始動のピク止めを始める(演出システムの 'reelfx.stall' から呼ばれる)。
+   *
+   * **ゲーム状態には触らない**。いま描いている位置を控えて、
+   * 「ピクッと動いて止まったまま」を ms のあいだ描き続けるだけ。
+   * 回っていないリールがある場合(フリーズ中など)は何もしない。
+   *
+   * @param {object} [opt]
+   * @param {number} [opt.ms] 止まって見せる長さ(ピクッも含む合計)
+   * @param {number} [opt.twitchMs] ピクッと動く時間
+   * @param {number} [opt.steps] ピクッで進むコマ数
+   */
+  stall({ ms = STALL_MS, twitchMs = STALL_TWITCH_MS, steps = STALL_TWITCH_STEPS } = {}) {
+    const reels = this.reels?.reels ?? [];
+    if (reels.length === 0) return;
+    // 全部が回っている(= 始動直後)ときだけ。停止中・停止アニメ中には割り込まない
+    if (!reels.every((r) => r.canStop)) return;
+    const dur = Math.max(0, Math.min(STALL_MAX_MS, Number(ms) || 0));
+    if (dur <= 0) return;
+    this.stallState = {
+      elapsed: 0,
+      ms: dur,
+      twitchMs: Math.max(1, Math.min(dur, Number(twitchMs) || STALL_TWITCH_MS)),
+      steps: Number.isFinite(steps) ? steps : STALL_TWITCH_STEPS,
+      from: reels.map((r) => r.position),
+    };
+  }
+
+  /**
+   * ピク止め中に描くべき位置。走っていなければ null(= 本当の位置で描く)。
+   * @param {number} index
+   * @returns {number|null}
+   */
+  _stallPosition(index) {
+    const s = this.stallState;
+    if (!s) return null;
+    const from = s.from[index];
+    if (from == null) return null;
+    // 立ち上がりだけイージングで「ピクッ」と動かし、あとは止めたまま
+    const p = Math.min(1, s.elapsed / s.twitchMs);
+    return from + s.steps * (1 - (1 - p) ** 3);
   }
 
   /** 入賞時に呼ぶ */
@@ -86,6 +160,18 @@ export class ReelView {
     if (color) this.winRare = true;
   }
 
+  /**
+   * レバーONの直接フィードバック(main.js が bus から呼ぶ)。
+   *
+   * 【ここでピク止めを消してはいけない】
+   * engine/timeline.js の play() は at:0 のキューを **その場で** 発火させるので、
+   * コールドスタートの `reelfx.stall` は **同じ leverOn の emit 中**に届く。
+   * main.js は director.attach() を先に登録しているため、
+   * ここで stallState を捨てると「始まった直後のピク止めを毎回消す」ことになる
+   * (2026-08-15 実装時に踏んだ罠)。
+   * ピク止めは update() の中で **尺切れ or 停止操作** のどちらかで必ず解ける
+   * (リールが1本でも回っていない状態になれば即解除)ので、持ち越しは起きない。
+   */
   onLever() {
     this.winFlash = 0;
     this.winRare = false;
@@ -95,6 +181,14 @@ export class ReelView {
     if (this.winFlash > 0) this.winFlash = Math.max(0, this.winFlash - dt);
     for (let i = 0; i < REEL_COUNT; i++) {
       if (this.stopFlash[i] > 0) this.stopFlash[i] = Math.max(0, this.stopFlash[i] - dt);
+    }
+    if (this.stallState) {
+      this.stallState.elapsed += dt;
+      const done = this.stallState.elapsed >= this.stallState.ms;
+      // 停止操作が入ったら(見た目は止まっているので普通は押さないが)即座に解除して
+      // 本当の位置へ戻す。ここで解除しないと停止アニメが飛んだ位置から始まってしまう
+      const pressed = (this.reels?.reels ?? []).some((r) => !r.canStop);
+      if (done || pressed) this.stallState = null;
     }
   }
 
@@ -151,7 +245,8 @@ export class ReelView {
         ctx.fillRect(x, 0, SYMBOL_W, this.h);
       }
 
-      this._drawStrip(ctx, reel, x);
+      // ピク止め中は「控えた位置 + ピクッ」を描く(リールの論理状態は触らない)
+      this._drawStrip(ctx, reel, x, this._stallPosition(i));
       this._drawDrumShade(ctx, x);
 
       // 停止フラッシュ
@@ -227,11 +322,17 @@ export class ReelView {
     ctx.restore();
   }
 
-  _drawStrip(ctx, reel, x) {
+  /**
+   * @param {number|null} [stallPos]
+   *   ピク止め中に描く位置。渡された場合は **その位置で止まって見える**ように
+   *   ブラーも消す(reel.position / reel.speed は読むだけで書き換えない)。
+   */
+  _drawStrip(ctx, reel, x, stallPos = null) {
     const len = reel.len;
-    const base = Math.floor(reel.position);
-    const frac = reel.position - base;
-    const speedRatio = Math.min(1, reel.speed / SPIN_SPEED);
+    const pos = stallPos ?? reel.position;
+    const base = Math.floor(pos);
+    const frac = pos - base;
+    const speedRatio = stallPos != null ? 0 : Math.min(1, reel.speed / SPIN_SPEED);
     const blurring = speedRatio > 0.12;
     const offset = BLUR_MAX_OFFSET * speedRatio;
 

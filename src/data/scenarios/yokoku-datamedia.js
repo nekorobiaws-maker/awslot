@@ -7,15 +7,18 @@
  * 新規アニメ・新規SFXプリセットの実装は一切なし。
  *
  * 対象サービス: MSK(Kafka) / Amazon MQ / AppFlow / Lake Formation / Neptune /
- * Timestream / DocumentDB / MemoryDB / GameLift / IVS / MediaConvert /
- * Elemental MediaLive / Kendra / Lex / Amazon Connect。
+ * Timestream for InfluxDB / DocumentDB / MemoryDB / GameLift / IVS / MediaConvert /
+ * Elemental MediaLive / Bedrock Knowledge Bases / Lex / Amazon Connect。
+ * ※ 2026-08-15 椿レビュー #4 で2箇所を差し替えた。詳しくは F. と M. のコメント:
+ *     Timestream           … 終了ラインの LiveAnalytics ではなく **for InfluxDB** を名乗る
+ *     Kendra(メンテモード) … **Bedrock Knowledge Bases のデータソース同期** へ差し替え
  * (ElastiCache はクイズの出題選択肢のみで演出未登場だったが今回は対象外。
  *  Polly は yokoku-ai.js で既出のため対象外)
  *
  * ■ 語彙の使い回し方針(既存コードベースの流儀を踏襲)
  *   「見た目は同じだが params(label/sub/text)で意味を変える」形で使い回す。
  *     - health_check(label可変) … Amazon MQ のブリッジ接続 / MediaLive の入力ロス復旧 /
- *       Connect のオペレーター接続、いずれも「一度保留してから繋がる」系の絵に流用。
+ *       Connect のオペレーター接続、いずれも「一度待たされてから繋がる」系の絵に流用。
  *     - step_up(3灯)            … Neptune の関係グラフが繋がっていく段階表示。
  *       Detective(yokoku-secnet.js)は「調査→ストリーム粒子→カットイン」の絵だが、
  *       Neptune はランプ演出のみで済ませて画を分けている(要件の「絵が被らない工夫」)。
@@ -63,7 +66,7 @@ export default [
     cues: [
       { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'LAG 128,000', sub: 'コンシューマが追いつけていない', color: '#8ad4ff', ms: 650 } },
       { at: 20,  layer: 'sfx', action: 'synth', params: { preset: 'stream_flow', gain: 0.4 } },
-      { at: 650, layer: 'lcd', action: 'text',  params: { text: 'LAG変化なし', sub: '滞留したまま', color: '#8ad4ff', ms: 500 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: 'LAG変化なし', sub: '滞留したまま', color: '#8ad4ff', ms: 500 } },
     ],
   },
   {
@@ -76,17 +79,18 @@ export default [
       { at: 0,   layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
       { at: 0,   layer: 'lcd',  action: 'text',    params: { text: 'LAG 128,000', sub: 'コンシューマが追いつけていない', color: '#ffe066', ms: 600 } },
       { at: 30,  layer: 'sfx',  action: 'synth',   params: { preset: 'stream_flow' } },
-      { at: 700, layer: 'sfx',  action: 'synth',   params: { preset: 'credit_recover' } },
-      { at: 720, layer: 'lcd',  action: 'particles', params: { preset: 'stream', x: 200, y: 200, count: 14 } },
-      { at: 900, layer: 'sfx',  action: 'synth',   params: { preset: 'upgrade_chime' } },
-      { at: 950, layer: 'lcd',  action: 'text',    params: { text: 'LAG消化完了', sub: '一気に追いついた', color: '#ffe066', ms: 1000 } },
+      { waitFor: 'stop3', layer: 'sfx',  action: 'synth',   params: { preset: 'credit_recover' } },
+      { waitFor: 'stop3', after: 20, layer: 'lcd',  action: 'particles', params: { preset: 'stream', x: 200, y: 200, count: 14 } },
+      { waitFor: 'stop3', after: 200, layer: 'sfx',  action: 'synth',   params: { preset: 'upgrade_chime' } },
+      { waitFor: 'stop3', after: 250, layer: 'lcd',  action: 'text',    params: { text: 'LAG消化完了', sub: '一気に追いついた', color: '#ffe066', ms: 1000 } },
     ],
   },
 
   // ── B. Amazon MQ 新旧資産ブリッジ予告 ─────────────────────────────
   {
     id: 'ym_amazonmq_bridge_weak',
-    name: '【弱】Amazon MQブリッジ予告(接続保留のまま)',
+    // U67-1: 「保留」はパチンコ側の言い回しと読めるので「接続待ち」へ統一
+    name: '【弱】Amazon MQブリッジ予告(接続待ちのまま終わる)',
     when: { event: 'leverOn', flag: ['LOSE', 'REPLAY'], mode: ['FREE_TIER'], match: { 'modeState.zenchoActive': [false] } },
     weight: { FREE_TIER: 50, default: 0 },
     chance: 0.30,
@@ -94,7 +98,7 @@ export default [
     cues: [
       { at: 0,   layer: 'lcd', action: 'anim',  params: { anim: 'health_check', ok: false, label: 'CONNECTING' } },
       { at: 30,  layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick', gain: 0.5 } },
-      { at: 700, layer: 'lcd', action: 'text',  params: { text: '接続保留', sub: '旧資産からの橋渡し待ち', color: '#8ad4ff', ms: 600 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: '接続待ち', sub: 'Amazon MQ — 旧資産からの橋渡しが繋がらない', color: '#8ad4ff', ms: 600 } },
     ],
   },
   {
@@ -107,9 +111,9 @@ export default [
       { at: 0,    layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
       { at: 0,    layer: 'lcd',  action: 'anim',    params: { anim: 'health_check', ok: false, label: 'CONNECTING' } },
       { at: 40,   layer: 'sfx',  action: 'synth',   params: { preset: 'countdown_tick' } },
-      { at: 800,  layer: 'lcd',  action: 'anim',    params: { anim: 'health_check', ok: true, label: 'BROKER UP' } },
-      { at: 840,  layer: 'sfx',  action: 'synth',   params: { preset: 'checklist_ok' } },
-      { at: 1200, layer: 'lcd',  action: 'text',    params: { text: 'ブリッジ確立', sub: '新旧の資産がつながった', color: '#ffe066', ms: 900 } },
+      { waitFor: 'stop1',  layer: 'lcd',  action: 'anim',    params: { anim: 'health_check', ok: true, label: 'BROKER UP' } },
+      { waitFor: 'stop1', after: 40,  layer: 'sfx',  action: 'synth',   params: { preset: 'checklist_ok' } },
+      { waitFor: 'stop3', layer: 'lcd',  action: 'text',    params: { text: 'ブリッジ確立', sub: 'Amazon MQ — 新旧の資産がつながった', color: '#ffe066', ms: 900 } },
     ],
   },
 
@@ -124,7 +128,7 @@ export default [
     cues: [
       { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'SYNCING…', sub: 'SaaSからS3へ連携中', color: '#8ad4ff', ms: 600 } },
       { at: 30,  layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.5 } },
-      { at: 630, layer: 'lcd', action: 'text',  params: { text: 'SYNC 0件', sub: '今回は動きなし', color: '#8ad4ff', ms: 500 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: 'SYNC 0件', sub: '今回は動きなし', color: '#8ad4ff', ms: 500 } },
     ],
   },
   {
@@ -137,9 +141,9 @@ export default [
       { at: 0,   layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
       { at: 0,   layer: 'lcd',  action: 'text',    params: { text: 'SYNCING…', sub: 'SaaSからS3へ連携中', color: '#ffe066', ms: 600 } },
       { at: 40,  layer: 'sfx',  action: 'synth',   params: { preset: 'charge_up' } },
-      { at: 750, layer: 'lcd',  action: 'particles', params: { preset: 'stream', x: 200, y: 200, count: 14 } },
-      { at: 780, layer: 'sfx',  action: 'synth',   params: { preset: 'upgrade_chime' } },
-      { at: 900, layer: 'lcd',  action: 'text',    params: { text: 'SYNC 48,000件', sub: '大量データが同期完了', color: '#ffe066', ms: 1000 } },
+      { waitFor: 'stop3', layer: 'lcd',  action: 'particles', params: { preset: 'stream', x: 200, y: 200, count: 14 } },
+      { waitFor: 'stop3', after: 30, layer: 'sfx',  action: 'synth',   params: { preset: 'upgrade_chime' } },
+      { waitFor: 'stop3', after: 150, layer: 'lcd',  action: 'text',    params: { text: 'SYNC 48,000件', sub: '大量データが同期完了', color: '#ffe066', ms: 1000 } },
     ],
   },
 
@@ -154,7 +158,7 @@ export default [
     cues: [
       { at: 0,   layer: 'lcd', action: 'anim',  params: { anim: 'checklist_green', index: 1 } },
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick', gain: 0.5 } },
-      { at: 600, layer: 'lcd', action: 'text',  params: { text: '権限未整備', sub: 'このデータレイクはまだ', color: '#8ad4ff', ms: 500 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: '権限未整備', sub: 'このデータレイクはまだ', color: '#8ad4ff', ms: 500 } },
     ],
   },
   {
@@ -171,7 +175,7 @@ export default [
       { waitFor: 'stop3', layer: 'lcd', action: 'anim', params: { anim: 'checklist_green', index: 3 } },
       { waitFor: 'stop3', after: 120, layer: 'sfx', action: 'synth', params: { preset: 'upgrade_chime' } },
       { waitFor: 'stop3', after: 180, layer: 'lcd', action: 'text',
-        params: { text: '権限一括付与', sub: '全テーブルに行き渡った', color: '#ffe066', ms: 1100 } },
+        params: { text: '権限一括付与', sub: 'Lake Formation — 全テーブルに行き渡った', color: '#ffe066', ms: 1100 } },
     ],
   },
 
@@ -187,7 +191,7 @@ export default [
     cues: [
       { at: 0,   layer: 'lcd', action: 'anim',  params: { anim: 'step_up', step: 1 } },
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.5 } },
-      { at: 600, layer: 'lcd', action: 'text',  params: { text: 'RELATION 1件', sub: '共通点は見つからず', color: '#8ad4ff', ms: 500 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: 'RELATION 1件', sub: '共通点は見つからず', color: '#8ad4ff', ms: 500 } },
     ],
   },
   {
@@ -225,10 +229,20 @@ export default [
     ],
   },
 
-  // ── F. Timestream 時系列波形予告 ──────────────────────────────────
+  /* ── F. Timestream for InfluxDB 時系列波形予告 ──────────────────────
+   *
+   * ══ 【ラベル変更】2026-08-15 椿レビュー #4 ═══════════════════════
+   * 元は「Timestream」とだけ名乗っていたが、この名前で通っていた
+   * **Timestream for LiveAnalytics は終了ラインに入っている**。
+   * 一方 Timestream for **InfluxDB** は現役なので、**ラベルだけ**そちらへ寄せた。
+   *
+   * 液晶に出る文字(`128 pt` / `時系列データを収集中` など)は
+   * どちらの版でも正しい一般的な言い方なので**1文字も変えていない**。
+   * つまり波形の画も尺も重みも据え置きで、変わったのは開発者向けの name だけ。
+   */
   {
     id: 'ym_timestream_wave_weak',
-    name: '【弱】Timestream波形予告(横ばいで終わる)',
+    name: '【弱】Timestream for InfluxDB波形予告(横ばいで終わる)',
     when: { event: 'leverOn', flag: ['LOSE', 'BELL', 'REPLAY'], mode: ['FREE_TIER'], match: { 'modeState.zenchoActive': [false] } },
     weight: { FREE_TIER: 42, default: 0 },
     chance: 0.30,
@@ -236,12 +250,12 @@ export default [
     cues: [
       { at: 0,   layer: 'lcd', action: 'text',  params: { text: '128 pt', sub: '時系列データを収集中', color: '#8ad4ff', ms: 600 } },
       { at: 30,  layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick', gain: 0.5 } },
-      { at: 630, layer: 'lcd', action: 'text',  params: { text: '130 pt', sub: '横ばいのまま', color: '#8ad4ff', ms: 500 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: '130 pt', sub: '横ばいのまま', color: '#8ad4ff', ms: 500 } },
     ],
   },
   {
     id: 'ym_timestream_wave_mid',
-    name: '【中】Timestream波形予告(波形が跳ねる)',
+    name: '【中】Timestream for InfluxDB波形予告(波形が跳ねる)',
     when: { event: 'leverOn', rare: true, mode: ['FREE_TIER'] },
     weight: { FREE_TIER: 44, default: 0 },
     duration: 1800,
@@ -249,9 +263,9 @@ export default [
       { at: 0,   layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
       { at: 0,   layer: 'lcd',  action: 'text',    params: { text: '128 pt', sub: '時系列データを収集中', color: '#ffe066', ms: 600 } },
       { at: 40,  layer: 'sfx',  action: 'synth',   params: { preset: 'charge_up' } },
-      { at: 750, layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 200, y: 200, count: 14 } },
-      { at: 780, layer: 'sfx',  action: 'synth',   params: { preset: 'upgrade_chime' } },
-      { at: 900, layer: 'lcd',  action: 'text',    params: { text: '3,200 pt', sub: '波形が大きく跳ねた', color: '#ffe066', ms: 1000 } },
+      { waitFor: 'stop3', layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 200, y: 200, count: 14 } },
+      { waitFor: 'stop3', after: 30, layer: 'sfx',  action: 'synth',   params: { preset: 'upgrade_chime' } },
+      { waitFor: 'stop3', after: 150, layer: 'lcd',  action: 'text',    params: { text: '3,200 pt', sub: '波形が大きく跳ねた', color: '#ffe066', ms: 1000 } },
     ],
   },
 
@@ -266,7 +280,7 @@ export default [
     cues: [
       { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'QUERYING…', sub: 'JSON文書を検索中', color: '#8ad4ff', ms: 600 } },
       { at: 30,  layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick', gain: 0.5 } },
-      { at: 630, layer: 'lcd', action: 'text',  params: { text: '0件ヒット', sub: '該当文書なし', color: '#8ad4ff', ms: 400 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: '0件ヒット', sub: 'DocumentDB — 該当文書なし', color: '#8ad4ff', ms: 400 } },
     ],
   },
   {
@@ -279,16 +293,17 @@ export default [
       { at: 0,   layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
       { at: 0,   layer: 'lcd',  action: 'text',    params: { text: 'QUERYING…', sub: 'JSON文書を検索中', color: '#ffe066', ms: 600 } },
       { at: 40,  layer: 'sfx',  action: 'synth',   params: { preset: 'charge_up' } },
-      { at: 700, layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 200, y: 200, count: 14 } },
-      { at: 730, layer: 'sfx',  action: 'synth',   params: { preset: 'upgrade_chime' } },
-      { at: 850, layer: 'lcd',  action: 'text',    params: { text: '42,195件ヒット', sub: '大量に一致した', color: '#ffe066', ms: 1000 } },
+      { waitFor: 'stop3', layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 200, y: 200, count: 14 } },
+      { waitFor: 'stop3', after: 30, layer: 'sfx',  action: 'synth',   params: { preset: 'upgrade_chime' } },
+      { waitFor: 'stop3', after: 150, layer: 'lcd',  action: 'text',    params: { text: '42,195件ヒット', sub: 'DocumentDB — 大量に一致した', color: '#ffe066', ms: 1000 } },
     ],
   },
 
   // ── H. MemoryDB 書き込み予告(瞬間芸) ─────────────────────────────
   {
     id: 'ym_memorydb_write_weak',
-    name: '【弱】MemoryDB書き込み予告(保留のまま終わる)',
+    // U67-1: 「保留」はパチンコ側の言い回しと読めるので「書き込み待ち」へ統一
+    name: '【弱】MemoryDB書き込み予告(書き込み待ちのまま終わる)',
     when: { event: 'leverOn', flag: ['LOSE', 'BELL'], mode: ['FREE_TIER'], match: { 'modeState.zenchoActive': [false] } },
     weight: { FREE_TIER: 38, default: 0 },
     chance: 0.28,
@@ -296,7 +311,7 @@ export default [
     cues: [
       { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'WRITE PENDING', sub: '永続化を待っている', color: '#8ad4ff', ms: 500 } },
       { at: 20,  layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.5 } },
-      { at: 520, layer: 'lcd', action: 'text',  params: { text: '書き込み保留', sub: '今回はここまで', color: '#8ad4ff', ms: 400 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: '書き込み待ち', sub: 'MemoryDB — 永続化はまだ終わっていない', color: '#8ad4ff', ms: 400 } },
     ],
   },
   {
@@ -310,8 +325,8 @@ export default [
       { at: 0,   layer: 'sfx',  action: 'synth',   params: { preset: 'contract_sign' } },
       { at: 0,   layer: 'lcd',  action: 'anim',    params: { anim: 'lcd_flash', color: '#ffe066', strength: 0.6 } },
       { at: 60,  layer: 'sfx',  action: 'synth',   params: { preset: 'checklist_ok' } },
-      { at: 120, layer: 'lcd',  action: 'text',
-        params: { text: 'PERSISTED', sub: 'Redis互換メモリに書込完了', color: '#ffe066', ms: 700 } },
+      { waitFor: 'stop3', layer: 'lcd',  action: 'text',
+        params: { text: 'PERSISTED', sub: 'MemoryDB — Redis互換メモリに書込完了', color: '#ffe066', ms: 700 } },
     ],
   },
 
@@ -324,9 +339,9 @@ export default [
     chance: 0.30,
     duration: 1100,
     cues: [
-      { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'MATCHING…', sub: '対戦相手を探索中', color: '#8ad4ff', ms: 600 } },
+      { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'GameLift: MATCHING…', sub: '対戦相手を探索中', color: '#8ad4ff', ms: 600 } },
       { at: 30,  layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick', gain: 0.5 } },
-      { at: 630, layer: 'lcd', action: 'text',  params: { text: 'MATCH TIMEOUT', sub: '相手が見つからず', color: '#8ad4ff', ms: 500 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: 'MATCH TIMEOUT', sub: 'GameLift — 相手が見つからなかった', color: '#8ad4ff', ms: 500 } },
     ],
   },
   {
@@ -337,11 +352,11 @@ export default [
     duration: 1800,
     cues: [
       { at: 0,   layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
-      { at: 0,   layer: 'lcd',  action: 'text',    params: { text: 'MATCHING…', sub: '対戦相手を探索中', color: '#ffe066', ms: 600 } },
+      { at: 0,   layer: 'lcd',  action: 'text',    params: { text: 'GameLift: MATCHING…', sub: '対戦相手を探索中', color: '#ffe066', ms: 600 } },
       { at: 40,  layer: 'sfx',  action: 'synth',   params: { preset: 'rare_flag' } },
-      { at: 750, layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 200, y: 200, count: 14 } },
-      { at: 780, layer: 'sfx',  action: 'synth',   params: { preset: 'cutin_whoosh', gain: 0.6 } },
-      { at: 900, layer: 'lcd',  action: 'text',    params: { text: 'MATCH FOUND', sub: '相手: 手強い影の軍団', color: '#ffe066', ms: 1100 } },
+      { waitFor: 'stop3', layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 200, y: 200, count: 14 } },
+      { waitFor: 'stop3', after: 30, layer: 'sfx',  action: 'synth',   params: { preset: 'cutin_whoosh', gain: 0.6 } },
+      { waitFor: 'stop3', after: 150, layer: 'lcd',  action: 'text',    params: { text: 'MATCH FOUND', sub: 'GameLift — 相手は手強い影の軍団', color: '#ffe066', ms: 1100 } },
     ],
   },
 
@@ -354,9 +369,9 @@ export default [
     chance: 0.34,
     duration: 1100,
     cues: [
-      { at: 0,   layer: 'lcd', action: 'text',  params: { text: '視聴者 12人', sub: 'ライブ配信中', color: '#8ad4ff', ms: 600 } },
+      { at: 0,   layer: 'lcd', action: 'text',  params: { text: '視聴者 12人', sub: 'Amazon IVS でライブ配信中', color: '#8ad4ff', ms: 600 } },
       { at: 30,  layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.5 } },
-      { at: 630, layer: 'lcd', action: 'text',  params: { text: '視聴者 14人', sub: '伸び悩んでいる', color: '#8ad4ff', ms: 500 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: '視聴者 14人', sub: 'Amazon IVS — 伸び悩んでいる', color: '#8ad4ff', ms: 500 } },
     ],
   },
   {
@@ -367,12 +382,12 @@ export default [
     duration: 2000,
     cues: [
       { at: 0,   layer: 'lamp',    action: 'pattern', params: { pattern: 'rare' } },
-      { at: 0,   layer: 'lcd',     action: 'text',    params: { text: '視聴者 12人', sub: 'ライブ配信中', color: '#ffe066', ms: 600 } },
+      { at: 0,   layer: 'lcd',     action: 'text',    params: { text: '視聴者 12人', sub: 'Amazon IVS でライブ配信中', color: '#ffe066', ms: 600 } },
       { at: 40,  layer: 'sfx',     action: 'synth',   params: { preset: 'charge_up' } },
-      { at: 800, layer: 'overlay', action: 'flash',   params: { color: '#ff5ad0', ms: 200 } },
-      { at: 820, layer: 'lcd',     action: 'particles', params: { preset: 'rainbow', x: 200, y: 200, count: 20 } },
-      { at: 840, layer: 'sfx',     action: 'synth',   params: { preset: 'upgrade_chime' } },
-      { at: 950, layer: 'lcd',     action: 'text',    params: { text: '視聴者 1,800人', sub: '配信がバズった', color: '#ff8a00', ms: 1200 } },
+      { waitFor: 'stop3', layer: 'overlay', action: 'flash',   params: { color: '#ff5ad0', ms: 200 } },
+      { waitFor: 'stop3', after: 20, layer: 'lcd',     action: 'particles', params: { preset: 'rainbow', x: 200, y: 200, count: 20 } },
+      { waitFor: 'stop3', after: 40, layer: 'sfx',     action: 'synth',   params: { preset: 'upgrade_chime' } },
+      { waitFor: 'stop3', after: 150, layer: 'lcd',     action: 'text',    params: { text: '視聴者 1,800人', sub: 'Amazon IVS — 配信がバズった', color: '#ff8a00', ms: 1200 } },
     ],
   },
   {
@@ -406,7 +421,7 @@ export default [
     cues: [
       { at: 0,   layer: 'lcd', action: 'anim',  params: { anim: 'deploy_progress', from: 0, to: 0.3 } },
       { at: 20,  layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.5 } },
-      { at: 700, layer: 'lcd', action: 'text',  params: { text: '変換キャンセル', sub: 'ジョブが止まった', color: '#8ad4ff', ms: 500 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: '変換キャンセル', sub: 'MediaConvert — ジョブが止まった', color: '#8ad4ff', ms: 500 } },
     ],
   },
   {
@@ -423,7 +438,7 @@ export default [
       { waitFor: 'stop3', layer: 'lcd', action: 'anim', params: { anim: 'deploy_progress', from: 0.75, to: 0.97, ms: 1800 } },
       { waitFor: 'stop3', after: 700, layer: 'sfx', action: 'synth', params: { preset: 'upgrade_chime' } },
       { waitFor: 'stop3', after: 750, layer: 'lcd', action: 'text',
-        params: { text: '変換 97%', sub: 'レンダーファーム全開', color: '#ffe066', ms: 1100 } },
+        params: { text: '変換 97%', sub: 'MediaConvert — レンダーファーム全開', color: '#ffe066', ms: 1100 } },
     ],
   },
 
@@ -438,7 +453,7 @@ export default [
     cues: [
       { at: 0,   layer: 'lcd', action: 'anim',  params: { anim: 'health_check', ok: false, label: 'INPUT LOSS' } },
       { at: 30,  layer: 'sfx', action: 'synth', params: { preset: 'error_buzz', gain: 0.5 } },
-      { at: 700, layer: 'lcd', action: 'text',  params: { text: '映像途切れたまま', sub: '今回は復旧せず', color: '#8ad4ff', ms: 500 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: '映像途切れたまま', sub: 'MediaLive — 入力は復旧せず', color: '#8ad4ff', ms: 500 } },
     ],
   },
   {
@@ -451,40 +466,66 @@ export default [
       { at: 0,    layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
       { at: 0,    layer: 'lcd',  action: 'anim',    params: { anim: 'health_check', ok: false, label: 'INPUT LOSS' } },
       { at: 40,   layer: 'sfx',  action: 'synth',   params: { preset: 'countdown_tick' } },
-      { at: 800,  layer: 'lcd',  action: 'anim',    params: { anim: 'health_check', ok: true, label: 'LIVE' } },
-      { at: 840,  layer: 'sfx',  action: 'synth',   params: { preset: 'checklist_ok' } },
-      { at: 1200, layer: 'lcd',  action: 'text',    params: { text: '配信ソース復旧', sub: '安定して届いている', color: '#ffe066', ms: 900 } },
+      { waitFor: 'stop1',  layer: 'lcd',  action: 'anim',    params: { anim: 'health_check', ok: true, label: 'LIVE' } },
+      { waitFor: 'stop1', after: 40,  layer: 'sfx',  action: 'synth',   params: { preset: 'checklist_ok' } },
+      { waitFor: 'stop3', layer: 'lcd',  action: 'text',    params: { text: '配信ソース復旧', sub: 'MediaLive — 安定して届いている', color: '#ffe066', ms: 900 } },
     ],
   },
 
-  // ── M. Kendra 意味検索予告 ─────────────────────────────────────────
+  /* ── M. Bedrock Knowledge Bases のデータソース同期予告 ──────────────
+   *
+   * ══ 【差し替え】2026-08-15 椿レビュー #4 ═══════════════════════════
+   * 元は Amazon Kendra の意味検索(SEARCHING… → 0件 / 意味深な文書がヒット)だった。
+   * Kendra は 2026-07-30 にメンテナンスモードへ入っており、
+   * 「これから使うサービス」の顔で出せなくなったため丸ごと差し替えた。
+   *
+   * 【他のRAG系演出と切り口が重ならないこと】
+   *   zn_kb_citation(前兆) … 出来上がった KB から **根拠(citation)を引いてくる**話
+   *   ya_opensearch_query  … OpenSearch へ **問い合わせて** ヒット件数を見る話
+   *   yb5_opensearch_index … OpenSearch の **インデックスへ1件入る** 話
+   *   ここ(ym_kb_sync_*)  … その手前、**データソースを取り込む(同期する)** 話。
+   *                          文書を分割して取り込む「同期ジョブ」そのものを見せる
+   * 検索でも引用でもなく「仕込み」の画なので、上の3つとは別の場面になる。
+   *
+   * 【発火量】weight(54 / 51)・chance(0.32)・尺・キュー構成はすべて据え置き。
+   *   差し替えであって増減ではないので、予告の総量は1も動かない。
+   *
+   * 【事実】Bedrock Knowledge Bases はデータソースを同期すると、文書を細かく分けて
+   *   取り込む(この分割の単位が「チャンク」)。取り込むものが無ければ増えない。
+   *   **件数・所要時間などの数値は名乗らない**(出典が無いため。椿レビュー #18)。
+   *
+   * 【1行目に `SYNCING…` を使わない理由】
+   *   同じファイルの C. AppFlow(ym_appflow_sync_*)が既に `SYNCING…` で始まる。
+   *   同じ文字が液晶に出ると「AppFlow の予告」と見分けが付かないので、
+   *   こちらは日本語の「取り込み中…」+ サブでサービス名を名乗る形にした。
+   */
   {
-    id: 'ym_kendra_search_weak',
-    name: '【弱】Kendra検索予告(該当ドキュメントなし)',
+    id: 'ym_kb_sync_weak',
+    name: '【弱】Bedrock Knowledge Bases同期予告(新しい文書なし)',
     when: { event: 'leverOn', flag: ['LOSE', 'BELL', 'REPLAY'], mode: ['FREE_TIER'], match: { 'modeState.zenchoActive': [false] } },
     weight: { FREE_TIER: 54, default: 0 },
     chance: 0.32,
     duration: 1000,
     cues: [
-      { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'SEARCHING…', sub: '意味検索を実行中', color: '#8ad4ff', ms: 600 } },
+      { at: 0,   layer: 'lcd', action: 'text',  params: { text: '取り込み中…', sub: 'Knowledge Bases へ社内文書を同期', color: '#8ad4ff', ms: 600 } },
       { at: 30,  layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick', gain: 0.5 } },
-      { at: 630, layer: 'lcd', action: 'text',  params: { text: '0件ヒット', sub: '該当ドキュメントなし', color: '#8ad4ff', ms: 400 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: '新規0件', sub: 'Bedrock ナレッジベース — 取り込む文書なし', color: '#8ad4ff', ms: 400 } },
     ],
   },
   {
-    id: 'ym_kendra_search_mid',
-    name: '【中】Kendra検索予告(意味深な文書がヒット)',
+    id: 'ym_kb_sync_mid',
+    name: '【中】Bedrock Knowledge Bases同期予告(意味深な文書が取り込まれる)',
     when: { event: 'leverOn', rare: true, mode: ['FREE_TIER'] },
     weight: { FREE_TIER: 51, default: 0 },
     duration: 1900,
     cues: [
       { at: 0,   layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
-      { at: 0,   layer: 'lcd',  action: 'text',    params: { text: 'SEARCHING…', sub: '意味検索を実行中', color: '#ffe066', ms: 600 } },
+      { at: 0,   layer: 'lcd',  action: 'text',    params: { text: '取り込み中…', sub: 'Knowledge Bases へ社内文書を同期', color: '#ffe066', ms: 600 } },
       { at: 40,  layer: 'sfx',  action: 'synth',   params: { preset: 'charge_up' } },
-      { at: 750, layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 200, y: 200, count: 14 } },
-      { at: 780, layer: 'sfx',  action: 'synth',   params: { preset: 'upgrade_chime' } },
-      { at: 900, layer: 'lcd',  action: 'text',
-        params: { text: 'FINAL_REPORT_v9.pdf', sub: '意味深な文書が一致した', color: '#ffe066', ms: 1300 } },
+      { waitFor: 'stop3', layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 200, y: 200, count: 14 } },
+      { waitFor: 'stop3', after: 30, layer: 'sfx',  action: 'synth',   params: { preset: 'upgrade_chime' } },
+      { waitFor: 'stop3', after: 150, layer: 'lcd',  action: 'text',
+        params: { text: 'FINAL_REPORT_v9.pdf', sub: '意味深な文書が取り込まれた', color: '#ffe066', ms: 1300 } },
     ],
   },
 
@@ -500,7 +541,7 @@ export default [
     cues: [
       { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'ご用件は?', sub: 'Botが聞き取り中', color: '#8ad4ff', ms: 600 } },
       { at: 30,  layer: 'sfx', action: 'synth', params: { preset: 'sfn_choice', gain: 0.5 } },
-      { at: 700, layer: 'lcd', action: 'text',  params: { text: '聞き取れません', sub: 'もう一度どうぞ', color: '#8ad4ff', ms: 500 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: '聞き取れません', sub: 'Amazon Lex — もう一度どうぞ', color: '#8ad4ff', ms: 500 } },
     ],
   },
   {
@@ -513,9 +554,9 @@ export default [
       { at: 0,   layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
       { at: 0,   layer: 'lcd',  action: 'text',    params: { text: 'ご用件は?', sub: 'Botが聞き取り中', color: '#ffe066', ms: 600 } },
       { at: 40,  layer: 'sfx',  action: 'synth',   params: { preset: 'sfn_choice' } },
-      { at: 750, layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 200, y: 200, count: 12 } },
-      { at: 780, layer: 'sfx',  action: 'synth',   params: { preset: 'upgrade_chime' } },
-      { at: 900, layer: 'lcd',  action: 'text',    params: { text: 'インテント認識', sub: '意図をくみ取りました', color: '#ffe066', ms: 1000 } },
+      { waitFor: 'stop3', layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 200, y: 200, count: 12 } },
+      { waitFor: 'stop3', after: 30, layer: 'sfx',  action: 'synth',   params: { preset: 'upgrade_chime' } },
+      { waitFor: 'stop3', after: 150, layer: 'lcd',  action: 'text',    params: { text: 'インテント認識', sub: 'Amazon Lex — 意図をくみ取りました', color: '#ffe066', ms: 1000 } },
     ],
   },
 
@@ -528,9 +569,9 @@ export default [
     chance: 0.30,
     duration: 1200,
     cues: [
-      { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'ただいま混み合って', sub: 'おつなぎしています', color: '#8ad4ff', ms: 650 } },
+      { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'ただいま混み合って', sub: 'Amazon Connect — おつなぎしています', color: '#8ad4ff', ms: 650 } },
       { at: 30,  layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick', gain: 0.5 } },
-      { at: 680, layer: 'lcd', action: 'text',  params: { text: '呼び出し終了', sub: '繋がらなかった', color: '#8ad4ff', ms: 500 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: '呼び出し終了', sub: 'Amazon Connect — 繋がらなかった', color: '#8ad4ff', ms: 500 } },
     ],
   },
   {
@@ -543,9 +584,9 @@ export default [
       { at: 0,    layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
       { at: 0,    layer: 'lcd',  action: 'anim',    params: { anim: 'health_check', ok: false, label: 'ON HOLD' } },
       { at: 40,   layer: 'sfx',  action: 'synth',   params: { preset: 'countdown_tick' } },
-      { at: 800,  layer: 'lcd',  action: 'anim',    params: { anim: 'health_check', ok: true, label: 'CONNECTED' } },
-      { at: 840,  layer: 'sfx',  action: 'synth',   params: { preset: 'checklist_ok' } },
-      { at: 1200, layer: 'lcd',  action: 'text',    params: { text: 'オペレーター接続', sub: 'ついに繋がった', color: '#ffe066', ms: 900 } },
+      { waitFor: 'stop1',  layer: 'lcd',  action: 'anim',    params: { anim: 'health_check', ok: true, label: 'CONNECTED' } },
+      { waitFor: 'stop1', after: 40,  layer: 'sfx',  action: 'synth',   params: { preset: 'checklist_ok' } },
+      { waitFor: 'stop3', layer: 'lcd',  action: 'text',    params: { text: 'オペレーター接続', sub: 'Amazon Connect — ついに繋がった', color: '#ffe066', ms: 900 } },
     ],
   },
 ];

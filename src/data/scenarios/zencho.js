@@ -34,13 +34,130 @@
  *         こうしておけば「脈打つ赤帯 = 信頼度」「文字だけ赤 = IAM対応」で必ず読み分けられる。
  */
 
+/* ══ U58(2026-08-15)/ 追加18パターンを量産するための共通形 ═══════════
+ *
+ * zn_sqs_backlog(弱)と zn_hot_cloudtrail(熱)の cues の並びを、
+ * **テキストと色だけ差し替えれば増やせる**形に切り出したもの。
+ * このファイルは import を持たない方針なので、色は下の定数へ直書きしてある
+ * (定義の正は data/zencho.js の ZENCHO_TEXT_COLORS。値を変えるときは両方直す)。
+ *
+ * 【厳守】U9 の色ルール
+ *   ・zenchoBeat  … tone を付けない = **対応役示唆**。color は下の C_* だけを使う
+ *   ・zenchoHot   … tone:'hot' + C.HOT = **信頼度示唆**。役対応色とは絶対に併用しない
+ * 【厳守】結論は出さない
+ *   前兆の1コマは「まだ何も言い切っていない」経過表示なので、
+ *   U57 の conclusionCue(結論行)は使わない。当落は zencho_end 側が告げる。
+ */
+
+/** U9 の対応役示唆カラー(ZENCHO_TEXT_COLORS.SYMBOL の写し) */
+const C = {
+  /** 汎用(弱) */
+  WEAK: '#8ad4ff',
+  /** 汎用(中・熱の平常時) */
+  MID: '#ffd166',
+  /** スイカ(S3)対応 */
+  MELON: '#4ce0a0',
+  /** チェリー(IAM)対応 */
+  CHERRY: '#ff4d4d',
+  /** 信頼度示唆の赤(tone:'hot' と必ずセット) */
+  HOT: '#ff3b30',
+};
+
+/**
+ * 前兆の1コマ(経過表示)。
+ * @param {object} p
+ * @param {string} p.id
+ * @param {string} p.name
+ * @param {string} p.pattern data/zencho.js の patterns[].id
+ * @param {string} p.text メイン行(${step} で毎ゲーム数字が動く)
+ * @param {string} p.sub  サブ行(そのサービスで実際に起きること)
+ * @param {string} p.color C.* のどれか
+ * @param {string} [p.sfx] 効果音プリセット
+ * @param {number} [p.gain]
+ * @param {string} [p.particles] 添えるパーティクル(なしなら省略)
+ * @param {boolean} [p.lamp] レア役ランプを焚くか(中・熱だけ true)
+ */
+function zenchoBeat({
+  id, name, pattern, text, sub, color,
+  sfx = 'ui_select', gain = 0.5, particles = null, lamp = false,
+}) {
+  return {
+    id,
+    name,
+    when: { event: 'paramChange', mode: ['FREE_TIER'], match: { param: ['zencho'], pattern: [pattern] } },
+    weight: { FREE_TIER: 100, default: 0 },
+    duration: 1800,
+    cues: [
+      { at: 0, layer: 'sfx', action: 'synth', params: { preset: sfx, gain } },
+      ...(lamp ? [{ at: 0, layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } }] : []),
+      // step_up は自分で文字を描かないアニメ(V31-08 の座布団ルールを守れる)
+      { at: 60, layer: 'lcd', action: 'anim', params: { anim: 'step_up', step: '$level' } },
+      ...(particles
+        ? [{ at: 140, layer: 'lcd', action: 'particles', params: { preset: particles, x: 110, y: 150, count: 12 } }]
+        : []),
+      // 読ませる文字はすべて lcd.text = 座布団つき(V31-08)
+      { at: 240, layer: 'lcd', action: 'text', params: { text, sub, color, ms: 1100 } },
+    ],
+  };
+}
+
+/**
+ * 赤文字予兆(信頼度示唆)。強度2以上 かつ 2G目以降でしか出ない。
+ * 既存の zn_hot_*(xray / health / guardduty / region_evacuation / cloudtrail)と同じ形。
+ *
+ * **赤の総量は据え置き**: data/zencho.js 側で「hot 版を持つパターンの重み比」を
+ * 追加前と同じに保ってあるので、hot 版を持つ新パターンを足しても
+ * 「前兆が赤くなる割合」は変わらない(理由は data/zencho.js の patterns 冒頭)。
+ */
+function zenchoHot({ id, name, pattern, text, sub, sfx = 'alarm_beep' }) {
+  return {
+    id,
+    name,
+    when: {
+      event: 'paramChange', mode: ['FREE_TIER'],
+      match: { param: ['zencho'], pattern: [pattern], strength: [2, 3], step: [2, 3, 4, 5] },
+    },
+    weight: { FREE_TIER: 900, default: 0 },
+    duration: 2100,
+    cues: [
+      { at: 0, layer: 'sfx', action: 'synth', params: { preset: sfx } },
+      { at: 0, layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
+      { at: 60, layer: 'overlay', action: 'flash', params: { color: C.HOT, ms: 220 } },
+      { at: 120, layer: 'lcd', action: 'anim', params: { anim: 'step_up', step: '$level' } },
+      { at: 300, layer: 'lcd', action: 'text',
+        params: { text, sub, tone: 'hot', color: C.HOT, ms: 1300 } },
+    ],
+  };
+}
+
 export default [
   // ── 演出パターン(弱)───────────────────────
 
   {
-    id: 'zn_deepracer_run',
-    name: '【前兆・弱】ミニDeepRacerがリール下を走り抜ける',
-    // IDEAS.md 2-35。賑やかしだが、前兆中に出ている時点で少しだけ期待できる
+    id: 'zn_distmap_run',
+    name: '【前兆・弱】分散マップの子の実行がリール下を走り抜ける【到達不能・保全】',
+    /*
+     * IDEAS.md 2-35。賑やかしだが、前兆中に出ている時点で少しだけ期待できる。
+     * 2026-08-15 U58: 題材を DeepRacer(2025-12 提供終了)から
+     * **Step Functions 分散マップ** へ差し替え。pattern の内部IDは 'deepracer' のまま
+     * (data/zencho.js の DEEPRACER のコメント参照。scripts/sim.mjs が読む契約名)。
+     *
+     * ══ 【到達不能・保全】2026-08-15 椿レビュー #7 ═══════════════════
+     * **このシナリオは現在の game/ からは1度も発火しない。**
+     * ここが待っているのは汎用の前兆イベント paramChange{ param:'zencho' } だが、
+     * game/modes/freetier.js は擬似連パターン(deepracer / codepipeline)のときだけ
+     *   「擬似連は自前の chainParam イベントで進行を語るので、
+     *     汎用の前兆イベントは出さない(1ゲームに2本流すと後勝ちで先のテロップが消える)」
+     * として zenchoStepEvent を **push しない**。したがって
+     * pattern:'deepracer' と param:'zencho' が同時に立つことがない。
+     * 実際の擬似連の絵は下の dr_pseudo_*(param:'deepracer' を拾う7本)が出している。
+     *
+     * それでも消していないのは zn_reinvent_stage と同じ理由で、
+     *   ・game/ は編集禁止なので、向こう側の分岐が変われば即座に生き返る枠であること
+     *   ・distmap_run(リール下を走り抜ける絵)の呼び出し例がここ以外に無く、
+     *     yokoku-gimmick.js から使い方をたどる入口になっていること
+     * の2つ。**当落にも発火量にも影響しない**(候補に上がらない = 重みも取らない)。
+     */
     when: { event: 'paramChange', mode: ['FREE_TIER'], match: { param: ['zencho'], pattern: ['deepracer'] } },
     weight: { FREE_TIER: 100, default: 0 },
     duration: 1400,
@@ -50,14 +167,15 @@ export default [
       { at: 200, layer: 'lcd', action: 'particles', params: { preset: 'stream', x: 200, y: 252, count: 10 } },
       { at: 400, layer: 'lcd', action: 'particles', params: { preset: 'stream', x: 360, y: 254, count: 10 } },
       { at: 460, layer: 'lcd', action: 'text',
-        params: { text: 'LAP ${step}', sub: 'DeepRacer が試走している', color: '#8ad4ff', ms: 900 } },
+        params: { text: 'MAP RUN ${step}', sub: '子の実行が並列に走り出している', color: '#8ad4ff', ms: 900 } },
     ],
   },
 
   {
     id: 'zn_sqs_backlog',
-    name: '【前兆・弱】SQS保留メッセージが捌けない',
-    // IDEAS.md 2-6「隅の保留メッセージ数字が増えるほど期待度アップ」
+    name: '【前兆・弱】SQS の未処理メッセージが捌けない',
+    // IDEAS.md 2-6「隅の未処理メッセージ数が増えるほど期待度アップ」
+    // U67-1: 「保留」はこの台(パチスロ)に無い概念なので実態の語へ統一
     when: { event: 'paramChange', mode: ['FREE_TIER'], match: { param: ['zencho'], pattern: ['sqs_backlog'] } },
     weight: { FREE_TIER: 100, default: 0 },
     duration: 1700,
@@ -65,7 +183,7 @@ export default [
       { at: 0,   layer: 'sfx',  action: 'synth', params: { preset: 'announce' } },
       { at: 60,  layer: 'lcd',  action: 'anim',  params: { anim: 'step_up', step: '$level' } },
       { at: 200, layer: 'lcd',  action: 'text',
-        params: { text: 'BACKLOG: ${step}', sub: 'SQS のキューが捌けていない', color: '#ffd166', ms: 1100 } },
+        params: { text: 'SQS BACKLOG ${step}', sub: '未処理のメッセージが積み上がっている', color: '#ffd166', ms: 1100 } },
       { at: 240, layer: 'char', action: 'show', params: { char: 'kiro', pose: 'surprised' } },
       { at: 1400, layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'normal' } },
     ],
@@ -222,7 +340,7 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx',  action: 'synth', params: { preset: 'announce' } },
       { at: 0,   layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
-      // 書き込みが積み上がっていく画。SQS の保留カードを Slack のメッセージに見立てる
+      // 書き込みが積み上がっていく画。SQS のキューカードを Slack のメッセージに見立てる
       { at: 60,  layer: 'lcd',  action: 'anim',
         params: { anim: 'sqs_queue_hold', count: '$step', level: '$level', x: 12, baseY: 150 } },
       { at: 240, layer: 'char', action: 'show', params: { char: 'kiro', pose: 'surprised' } },
@@ -491,12 +609,14 @@ export default [
     ],
   },
 
-  /* ── DeepRacer 擬似連 ───────────────────────────────────────────────
+  /* ── 分散マップ擬似連(旧 DeepRacer 擬似連)──────────────────────────
    *
    * ゲームロジック(CZ担当実装)からのイベント契約:
-   *   paramChange { param:'deepracer', step:1..4, cars:台数, result:null|'cz'|'bonus'|'miss' }
+   *   paramChange { param:'deepracer', step:1..4, cars:本数, result:null|'cz'|'bonus'|'miss' }
+   *   ※ param 名 'deepracer' は **内部の契約キー**。題材は U58 で
+   *     AWS Step Functions の分散マップ(Distributed Map)へ差し替えてある。
    *
-   * 毎 step で必ず車が走る。step が進むほど台数と速度が上がり、step4 は大量走行の激アツ。
+   * 毎 step で必ず子の実行が走る。step が進むほど本数と速度が上がり、step4 は大量並列の激アツ。
    * 擬似連カウント(×2 / ×3 / ×4)は step2 以降の冒頭に出す(パチンコの擬似連の流儀。
    * 1回目はまだ「連チャン」していないのでカウントを出さない)。
    *
@@ -511,7 +631,7 @@ export default [
    */
   {
     id: 'dr_pseudo_step1',
-    name: 'DeepRacer擬似連 1回目(1台がトコトコ走る)',
+    name: '分散マップ擬似連 1回目(子の実行が1本だけ走る)',
     when: {
       event: 'paramChange', mode: ['FREE_TIER'],
       match: { param: ['deepracer'], step: [1], result: [null] },
@@ -521,14 +641,14 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'ui_select' } },
       { at: 60,  layer: 'lcd', action: 'anim',
-        params: { anim: 'deepracer_race', step: 1, cars: '$cars', ms: 2000 } },
+        params: { anim: 'distmap_race', step: 1, cars: '$cars', ms: 2000 } },
       { at: 300, layer: 'lcd', action: 'text',
-        params: { text: 'LAP 1', sub: 'DeepRacer が試走を始めた', color: '#8ad4ff', ms: 1000 } },
+        params: { text: 'MAP RUN 1', sub: '子の実行が1本だけ走り出した', color: '#8ad4ff', ms: 1000 } },
     ],
   },
   {
     id: 'dr_pseudo_step2',
-    name: 'DeepRacer擬似連 ×2(2台・少し速く)',
+    name: '分散マップ擬似連 ×2(2本・少し速く)',
     when: {
       event: 'paramChange', mode: ['FREE_TIER'],
       match: { param: ['deepracer'], step: [2], result: [null] },
@@ -539,14 +659,14 @@ export default [
       { at: 0,   layer: 'sfx',     action: 'synth', params: { preset: 'charge_up' } },
       { at: 0,   layer: 'overlay', action: 'flash', params: { color: '#8ad4ff', ms: 180 } },
       { at: 60,  layer: 'lcd',     action: 'anim',
-        params: { anim: 'deepracer_race', step: 2, cars: '$cars', label: '×2', ms: 2200 } },
+        params: { anim: 'distmap_race', step: 2, cars: '$cars', label: '×2', ms: 2200 } },
       { at: 1100, layer: 'lcd',    action: 'text',
-        params: { text: 'LAP 2', sub: '2台目が追いついてきた', color: '#7bf7d0', ms: 1000 } },
+        params: { text: 'MAP RUN 2', sub: '2本目の実行が並んで走り出した', color: '#7bf7d0', ms: 1000 } },
     ],
   },
   {
     id: 'dr_pseudo_step3',
-    name: 'DeepRacer擬似連 ×3(3台・移行抽選の緊張感)',
+    name: '分散マップ擬似連 ×3(4本・移行抽選の緊張感)',
     when: {
       event: 'paramChange', mode: ['FREE_TIER'],
       match: { param: ['deepracer'], step: [3], result: [null] },
@@ -558,16 +678,16 @@ export default [
       { at: 0,    layer: 'lamp',    action: 'pattern', params: { pattern: 'rare' } },
       { at: 0,    layer: 'overlay', action: 'flash', params: { color: '#ffd166', ms: 220 } },
       { at: 60,   layer: 'lcd',     action: 'anim',
-        params: { anim: 'deepracer_race', step: 3, cars: '$cars', label: '×3', ms: 2400 } },
+        params: { anim: 'distmap_race', step: 3, cars: '$cars', label: '×3', ms: 2400 } },
       { at: 900,  layer: 'char',    action: 'show', params: { char: 'kiro', pose: 'surprised' } },
       { at: 1400, layer: 'sfx',     action: 'synth', params: { preset: 'countdown_tick' } },
       { at: 1500, layer: 'lcd',     action: 'text',
-        params: { text: 'LAP 3', sub: '最終コーナーへ', color: '#ffd166', ms: 1100 } },
+        params: { text: 'MAP RUN 3', sub: '4本が同時に走っている', color: '#ffd166', ms: 1100 } },
     ],
   },
   {
     id: 'dr_pseudo_step4',
-    name: 'DeepRacer擬似連 ×4(大量走行・激アツ)',
+    name: '分散マップ擬似連 ×4(大量並列・激アツ)',
     when: {
       event: 'paramChange', mode: ['FREE_TIER'],
       match: { param: ['deepracer'], step: [4], result: [null] },
@@ -580,20 +700,20 @@ export default [
       { at: 0,    layer: 'overlay', action: 'flash', params: { color: '#ffffff', ms: 320 } },
       { at: 20,   layer: 'overlay', action: 'shake', params: { power: 18, ms: 620 } },
       { at: 60,   layer: 'lcd',     action: 'anim',
-        params: { anim: 'deepracer_race', step: 4, cars: '$cars', label: '×4', ms: 3000 } },
+        params: { anim: 'distmap_race', step: 4, cars: '$cars', label: '×4', ms: 3000 } },
       { at: 700,  layer: 'sfx',     action: 'synth', params: { preset: 'charge_up' } },
       { at: 900,  layer: 'char',    action: 'show',   params: { char: 'kiro', pose: 'premium' } },
       { at: 940,  layer: 'char',    action: 'motion', params: { char: 'kiro', motion: 'zoom' } },
       { at: 1200, layer: 'overlay', action: 'particles', params: { preset: 'rainbow', x: 360, y: 380, count: 26 } },
       // 結論は出さない。ここは「大量に走ってきた」画までで、当落は result 側が告げる
       { at: 1600, layer: 'lcd',     action: 'text',
-        params: { text: 'FULL GRID', sub: '全車がコースへ入った', color: '#ffe066', ms: 1400 } },
+        params: { text: 'MAX CONCURRENCY', sub: '子の実行が一斉に立ち上がった', color: '#ffe066', ms: 1400 } },
     ],
   },
 
   {
     id: 'dr_pseudo_result_cz',
-    name: 'DeepRacer擬似連 → CZ突入【result:cz のときだけ】',
+    name: '分散マップ擬似連 → CZ突入【result:cz のときだけ】',
     when: {
       event: 'paramChange', mode: ['FREE_TIER'],
       match: { param: ['deepracer'], result: ['cz'] },
@@ -604,19 +724,19 @@ export default [
       { at: 0,    layer: 'sfx',     action: 'synth', params: { preset: 'charge_up' } },
       { at: 0,    layer: 'lamp',    action: 'pattern', params: { pattern: 'rare' } },
       { at: 60,   layer: 'lcd',     action: 'anim',
-        params: { anim: 'deepracer_race', step: '$step', cars: '$cars', ms: 2200 } },
+        params: { anim: 'distmap_race', step: '$step', cars: '$cars', ms: 2200 } },
       { at: 900,  layer: 'overlay', action: 'flash', params: { color: '#7bf7d0', ms: 300 } },
       { at: 920,  layer: 'overlay', action: 'shake', params: { power: 12, ms: 420 } },
       { at: 960,  layer: 'sfx',     action: 'synth', params: { preset: 'upgrade_chime' } },
       { at: 1000, layer: 'char',    action: 'show', params: { char: 'kiro', pose: 'happy' } },
       { at: 1060, layer: 'lcd',     action: 'text',
-        params: { text: 'CHECKERED FLAG — CZ突入', sub: 'ゴールした!', color: '#7bf7d0', ms: 1900 } },
+        params: { text: '全実行 SUCCEEDED — CZ突入', sub: '子の実行が全部そろって返ってきた!', color: '#7bf7d0', ms: 1900 } },
       { at: 1300, layer: 'sfx',     action: 'synth', params: { preset: 'fanfare_reg' } },
     ],
   },
   {
     id: 'dr_pseudo_result_bonus',
-    name: 'DeepRacer擬似連 → ボーナス確定【result:bonus のときだけ】',
+    name: '分散マップ擬似連 → ボーナス確定【result:bonus のときだけ】',
     when: {
       event: 'paramChange', mode: ['FREE_TIER'],
       match: { param: ['deepracer'], result: ['bonus'] },
@@ -629,19 +749,19 @@ export default [
       { at: 0,    layer: 'overlay', action: 'flash', params: { color: '#ffffff', ms: 380 } },
       { at: 20,   layer: 'overlay', action: 'shake', params: { power: 20, ms: 700 } },
       { at: 60,   layer: 'lcd',     action: 'anim',
-        params: { anim: 'deepracer_race', step: 4, cars: '$cars', ms: 2600 } },
+        params: { anim: 'distmap_race', step: 4, cars: '$cars', ms: 2600 } },
       { at: 900,  layer: 'sfx',     action: 'synth', params: { preset: 'fanfare_big' } },
       { at: 940,  layer: 'char',    action: 'show',   params: { char: 'kiro', pose: 'premium' } },
       { at: 980,  layer: 'char',    action: 'motion', params: { char: 'kiro', motion: 'zoom' } },
       // 「確定」を含むので可読性エンジンが自動で sticky にする
       { at: 1060, layer: 'lcd',     action: 'text',
-        params: { text: 'BONUS 確定!!', sub: '表彰台まで駆け抜けた', color: '#ffe066', ms: 2200 } },
+        params: { text: 'BONUS 確定!!', sub: '1万並列まで振り切った', color: '#ffe066', ms: 2200 } },
       { at: 1400, layer: 'overlay', action: 'particles', params: { preset: 'rainbow', x: 360, y: 400, count: 34 } },
     ],
   },
   {
     id: 'dr_pseudo_result_miss',
-    name: '【ガセ】DeepRacer擬似連 リタイア【result:miss のときだけ】',
+    name: '【ガセ】分散マップ擬似連 実行失敗【result:miss のときだけ】',
     // 非当選が確定したイベントでしか来ない。ここからCZ/ボーナスへ向かう経路は無い
     when: {
       event: 'paramChange', mode: ['FREE_TIER'],
@@ -651,11 +771,11 @@ export default [
     duration: 2200,
     cues: [
       { at: 0,   layer: 'lcd',  action: 'anim',
-        params: { anim: 'deepracer_race', step: '$step', cars: '$cars', ms: 1800 } },
+        params: { anim: 'distmap_race', step: '$step', cars: '$cars', ms: 1800 } },
       { at: 800, layer: 'sfx',  action: 'synth', params: { preset: 'error_buzz', gain: 0.6 } },
       { at: 860, layer: 'char', action: 'show', params: { char: 'kiro', pose: 'normal' } },
       { at: 900, layer: 'lcd',  action: 'text',
-        params: { text: 'RETIRE', sub: 'コースアウトした…', color: '#8aa0b4', ms: 1200 } },
+        params: { text: 'FAILED', sub: '子の実行が途中で落ちた…', color: '#8aa0b4', ms: 1200 } },
       { at: 1200, layer: 'lamp', action: 'pattern', params: { pattern: 'idle' } },
     ],
   },
@@ -666,8 +786,8 @@ export default [
    *   paramChange { param:'codepipeline', step:1..4, stage:'Source'|'Build'|'Test'|'Deploy',
    *                 result:null|'cz'|'bonus'|'miss' }
    *
-   * DeepRacer 擬似連(dr_pseudo_*)と同じ骨格。param を分けてあるので絵を取り違えない。
-   * **擬似連の総発生量は据え置き**(data/zencho.js で DeepRacer と weight を分け合っている)。
+   * 分散マップ擬似連(dr_pseudo_*)と同じ骨格。param を分けてあるので絵を取り違えない。
+   * **擬似連の総発生量は据え置き**(data/zencho.js で分散マップ側と weight を分け合っている)。
    *
    * ■ 整合の担保(dr_pseudo_* と同じ)
    *   step だけのイベント(result:null)は結論を出さない。進捗バーとステージ名だけ。
@@ -857,7 +977,7 @@ export default [
       { at: 1440, layer: 'lcd',     action: 'particles', params: { preset: 'scale', x: 120, y: 170, count: 16 } },
       // 「突入」を含むので可読性エンジンが自動で sticky にする
       { at: 1500, layer: 'lcd',     action: 'text',
-        params: { text: '全メッセージ処理完了 — 突入', sub: 'キューが空になった', color: '#4ce0a0', ms: 2000 } },
+        params: { text: '全メッセージ処理完了 — 突入', sub: 'Amazon SQS — キューが空になった', color: '#4ce0a0', ms: 2000 } },
       { at: 1800, layer: 'sfx',     action: 'synth', params: { preset: 'fanfare_reg' } },
     ],
   },
@@ -877,7 +997,7 @@ export default [
         params: { anim: 'sqs_queue_result', result: 'dlq', count: 4, ms: 2200 } },
       { at: 900,  layer: 'char', action: 'show', params: { char: 'kiro', pose: 'panic' } },
       { at: 1200, layer: 'lcd',  action: 'text',
-        params: { text: '再処理は打ち切り', sub: 'エラーで処理できなかった', color: '#ff8a8a', ms: 1400 } },
+        params: { text: '再処理は打ち切り', sub: 'Amazon SQS — 処理できずデッドレターキューへ', color: '#ff8a8a', ms: 1400 } },
       { at: 1600, layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'normal' } },
       { at: 1700, layer: 'lamp', action: 'pattern', params: { pattern: 'idle' } },
     ],
@@ -1019,4 +1139,296 @@ export default [
       { at: 420, layer: 'char',    action: 'show', params: { char: 'kiro', pose: 'panic' } },
     ],
   },
+  /* ══ U58(2026-08-15)追加分の演出 ═══════════════════════════════════
+   *
+   * data/zencho.js に足した18パターンの受け皿。全部 zenchoBeat / zenchoHot の共通形で、
+   * **前兆の発生量は1回も増えない**(重みはグループ合計を固定して分け合っている)。
+   * 中(7)と熱(3)には赤文字版(zn_hot_*)を必ず1本ずつ持たせてある。
+   */
+
+  /* ── 弱(青 / 対応役があるものはその色)8本 ───────────────────── */
+  zenchoBeat({
+    id: 'zn_ec2_mac',
+    name: '【前兆・弱】EC2 Mac インスタンス(実機を借りた)',
+    pattern: 'ec2_mac',
+    /*
+     * 2026-08-15 ユーザー指摘 U64-1「文言が意味不明」対応。
+     * 旧: text 'DEDICATED ${step}' / sub 'Mac ホストは24時間は解放できない'
+     *   → 「DEDICATED」も「最低確保」も社内語で、何の話か伝わらなかった。
+     * 新: 起きた出来事(実機を確保した)を主役にして、24時間の縛りは
+     *     「返却できるのは24時間後」と日常語で添える。
+     *     step の数字は step_up アニメが出しているので文字からは外した。
+     * data/zencho.js の ec2_mac.telop も同じ言い回しに揃えてある。
+     */
+    text: 'MAC 実機を確保',
+    sub: 'Mac の実機を借りた — 返却できるのは24時間後',
+    color: C.WEAK,
+  }),
+  zenchoBeat({
+    id: 'zn_device_farm',
+    name: '【前兆・弱】Device Farm の実機ラックが一斉に点灯する',
+    pattern: 'device_farm',
+    text: 'DEVICES ×${step}',
+    sub: '実機のスマホが一斉に画面点灯した',
+    color: C.WEAK,
+    sfx: 'ui_select',
+    particles: 'spark',
+  }),
+  zenchoBeat({
+    id: 'zn_session_manager',
+    name: '【前兆・弱】Session Manager で踏み台なしのシェルが開く',
+    pattern: 'session_manager',
+    text: 'SESSION ${step}',
+    sub: '踏み台も鍵もなくシェルが1本開いた',
+    // 権限(IAM)の話なので U9 の赤(tone は付けない)
+    color: C.CHERRY,
+  }),
+  zenchoBeat({
+    id: 'zn_logs_insights',
+    name: '【前兆・弱】CloudWatch Logs Insights が数件だけ返す',
+    pattern: 'logs_insights',
+    text: 'HITS ${step}',
+    sub: '大量のログをなめて数件だけ返ってきた',
+    color: C.WEAK,
+    sfx: 'countdown_tick',
+    gain: 0.5,
+  }),
+  zenchoBeat({
+    id: 'zn_datasync_night',
+    name: '【前兆・弱】DataSync が夜間にファイルを渡している',
+    pattern: 'datasync_night',
+    text: 'SYNC ${step}/5',
+    sub: 'オンプレのファイルが少しずつ渡っている',
+    // 着地先は S3。スイカ対応なので緑
+    color: C.MELON,
+    sfx: 'stream_flow',
+    gain: 0.55,
+    particles: 'stream',
+  }),
+  zenchoBeat({
+    id: 'zn_transfer_sftp',
+    name: '【前兆・弱】Transfer Family の SFTP がまだ1本つながっている',
+    pattern: 'transfer_sftp',
+    text: 'SFTP ${step}',
+    sub: '昔ながらの経路で S3 へ出し入れしている',
+    color: C.MELON,
+    sfx: 'stream_flow',
+    gain: 0.45,
+  }),
+  zenchoBeat({
+    id: 'zn_route53_resolver',
+    name: '【前兆・弱】Route 53 Resolver の名前解決が外を向く',
+    pattern: 'route53_resolver',
+    text: 'RESOLVE ${step}',
+    sub: 'VPC の中の名前解決が1回だけ外を向いた',
+    color: C.WEAK,
+  }),
+  zenchoBeat({
+    id: 'zn_cost_anomaly',
+    name: '【前兆・弱】Cost Anomaly Detection が違和感を覚える',
+    pattern: 'cost_anomaly',
+    text: 'ANOMALY ${step}',
+    sub: '今月の使い方が普段と違うらしい',
+    color: C.WEAK,
+    sfx: 'alarm_beep',
+    gain: 0.45,
+  }),
+
+  /* ── 中(金 / 対応役があるものはその色)7本 + 赤文字版 ───────────── */
+  zenchoBeat({
+    id: 'zn_vpc_lattice',
+    name: '【前兆・中】VPC Lattice がサービス同士を名前で結線する',
+    pattern: 'vpc_lattice',
+    text: 'LINKED ×${step}',
+    sub: 'サービス同士が名前だけで結線された',
+    color: C.MID,
+    sfx: 'announce',
+    lamp: true,
+  }),
+  zenchoHot({
+    id: 'zn_hot_vpc_lattice',
+    name: '【赤】VPC Lattice の結線が増え続ける',
+    pattern: 'vpc_lattice',
+    text: 'LINKED ×${step}',
+    sub: '結線が次々に増えていく',
+    sfx: 'announce',
+  }),
+
+  zenchoBeat({
+    id: 'zn_clean_rooms',
+    name: '【前兆・中】Clean Rooms が重なりだけを見つける',
+    pattern: 'clean_rooms',
+    text: 'OVERLAP ${step}',
+    sub: '相手の生データを見ずに重なりが分かった',
+    color: C.MID,
+    sfx: 'checklist_ok',
+    lamp: true,
+  }),
+  zenchoHot({
+    id: 'zn_hot_clean_rooms',
+    name: '【赤】Clean Rooms の重なりが広がり続ける',
+    pattern: 'clean_rooms',
+    text: 'OVERLAP ×${step}',
+    sub: '重なりがどんどん見えてきた',
+    sfx: 'charge_up',
+  }),
+
+  zenchoBeat({
+    id: 'zn_entity_resolution',
+    name: '【前兆・中】Entity Resolution が別レコードを同一人物と判定する',
+    pattern: 'entity_resolution',
+    text: 'MATCHED ×${step}',
+    sub: '別々の顧客レコードが同一人物と判定された',
+    color: C.MID,
+    sfx: 'ui_select',
+    gain: 0.6,
+    lamp: true,
+  }),
+  zenchoHot({
+    id: 'zn_hot_entity_resolution',
+    name: '【赤】Entity Resolution の一致が止まらない',
+    pattern: 'entity_resolution',
+    text: 'MATCHED ×${step}',
+    sub: '同一人物が次々に見つかる',
+    sfx: 'charge_up',
+  }),
+
+  zenchoBeat({
+    id: 'zn_ram_share',
+    name: '【前兆・中】Resource Access Manager が隣のアカウントへ共有する',
+    pattern: 'ram_share',
+    text: 'SHARED ×${step}',
+    sub: '隣のアカウントへサブネットが共有された',
+    // アカウントをまたぐ権限の話なので U9 の赤(tone は付けない)
+    color: C.CHERRY,
+    sfx: 'contract_sign',
+    gain: 0.6,
+    lamp: true,
+  }),
+  zenchoHot({
+    id: 'zn_hot_ram_share',
+    name: '【赤】Resource Access Manager の共有先が増え続ける',
+    pattern: 'ram_share',
+    text: 'SHARED ×${step}',
+    sub: '共有先が増え続けている',
+    sfx: 'contract_sign',
+  }),
+
+  zenchoBeat({
+    id: 'zn_kb_citation',
+    name: '【前兆・中】Bedrock Knowledge Bases が根拠を引いてくる',
+    pattern: 'kb_citation',
+    text: 'CITATION ${step}',
+    sub: '社内文書から根拠が1件、引かれてきた',
+    color: C.MID,
+    sfx: 'announce',
+    lamp: true,
+  }),
+  zenchoHot({
+    id: 'zn_hot_kb_citation',
+    name: '【赤】Bedrock Knowledge Bases の根拠が次々に出てくる',
+    pattern: 'kb_citation',
+    text: 'CITATION ×${step}',
+    sub: '根拠が次々に引かれてくる',
+    sfx: 'announce',
+  }),
+
+  zenchoBeat({
+    id: 'zn_mwaa_dag',
+    name: '【前兆・中】MWAA の DAG が依存を解いて走り出す',
+    pattern: 'mwaa_dag',
+    text: 'DAG ${step}',
+    sub: '依存が解けてタスクが走り出した',
+    color: C.MID,
+    sfx: 'dynamo_scale',
+    lamp: true,
+  }),
+  zenchoHot({
+    id: 'zn_hot_mwaa_dag',
+    name: '【赤】MWAA のタスクが止まらない',
+    pattern: 'mwaa_dag',
+    text: 'DAG ×${step}',
+    sub: '走り出したタスクが止まらない',
+    sfx: 'dynamo_scale',
+  }),
+
+  zenchoBeat({
+    id: 'zn_local_zones',
+    name: '【前兆・中】Local Zones へ処理が寄っていく',
+    pattern: 'local_zones',
+    text: 'LOCAL ZONE ${step}',
+    sub: '大都市の出島側へ処理が寄っていった',
+    color: C.MID,
+    sfx: 'region_light',
+    lamp: true,
+    particles: 'stream',
+  }),
+  zenchoHot({
+    id: 'zn_hot_local_zones',
+    name: '【赤】Local Zones 側へ処理が全部寄っていく',
+    pattern: 'local_zones',
+    text: 'LOCAL ×${step}',
+    sub: '処理が全部エッジ側へ寄っていく',
+    sfx: 'region_light',
+  }),
+
+  /* ── 熱(強度3専用)3本 + 赤文字版 ──────────────────────────── */
+  zenchoBeat({
+    id: 'zn_fis_az_down',
+    name: '【前兆・強】Fault Injection Service が AZ 全電源断を投入する(強度3専用)',
+    pattern: 'fis_az_down',
+    text: 'AZ INJECTION ${step}',
+    sub: 'AZ 全電源断のシナリオが投入された',
+    color: C.MID,
+    sfx: 'error_buzz',
+    lamp: true,
+  }),
+  zenchoHot({
+    id: 'zn_hot_fis_az_down',
+    name: '【赤】注入した障害が広がり続ける(強度3専用)',
+    pattern: 'fis_az_down',
+    text: 'AZ DOWN ×${step}',
+    sub: '注入した障害が広がり続けている',
+    sfx: 'error_buzz',
+  }),
+
+  zenchoBeat({
+    id: 'zn_trainium_cluster',
+    name: '【前兆・強】Trainium の学習クラスタに火が入る(強度3専用)',
+    pattern: 'trainium_cluster',
+    text: 'TRN CLUSTER ${step}',
+    sub: '学習専用チップのクラスタに火が入った',
+    color: C.MID,
+    sfx: 'charge_up',
+    lamp: true,
+    particles: 'spark',
+  }),
+  zenchoHot({
+    id: 'zn_hot_trainium_cluster',
+    name: '【赤】Trainium のクラスタが次々に立ち上がる(強度3専用)',
+    pattern: 'trainium_cluster',
+    text: 'TRN ×${step}',
+    sub: 'クラスタが次々に立ち上がる',
+    sfx: 'charge_up',
+  }),
+
+  zenchoBeat({
+    id: 'zn_dtt_ingest',
+    name: '【前兆・強】Data Transfer Terminal がディスクを吸い上げる(強度3専用)',
+    pattern: 'dtt_ingest',
+    text: 'INGEST ${step}',
+    sub: '持ち込んだディスクを高速で吸い上げている',
+    color: C.MID,
+    sfx: 'stream_flow',
+    lamp: true,
+    particles: 'stream',
+  }),
+  zenchoHot({
+    id: 'zn_hot_dtt_ingest',
+    name: '【赤】Data Transfer Terminal の吸い上げが止まらない(強度3専用)',
+    pattern: 'dtt_ingest',
+    text: 'INGEST ×${step}',
+    sub: '吸い上げが止まらない',
+    sfx: 'stream_flow',
+  }),
 ];
