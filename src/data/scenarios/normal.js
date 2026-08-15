@@ -33,6 +33,12 @@ export default [
       { at: 80,  layer: 'overlay', action: 'cutin', params: { id: 'mini_ghost_peek', side: 'left' } },
       { at: 100, layer: 'char',    action: 'show',  params: { char: 'kiro', pose: 'surprised' } },
       { at: 120, layer: 'lcd',     action: 'particles', params: { preset: 'spark', x: 352, y: 176 } },
+      /*
+       * ルナの相槌(U68)。レア役が入った瞬間の「おっ?」。
+       * chance で間引くのは、レア役はそこそこ引けるので毎回喋ると耳につくため
+       * (engine/voice.js 側でも1ゲーム1本 + cooldown の二重の歯止めがある)。
+       */
+      { at: 200, layer: 'voice',   action: 'play',  params: { key: 'luna_react_oh_01', chance: 0.22 } },
       { waitFor: 'stop3', after: 300, layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'normal' } },
     ],
   },
@@ -191,7 +197,8 @@ export default [
       { at: 120,  layer: 'lcd',     action: 'anim',  params: { anim: 'all_regions_light' } },
       { at: 200,  layer: 'char',    action: 'show',  params: { char: 'kiro', pose: 'premium' } },
       { at: 200,  layer: 'char',    action: 'motion', params: { char: 'kiro', motion: 'zoom' } },
-      { at: 600,  layer: 'voice',   action: 'play',  params: { key: 'george_premium_01' } },
+      // 最上位のプレミア。確定演出なので間引かない(U68)
+      { at: 600,  layer: 'voice',   action: 'play',  params: { key: 'luna_sugoi_01', force: true } },
       { at: 1200, layer: 'overlay', action: 'particles', params: { preset: 'rainbow', x: 360, y: 400, count: 40 } },
       { waitFor: 'stop3', after: 300, layer: 'lcd', action: 'text',
         params: { text: 'ALL GREEN', sub: '全リージョン正常稼働', color: '#7bf7d0', ms: 2000 } },

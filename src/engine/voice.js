@@ -24,10 +24,31 @@
  *
  * ブラウザ以外(Node)から import しても副作用が無いよう、
  * モジュールのトップレベルで window / fetch / AudioContext には触れない。
+ *
+ * ══ 4. 喋りすぎない(2026-08-15 U68)═══════════════════════════════
+ *
+ * ルナが主役になってボイスが載ったので、**間引き**をここへ入れた。
+ * 音は演出より耳に残るので、毎ゲーム喋ると一気に安っぽくなる。
+ *   ・chance      … 呼ばれても鳴らさないことがある(予兆・煽りの類)
+ *   ・1ゲーム1本 … レバーONで解禁(beginGame)。同じゲームの2本目は黙る
+ *   ・cooldown    … 直前の発話から一定時間は鳴らさない(モードをまたぐ連発対策)
+ *   ・force       … 確定告知(ボーナス確定 / RUSH突入 / 引き戻し / リザルト)だけは
+ *                   上の3つを全部素通しする。**情報**なので間引いてはいけない。
+ *
+ * ■ なぜ間引きの乱数が演出RNG(engine/rng.js)ではないのか
+ *   演出RNGは「シナリオ抽選の再現性」を持っている乱数列で、
+ *   ここで1回でも余分に引くと **その後のシナリオ選択が全部ズレる**
+ *   (scripts/compare-drivers.mjs / sim.mjs はこの列を共有して検証している)。
+ *   音は記録も検証もしない完全な出力側なので、
+ *   **演出RNGを1ステップも動かさない** Math.random をあえて使う。
+ *   これで「ボイスを足したら予告の出方が変わった」が構造的に起きない。
  */
 
 /** 読み込みに時間がかかりすぎたセリフは、演出とズレるので鳴らさない */
 const DEFAULT_STALE_MS = 2000;
+
+/** 直前の発話からこれだけ空けないと次を鳴らさない(force を除く) */
+const DEFAULT_COOLDOWN_MS = 4000;
 
 export class VoicePlayer {
   /**
@@ -37,6 +58,7 @@ export class VoicePlayer {
    * @param {number} [opts.staleMs] ロードがこれ以上かかったら再生を諦める
    * @param {boolean} [opts.debug] true でスキップ理由をコンソールに出す
    * @param {boolean} [opts.useSpeechFallback] 音声未生成時に Web Speech API で代読する
+   * @param {number} [opts.cooldownMs] 直前の発話からこれだけ空ける(force は無視)
    */
   constructor({
     basePath = './assets/voices/',
@@ -44,13 +66,20 @@ export class VoicePlayer {
     staleMs = DEFAULT_STALE_MS,
     debug = false,
     useSpeechFallback = false,
+    cooldownMs = DEFAULT_COOLDOWN_MS,
   } = {}) {
     this.basePath = basePath.endsWith('/') ? basePath : `${basePath}/`;
     this.volume = volume;
     this.staleMs = staleMs;
     this.debug = debug;
     this.useSpeechFallback = useSpeechFallback;
+    this.cooldownMs = cooldownMs;
     this.muted = false;
+
+    /** このゲーム(レバーON〜次のレバーON)で既に喋ったか */
+    this._spokeThisGame = false;
+    /** 直前に発話を始めた時刻(ms)。0 は未発話 */
+    this._lastSpokeAt = 0;
 
     /** @type {AudioContext|null} */
     this.ctx = null;
@@ -177,14 +206,39 @@ export class VoicePlayer {
   }
 
   /**
+   * 1ゲームの区切り(レバーON)。「同じゲームで2本喋らない」の解禁を行う。
+   * main.js の leverOn 配線から呼ぶ。呼ばれなくても cooldown 側で守られる。
+   */
+  beginGame() {
+    this._spokeThisGame = false;
+  }
+
+  /**
    * セリフを再生する。同時発話は1つまでで、鳴っている途中なら差し替える。
    * 音声が無い/未整備でも例外は投げず、黙って false を返す。
+   *
    * @param {string} key
+   * @param {object} [opts] シナリオの voice.play キューの params がそのまま届く
+   * @param {number} [opts.chance] 0〜1。省略時は必ず鳴らそうとする
+   * @param {boolean} [opts.force] true で間引き(chance / 1ゲーム1本 / cooldown)を全部素通し。
+   *   **確定告知にだけ付ける**(ボーナス確定・RUSH突入・引き戻し成功・リザルト)
+   * @param {number} [opts.cooldownMs] このセリフだけ cooldown を変える
    * @returns {boolean} 再生(またはロード開始)したか
    */
-  play(key) {
+  play(key, opts = {}) {
     if (!key || typeof key !== 'string') return false;
     if (this.muted) return false;
+    /*
+     * 未生成のキーはここで打ち切る(間引きの記帳より **前**)。
+     * 順序が逆だと「MP3が無いセリフ」が 1ゲーム1本の枠と cooldown を食ってしまい、
+     * その後に来た本物のセリフが黙る = 音が減った理由が誰にも分からなくなる。
+     * manifest 未読(manifestFound=false)のときは下の分岐が読み込みへ回す。
+     */
+    if (this.manifestFound && !this.entry(key)) {
+      if (this.debug) console.info(`[voice] skip(manifest未登録): ${key}`);
+      return this._speakFallback(key);
+    }
+    if (!this._admit(opts)) return false;
 
     const token = ++this._token;
 
@@ -235,17 +289,61 @@ export class VoicePlayer {
   }
 
   /**
-   * EventBus の modeEnter を購読して自動プリロードする(任意)。
+   * EventBus を購読して自動運転する(任意)。
+   *   modeEnter … そのモードで使うセリフのプリロード
+   *   leverOn   … 1ゲーム1本の解禁(beginGame)
    * engine 層なので EventBus のインターフェース(on)しか触らない。
    * @param {{on:(event:string, fn:Function)=>Function}} bus
    * @returns {()=>void} 解除関数
    */
   attachBus(bus) {
     if (!bus || typeof bus.on !== 'function') return () => {};
-    return bus.on('modeEnter', (p) => { this.preloadMode(p?.id); });
+    const offMode = bus.on('modeEnter', (p) => { this.preloadMode(p?.id); });
+    const offLever = bus.on('leverOn', () => { this.beginGame(); });
+    return () => { offMode?.(); offLever?.(); };
   }
 
   // ── 内部 ──────────────────────────────────
+
+  /**
+   * 喋ってよいかの調停(U68)。
+   * 通ったら「喋った」ことにして記帳する(実際に音が出るかは manifest 次第だが、
+   * 記帳しないと未生成キーの呼び出しで1ゲーム1本の枠が無限に空いてしまう)。
+   * @param {object} opts play() の第2引数
+   * @returns {boolean}
+   */
+  _admit({ chance, force = false, cooldownMs } = {}) {
+    if (force) {
+      this._mark();
+      return true;
+    }
+    if (this._spokeThisGame) {
+      if (this.debug) console.info('[voice] skip(このゲームは発話済み)');
+      return false;
+    }
+    const cd = cooldownMs ?? this.cooldownMs;
+    if (cd > 0 && this._lastSpokeAt > 0 && this._now() - this._lastSpokeAt < cd) {
+      if (this.debug) console.info('[voice] skip(cooldown)');
+      return false;
+    }
+    // 演出RNGは使わない(ファイル冒頭 4. の理由)
+    if (typeof chance === 'number' && chance < 1 && Math.random() >= chance) return false;
+    this._mark();
+    return true;
+  }
+
+  /** 発話を記帳する */
+  _mark() {
+    this._spokeThisGame = true;
+    this._lastSpokeAt = this._now();
+  }
+
+  /** performance.now が無い環境(Node のテスト)でも動くようにしておく */
+  _now() {
+    return typeof performance !== 'undefined' && typeof performance.now === 'function'
+      ? performance.now()
+      : Date.now();
+  }
 
   async _playWhenReady(key, token, requestedAt) {
     const buffer = await this._load(key);

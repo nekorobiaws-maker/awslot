@@ -216,8 +216,16 @@ export function createActions({
       const service = resolveServiceByQuizAnswer(verdict.round.choices[verdict.round.answerIndex]);
       if (service) recordServiceSeen(service, 'quiz');
     },
-    // 未生成の音声キーは voice 側が静かに無視するので、ここでの分岐は不要。
-    'voice.play': (params) => { voice?.play(params.key); },
+    /**
+     * キャラ音声(U68 でルナのボイスが載った)。
+     *
+     * 未生成の音声キーは voice 側が静かに無視するので、ここでの分岐は不要。
+     * params をそのまま渡すので、シナリオ側で間引きを指定できる:
+     *   { key:'luna_react_oh_01', chance: 0.25 } … 4回に1回だけ喋る(予兆・煽り)
+     *   { key:'luna_rush_01', force: true }      … 確定告知。間引かない
+     * 判定の実体と「なぜ演出RNGを使わないか」は engine/voice.js の冒頭を参照。
+     */
+    'voice.play': (params) => { voice?.play(params.key, params); },
     // 同じ曲を指定した場合 changeBgm は no-op になるため、
     // モード遷移による自動切替(main.js)と重なっても鳴り直さない。
     'bgm.change': (params) => { audio?.changeBgm(params.bgm, { fadeMs: params.fadeMs ?? 800 }); },

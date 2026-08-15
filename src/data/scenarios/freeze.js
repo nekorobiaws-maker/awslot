@@ -260,7 +260,14 @@ export default [
           text: 'ボーナス確定!!', sub: 'ゴーストボーナスSP + RUSH 確定',
           color: '#ffe066', size: 44, ms: 4200,
         } },
-      { at: 11200, layer: 'voice',   action: 'play',    params: { key: 'kiro_alarm_01' } },
+      /*
+       * ルナの第一声(U68)。**爆発と同時**に驚かせる。
+       *   ・溜め(0〜10.7秒)の無音は絶対に汚さないので、ここまで一切喋らない
+       *   ・結末の断定(「ボーナス確定っ!」)は次の画面 = 入賞待ちの入場演出
+       *     (data/scenarios/bonus.js の bonus_ready_*)が担当する。
+       *     ここで両方鳴らすと1本目が途中で差し替わって切れる(同時発話は1つ)。
+       */
+      { at: 10870, layer: 'voice',   action: 'play',    params: { key: 'luna_freeze_01', force: true } },
       // ボーナスの曲へ。次のレバーONで入る BONUS 側の自動切替と同じ曲なので鳴り直さない
       { at: 11250, layer: 'bgm',     action: 'change',  params: { bgm: 'bgm_bonus', fadeMs: 400 } },
       // 最後のキューは duration(11400)より前に置く。ここが遅いと exclusive 枠が明かず、

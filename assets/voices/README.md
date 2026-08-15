@@ -8,9 +8,32 @@ assets/voices/
 ├── README.md          このファイル(手書き)
 ├── manifest.json      ★生成スクリプトが自動出力。手で編集しない
 │                        (未生成時は voices が空のプレースホルダが置いてある)
-├── kiro/              幽霊Kiro   kiro_01.mp3 …
-└── george/            サメ ジョージ  george_01.mp3 …
+├── luna/              ルナ(現在の主役)luna_01.mp3 … luna_20.mp3
+├── kiro/              旧・相棒枠(未生成。定義だけ保全)
+└── george/            旧・サメ ジョージ(同上)
 ```
+
+## いま鳴っているのはルナだけ(2026-08-15 U68)
+
+主役交代でキャラがルナ1人になったため、**生成してあるのは `luna/` の20本だけ**です。
+`kiro_*` / `george_*` の定義は歴史として `scripts/generate-voices.mjs` に残していますが、
+シナリオ側の参照は全部ルナのキーへ張り替え済みなので、鳴ることはありません。
+
+ルナのセリフは **セリフではなく短いリアクション**(1〜3秒)で統一してあります。
+
+| 分類 | キー | テキスト |
+|---|---|---|
+| 予兆の入り | `luna_react_oh_01` / `luna_react_nani_01` | おっ? / なになに? |
+| 煽り(疑問形) | `luna_tease_kore_01` / `luna_tease_moshika_01` / `luna_hot_01` | これは… / もしかして? / 激アツ? |
+| CZ示唆 | `luna_cz_chance_01` | チャンスかも? |
+| ステージへの期待 | `luna_stage_summit_01` / `luna_stage_invent_01` | サミット行きたいな〜 / インベント行きたいな〜 |
+| 確定告知 | `luna_bonus_kakutei_01` / `luna_rush_01` / `luna_comeback_01` / `luna_result_01` | ボーナス確定っ! / ラッシュだ〜! / おかえり! / おつかれさま! |
+| 喜び・驚き | `luna_kita_01` / `luna_win_01` / `luna_sugoi_01` / `luna_freeze_01` | きたきたっ! / やったー! / すごいすごい! / フリーズ!? |
+| 落胆・間 | `luna_hmm_01` / `luna_lose_01` / `luna_miss_01` | んー… / ざんねん… / あちゃー |
+| 継続の後押し | `luna_madamada_01` | まだまだ〜 |
+
+**喋りすぎない仕組み**は `src/engine/voice.js` にあります(chance / 1ゲーム1本 / cooldown、
+確定告知だけ `force: true` で素通し)。シナリオ側の書き方は下の「ブラウザ側の使い方」を参照。
 
 未生成でもゲームは普通に動きます(`src/engine/voice.js` は manifest に載っていないセリフを
 黙って読み飛ばします)。未生成時用に「voices が空の manifest.json」を置いてあるので、
@@ -24,13 +47,13 @@ assets/voices/
 cp awslot/.env.example awslot/.env
 
 # 2. .env に APIキーとモデルUUIDを書く
-#    AIVIS_CLOUD_API_KEY / KIRO_MODEL_UUID / GEORGE_MODEL_UUID
+#    AIVIS_CLOUD_API_KEY / LUNA_MODEL_UUID(主役)/ KIRO_MODEL_UUID / GEORGE_MODEL_UUID
 
 # 3. まず定義だけ確認(APIは呼ばれない)
-node scripts/generate-voices.mjs --dry-run
+node scripts/generate-voices.mjs --dry-run --char=luna
 
-# 4. 生成(27本・3秒間引きなので2分ほどかかります)
-node scripts/generate-voices.mjs
+# 4. 生成(ルナ20本・3秒間引きなので1分ほどかかります)
+node scripts/generate-voices.mjs --char=luna
 ```
 
 - 生成済みのMP3は**スキップ**されるので、途中で失敗しても同じコマンドを再実行すればOK
@@ -99,9 +122,25 @@ import { initVoice } from './engine/voice.js';
 // AudioContext と masterGain は効果音エンジンと共有する(音量の一元管理)
 const voice = initVoice({ audioContext: audio.ctx, masterGain: audio.master });
 
-voice.attachBus(bus);          // modeEnter を購読してモードぶんを自動プリロード
-voice.play('kiro_cz_start_01'); // 同時発話は1つ。新しい台詞が来たら差し替え
+voice.attachBus(bus);           // modeEnter でプリロード / leverOn で1ゲーム1本を解禁
+voice.play('luna_kita_01');     // 同時発話は1つ。新しい台詞が来たら差し替え
+
+// 間引きの指定(シナリオの voice.play キューの params がそのまま届く)
+voice.play('luna_hot_01', { chance: 0.3 });          // 予兆・煽り: 3割だけ喋る
+voice.play('luna_rush_01', { force: true });         // 確定告知: 必ず喋る
 ```
+
+シナリオ(`src/data/scenarios/**`)からはこう書きます。
+
+```js
+{ at: 620, layer: 'voice', action: 'play', params: { key: 'luna_hot_01', chance: 0.5 } },
+{ at: 900, layer: 'voice', action: 'play', params: { key: 'luna_bonus_kakutei_01', force: true } },
+```
+
+- `chance` を省くと「1ゲーム1本 + cooldown」の枠が空いていれば必ず喋る
+- `force: true` は**確定告知だけ**に付ける(情報なので間引いてはいけない)
+- ガセ演出に声を貼るときは、**本物版と同じキー・同じ chance** にすること
+  (声の有無で当たりが読めてしまうと、演出の信頼度設計が壊れる)
 
 `voice.play()` は音声が無くても例外を投げず、静かに `false` を返します。
 開発中にセリフ内容だけ確認したい場合は `initVoice({ useSpeechFallback: true })` で

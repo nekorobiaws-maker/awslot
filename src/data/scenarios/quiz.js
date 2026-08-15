@@ -17,6 +17,31 @@
  *   ③ 発表    第1停止でその場で判定。正誤は **押したリールと正解の位置の一致** で決まる
  *   ④ 接続    当選ゲームならそのまま従来のCZ突入告知へ繋ぐ
  *
+ * ══ 【厳守】出題と回答は同じ1ゲームに収める(2026-08-15 ユーザー指示 U69)══
+ *
+ *   レバーON  … 出題(盤面が出る)
+ *   第1停止   … 回答 + 発表
+ *   次のレバーON … 盤面が消える
+ *
+ * ■ 出題は「レバーONの瞬間」に出す
+ *   3本とも発火イベントが違うので、出題の出し方だけを揃えてある:
+ *     entry_cz   modeEnter(CZ) … flow.js の _settleSpinTransition により
+ *                                **レバーONの直後**に届く → at:0 のまま
+ *     miss_idle  leverOn       … そのままレバーON → at:0 のまま
+ *     miss       paramChange   … 払出中に届く = まだレバー前。
+ *                                **waitFor:'leverOn' で次の回転まで待ってから出す**
+ *   (旧実装は miss だけ払出中に出題して次のゲームの第1停止で発表していた。
+ *    出題がレバー操作と噛み合わず、待ちが長いぶん尺切れでも消えていた)
+ *
+ * ■ 出題は答えるまで消えない
+ *   リールに自動停止は無い = プレイヤーは何分でも考えられる。
+ *   盤面(PICK_WAIT_MS = 5分)とシナリオ(waitGraceMs = 6分)の両方を伸ばして、
+ *   「読んでいる途中で盤面が消える / 押したのに発表が出ない」を塞いである。
+ *   どちらも尺が尽きれば自然に消える = 画面が固まったままにはならない。
+ *
+ * ■ 盤面は常にフルサイズ
+ *   当選版だけ 0.74 倍(compact)にしていたのをやめた。理由は askCues のコメント。
+ *
  * ══ 【最重要】正誤と当落は別物 ═══════════════════════════════════
  *
  * ■ 正誤は事実に忠実(演出RNGでシャッフルされた正解の位置と、押したリールの一致)
@@ -89,9 +114,9 @@
  *     y 248      … 判定(正解!! / 不正解…)
  *     y 274      … 内訳(正解は◯ / 役は不成立…)
  *     y 292      … 足元の見出し
- *   compact:true(当選版)ではこの座標系が 0.74 倍へ縮み、CZ盤面が下から覗ける。
- *   縮むと判定が告知プレートの裏に回るため、判定まわりだけ compact 用の座標を持つ
- *   (lcdanims-extra.js の PICK_VERDICT_LAYOUT)。
+ *   3本ともこのフルサイズの座席割りで出す。告知プレートの帯を最初から空けてあるので、
+ *   当選版の『CZ突入』(lcd.text)ともそのまま同居できる。
+ *   ※ 縮小(compact)の機構は lcdanims-extra.js に残っているが、いま渡すシナリオは無い。
  *
  * ■ 二重表示の回避(U8)
  *   判定(正解!! / 不正解…)を出しているのは **盤面だけ**。
@@ -189,8 +214,8 @@ const NEVER_WINS = ['LOSE', 'BELL', 'REPLAY', 'REPLAY2'];
  * 出題を許可する「残り回転数」の一覧(= セッションの最終回転では出題しない)。
  *
  * **qz_reelpick_miss だけに必要**なガード。あれは zencho_end(払出処理)で発火するため、
- * 判定を担う第1停止は「次のゲーム」の停止操作になる。最終回転で出題すると
- * 開ける前にセッションが終わり、告知だけが次のセッションへ残ってしまう。
+ * 出題も判定も「次のゲーム」(レバーON → 第1停止)になる。最終回転で発火すると
+ * 次の回転が無く、出題そのものが出ないまま(または告知だけが)残ってしまう。
  *
  * 当選版は不要(flow.js の _settleSpinTransition により CZ の modeEnter は
  * 「そのスピンのレバーON」で起きるため、第1停止は同じゲームの操作になる)。
@@ -205,46 +230,82 @@ const SPINS_LEFT_HAS_NEXT = Array.from({ length: SESSION.totalGames }, (_, i) =>
  * **見た目は当選版・非当選版で完全に共通**にすること(入りで当落が読めてはいけない)。
  * 問題そのものも当落と無関係に引く(data/quiz.js の buildReelQuizRound)。
  *
+ * ■ 出題は必ず「レバーONの瞬間」に出す(2026-08-15 ユーザー指示 U69)
+ *   レバーONで発火するシナリオ(entry_cz / miss_idle)は at:0 のまま。
+ *   払出中に発火するシナリオ(miss)は `waitFor:'leverOn'` を渡して、
+ *   **次のゲームのレバーONまで待ってから**盤面を出す。
+ *   こうすると 3本とも「レバーON = 出題 / 第1停止 = 回答」が同じゲームで揃う。
+ *
+ * ■ 盤面は常にフルサイズ(U69)
+ *   以前は当選版だけ 0.74 倍(compact)で出していたが、出題中は hold で背景が
+ *   通常ステージのままなので縮めても得るものが無く、**文字が小さいだけ**だった。
+ *   縮小は渡さない。詳しくは lcdanims-extra.js の reel_pick_choice のコメント。
+ *
  * @param {object} opt
- * @param {boolean} [opt.compact] 盤面を 0.74 倍にする(CZ盤面の上に出す当選版だけ)
+ * @param {'leverOn'|null} [opt.waitFor]
+ *   出題を待たせるイベント。払出中に発火するシナリオ(miss)だけが 'leverOn' を渡す。
  * @param {boolean} [opt.hold]
  *   背景の切替を判定まで保留する(U42)。**モードが変わる当選版だけ** true。
- *   保留中は投入・レバーが塞がる(main.js の入力ガード)ため、
- *   次のゲームの第1停止で開ける非当選版に付けると進行が止まる。
+ *   保留中は投入・レバーが塞がる(main.js の入力ガード)ので、
+ *   同じゲームの第1停止で開けられる出題にしか付けてはいけない。
  *   詳しくは lcdanims.js の STAGE_HOLD_ANIMS のコメント。
- *   どちらも **画には出ない**ので、共通であるべき見た目は変わらない。
+ *   **画には出ない**ので、共通であるべき見た目は変わらない。
  */
-function askCues({ compact = false, hold = false } = {}) {
+function askCues({ waitFor = null, hold = false } = {}) {
+  /* waitFor 版は「そのイベントからの相対時間」で同じ間合いを再現する */
+  const at = (ms) => (waitFor ? { waitFor, ...(ms ? { after: ms } : {}) } : { at: ms });
   return [
-    { at: 0,   layer: 'sfx',  action: 'synth', params: { preset: 'announce' } },
-    { at: 0,   layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
+    { ...at(0),   layer: 'sfx',  action: 'synth', params: { preset: 'announce' } },
+    { ...at(0),   layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
     /*
-     * 出題は at:0 で出す。停止操作が極端に速いと waitFor stop1 のキューが
-     * 先に発火して 'answer' → 'ask' の順に逆転しうるため、遅らせない
-     * (modeEnter 起点でも main.js の lcdAnims.clear() より後に走ることが保証されている)。
+     * 出題は起点と同時(at:0 / after 無し)に出す。停止操作が極端に速いと
+     * waitFor stop1 のキューが先に発火して 'answer' → 'ask' の順に逆転しうるため、
+     * 遅らせない(modeEnter 起点でも main.js の lcdAnims.clear() より後に走る)。
      */
-    { at: 0,   layer: 'lcd',  action: 'anim',
+    { ...at(0),   layer: 'lcd',  action: 'anim',
       params: {
-        anim: 'reel_pick_choice', phase: 'ask', compact, hold, quizId: FORCE_QUIZ_ID,
+        anim: 'reel_pick_choice', phase: 'ask', hold, quizId: FORCE_QUIZ_ID,
       } },
-    { at: 60,  layer: 'char', action: 'show',  params: { char: 'kiro', pose: 'surprised' } },
-    { at: 300, layer: 'sfx',  action: 'synth', params: { preset: 'ui_select' } },
+    { ...at(60),  layer: 'char', action: 'show',  params: { char: 'kiro', pose: 'surprised' } },
+    { ...at(300), layer: 'sfx',  action: 'synth', params: { preset: 'ui_select' } },
   ];
 }
+
+/**
+ * 出題してから回答(第1停止)までシナリオを畳まない猶予[ms](U69)。
+ *
+ * engine/timeline.js の既定は 20秒だが、**リールに自動停止は無い**ので
+ * プレイヤーは何分でも考えていられる。既定のままだと考えている最中に
+ * シナリオごと消え、押しても発表が出ない(= 出題が勝手に消える)。
+ *
+ * 盤面側の尺(lcdanims-extra.js の PICK_WAIT_MS = 5分)より長くすること。
+ * 逆転するとシナリオだけ先に畳まれ、発表の来ない盤面が残る。
+ */
+const QUIZ_WAIT_GRACE_MS = 360000;
 
 export default applyForce([
   {
     id: 'qz_reelpick_entry_cz',
     name: 'リール3択クイズ(当選ゲーム → CZ突入)',
-    // CZ へ入った後にしか来ないイベント = 当選確定。ここでしか win:true を渡さない
-    when: { event: 'modeEnter', enterMode: ['CZ'] },
+    /*
+     * CZ へ入った後にしか来ないイベント = 当選確定。ここでしか win:true を渡さない。
+     *
+     * resumed:[false] は「新しく積まれた CZ」だけに絞るガード(U69)。
+     * modemachine の _pop() は上に積まれたモードから戻るときにも modeEnter を出すが、
+     * それは **レバーONの瞬間ではない**(払出中の遷移)ので出題の起点にできず、
+     * 「突入」を名乗るのも正しくない。新規突入(_push)は必ず resumed:false で、
+     * flow.js の _settleSpinTransition により **レバーONの直後**に届く。
+     */
+    when: { event: 'modeEnter', enterMode: ['CZ'], match: { resumed: [false] } },
     weight: { default: 70 },
     // 液晶を丸ごと使うので、走っている間は他の液晶演出とテキスト帯を止める(director が調停する)
     exclusive: true,
     duration: 4200,
+    // 回答(第1停止)を何分でも待つ。理由は QUIZ_WAIT_GRACE_MS のコメント
+    waitGraceMs: QUIZ_WAIT_GRACE_MS,
     cues: [
       // hold:true = 判定まで背景を通常ステージのまま留める(U42)。当選版だけ
-      ...askCues({ compact: true, hold: true }),
+      ...askCues({ hold: true }),
       { at: 0, layer: 'overlay', action: 'flash', params: { color: '#7cf3ff', ms: 220 } },
 
       /*
@@ -255,7 +316,7 @@ export default applyForce([
       { waitFor: 'stop1', layer: 'lcd', action: 'anim',
         params: {
           anim: 'reel_pick_choice', phase: 'answer', win: true,
-          pick: '$stop1.index', compact: true, ms: 3200,
+          pick: '$stop1.index', ms: 3200,
         } },
       { waitFor: 'stop1', after: 40,  layer: 'sfx',     action: 'synth', params: { preset: 'reel_stop' } },
       /*
@@ -296,7 +357,7 @@ export default applyForce([
        */
       { waitFor: 'stop1', after: 700, layer: 'lcd',     action: 'text',
         params: { text: 'CZ突入', sub: 'クイズの正誤とは別に、出目でCZ確定', color: '#ffe066', ms: 1800 } },
-      { waitFor: 'stop1', after: 900, layer: 'voice',   action: 'play',  params: { key: 'kiro_cz_start_01' } },
+      { waitFor: 'stop1', after: 900, layer: 'voice',   action: 'play',  params: { key: 'luna_kita_01', force: true } },
     ],
   },
 
@@ -311,8 +372,21 @@ export default applyForce([
     weight: { FREE_TIER: 120, default: 0 },
     exclusive: true,
     duration: 4000,
+    // 出題(次のレバーON)から回答(第1停止)まで畳まない。QUIZ_WAIT_GRACE_MS を参照
+    waitGraceMs: QUIZ_WAIT_GRACE_MS,
     cues: [
-      ...askCues(),
+      /*
+       * ── 出題は「次のゲームのレバーON」で出す(2026-08-15 U69)────────────
+       * このシナリオは zencho_end(払出処理)で発火する = **まだレバーを引く前**。
+       * 【旧】at:0 で出していたため、払出中に盤面が出て → 次のゲームのレバーONを
+       *   またいで → その第1停止でやっと発表、という2ゲームまたぎになっていた。
+       *   出題がレバー操作と噛み合わず、待ち時間が長いぶん尺切れでも消えていた。
+       * 【新】waitFor:'leverOn' で次の回転の頭まで待つ。これで
+       *   「レバーON = 出題 / 第1停止 = 回答」が同じゲームに収まり、他の2本と揃う。
+       * ※ 当落の担保は when 条件(zencho_end MISS)が持っているので、
+       *   出題を遅らせても「非当選が確定した枠」であることは変わらない。
+       */
+      ...askCues({ waitFor: 'leverOn' }),
 
       // win:false = このゲームは役が成立しない(盤面が「役は不成立…」を添える)
       { waitFor: 'stop1', layer: 'lcd', action: 'anim',
@@ -337,7 +411,7 @@ export default applyForce([
       { waitFor: 'stop1', after: 380, layer: 'char',  action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
       { waitFor: 'stop1', after: 1000, layer: 'sfx',  action: 'synth', params: { preset: 'cz_lose', gain: 0.4 } },
       { waitFor: 'stop1', after: 560, layer: 'lamp',  action: 'pattern', params: { pattern: 'idle' } },
-      { waitFor: 'stop1', after: 700, layer: 'voice', action: 'play',   params: { key: 'kiro_lose_02' } },
+      { waitFor: 'stop1', after: 700, layer: 'voice', action: 'play',   params: { key: 'luna_hmm_01', force: true } },
     ],
   },
 
@@ -363,7 +437,10 @@ export default applyForce([
     chance: 0.046,
     exclusive: true,
     duration: 4000,
+    // 回答(第1停止)を何分でも待つ。理由は QUIZ_WAIT_GRACE_MS のコメント
+    waitGraceMs: QUIZ_WAIT_GRACE_MS,
     cues: [
+      // leverOn 起点なので at:0 = レバーONの瞬間に出題が出る
       ...askCues(),
 
       { waitFor: 'stop1', layer: 'lcd', action: 'anim',

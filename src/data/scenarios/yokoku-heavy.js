@@ -37,6 +37,12 @@ export default [
       { at: 0,   layer: 'lamp',    action: 'pattern', params: { pattern: 'rare' } },
       { at: 40,  layer: 'overlay', action: 'cutin',  params: { id: 'guardduty_alert' } },
       { at: 60,  layer: 'char',    action: 'show',   params: { char: 'kiro', pose: 'surprised' } },
+      /*
+       * 煽りの相槌(U68)。**本物版とガセ版の両方に同じ声を同じ確率で貼る**ので、
+       * 「喋ったかどうか」から本物かガセかは読めない(信頼度は演出のまま変わらない)。
+       * 断定しない疑問形なので、外れても嘘をついたことにならない。
+       */
+      { at: 420, layer: 'voice',   action: 'play',   params: { key: 'luna_tease_kore_01', chance: 0.3 } },
       { waitFor: 'stop2', layer: 'sfx', action: 'synth', params: { preset: 'charge_up' } },
       { waitFor: 'stop3', after: 100, layer: 'sfx',  action: 'synth', params: { preset: 'cutin_whoosh' } },
       { waitFor: 'stop3', after: 200, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'happy' } },
@@ -53,6 +59,8 @@ export default [
       { at: 0,   layer: 'sfx',     action: 'synth', params: { preset: 'alarm_beep' } },
       { at: 0,   layer: 'lamp',    action: 'pattern', params: { pattern: 'rare' } },
       { at: 40,  layer: 'overlay', action: 'cutin',  params: { id: 'guardduty_alert' } },
+      // 本物版(yh_guardduty_hit)と同じ声・同じ確率。声で当たりかどうかは分からない
+      { at: 420, layer: 'voice',   action: 'play',   params: { key: 'luna_tease_kore_01', chance: 0.3 } },
       { waitFor: 'stop2', layer: 'sfx', action: 'synth', params: { preset: 'charge_up' } },
       { waitFor: 'stop3', after: 300, layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'normal' } },
     ],
@@ -100,6 +108,8 @@ export default [
       { at: 0,   layer: 'lamp',    action: 'pattern', params: { pattern: 'rare' } },
       { at: 60,  layer: 'char',    action: 'hide',   params: { char: 'kiro' } },
       { at: 60,  layer: 'overlay', action: 'cutin',  params: { id: 'iam_admin_badge' } },
+      // 煽り(U68)。ガセ版にも同じ声・同じ確率で貼ってある
+      { at: 440, layer: 'voice',   action: 'play',   params: { key: 'luna_tease_moshika_01', chance: 0.3 } },
       { waitFor: 'stop2', layer: 'sfx', action: 'synth', params: { preset: 'contract_sign' } },
       { waitFor: 'stop3', after: 150, layer: 'sfx',  action: 'synth', params: { preset: 'upgrade_chime' } },
       { waitFor: 'stop3', after: 200, layer: 'char', action: 'show',  params: { char: 'kiro', pose: 'happy' } },
@@ -115,6 +125,8 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx',     action: 'synth', params: { preset: 'rare_flag' } },
       { at: 60,  layer: 'overlay', action: 'cutin',  params: { id: 'iam_admin_badge' } },
+      // 本物版(yh_iam_admin_badge_hit)と同じ声・同じ確率
+      { at: 440, layer: 'voice',   action: 'play',   params: { key: 'luna_tease_moshika_01', chance: 0.3 } },
       { waitFor: 'stop3', after: 200, layer: 'sfx', action: 'synth', params: { preset: 'contract_sign' } },
     ],
   },
@@ -130,6 +142,8 @@ export default [
       { at: 0,   layer: 'sfx',     action: 'synth', params: { preset: 'announce' } },
       { at: 0,   layer: 'lamp',    action: 'pattern', params: { pattern: 'rare' } },
       { at: 60,  layer: 'overlay', action: 'cutin',  params: { id: 'cloudtrail_root_login' } },
+      // いちばん熱い煽り(U68)。ここも疑問形。ガセ版にも同じ声・同じ確率で貼ってある
+      { at: 460, layer: 'voice',   action: 'play',   params: { key: 'luna_hot_01', chance: 0.3 } },
       { waitFor: 'stop2', layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
       { waitFor: 'stop3', after: 100, layer: 'sfx',     action: 'synth', params: { preset: 'alarm_beep' } },
       { waitFor: 'stop3', after: 200, layer: 'overlay', action: 'shake', params: { power: 14, ms: 400 } },
@@ -145,6 +159,8 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx',     action: 'synth', params: { preset: 'announce' } },
       { at: 60,  layer: 'overlay', action: 'cutin',  params: { id: 'cloudtrail_root_login' } },
+      // 本物版(yh_cloudtrail_root_login_hit)と同じ声・同じ確率
+      { at: 460, layer: 'voice',   action: 'play',   params: { key: 'luna_hot_01', chance: 0.3 } },
       { waitFor: 'stop3', after: 200, layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
     ],
   },

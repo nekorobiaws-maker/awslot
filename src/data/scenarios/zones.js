@@ -42,7 +42,7 @@ export default [
       { at: 600,  layer: 'char',    action: 'show',   params: { char: 'george', pose: 'grin' } },
       { at: 600,  layer: 'char',    action: 'motion', params: { char: 'george', motion: 'swimIn' } },
       { at: 800,  layer: 'char',    action: 'show',   params: { char: 'kiro', pose: 'panic' } },
-      { at: 1400, layer: 'voice',   action: 'play',   params: { key: 'george_spot_start_01' } },
+      { at: 1400, layer: 'voice',   action: 'play',   params: { key: 'luna_kita_01', force: true } },
       { at: 1800, layer: 'lcd',     action: 'text',
         params: { text: `純増 ${SPOT.payoutPerGame}枚/G`, sub: `最低${SPOT.minGames}G保証 — 逃げんじゃねえぞスポットインスタンス`, color: '#ffb46a', ms: 2000 } },
       { at: 2000, layer: 'bgm',     action: 'change', params: { bgm: 'bgm_spot' } },
@@ -64,7 +64,7 @@ export default [
       { at: 120,  layer: 'char',    action: 'show',  params: { char: 'george', pose: 'angry' } },
       { at: 120,  layer: 'char',    action: 'motion', params: { char: 'george', motion: 'bite' } },
       { at: 200,  layer: 'char',    action: 'pose',  params: { char: 'kiro', pose: 'panic' } },
-      { at: 700,  layer: 'voice',   action: 'play',  params: { key: 'george_spot_end_01' } },
+      { at: 700,  layer: 'voice',   action: 'play',  params: { key: 'luna_miss_01', force: true } },
       // 残りG数は「通知時点の残り」= paramChange.value。
       // ZONE_SPEC_BY_ID.SPOT_ZONE.minGames の最低保証があるので、早い段階で通知が出ると
       // 猶予(graceGames)ではなく保証の残りG数が入ることがある(液晶の T-n と揃える)。
@@ -104,7 +104,7 @@ export default [
       { at: 100,  layer: 'char',    action: 'motion', params: { char: 'kiro', motion: 'zoom' } },
       { at: 400,  layer: 'lcd',     action: 'text',
         params: { text: `CPU CREDIT ${BURST.creditInit}`, sub: `使い切るまで純増${BURST.payoutPerGame}枚`, color: '#ffe066', ms: 2000 } },
-      { at: 900,  layer: 'voice',   action: 'play',  params: { key: 'kiro_burst_01' } },
+      { at: 900,  layer: 'voice',   action: 'play',  params: { key: 'luna_kita_01', force: true } },
       { at: 1200, layer: 'bgm',     action: 'change', params: { bgm: 'bgm_burst' } },
       { at: 1400, layer: 'lcd',     action: 'particles', params: { preset: 'spark', x: 220, y: 108, count: 20 } },
     ],
@@ -155,7 +155,7 @@ export default [
       { at: 100,  layer: 'char',    action: 'show',  params: { char: 'kiro', pose: 'normal' } },
       { at: 400,  layer: 'lcd',     action: 'text',
         params: { text: 'GRAVITON', sub: `低純増・高継続 — 1セット${GRAV.setGames}G / 継続${Math.round(GRAV.continueRate * 100)}%`, color: '#8fe6f5', ms: 2000 } },
-      { at: 900,  layer: 'voice',   action: 'play',  params: { key: 'kiro_graviton_01' } },
+      { at: 900,  layer: 'voice',   action: 'play',  params: { key: 'luna_kita_01', force: true } },
       { at: 1200, layer: 'bgm',     action: 'change', params: { bgm: 'bgm_graviton' } },
     ],
   },
@@ -188,7 +188,7 @@ export default [
       { at: 300,  layer: 'char',    action: 'show',  params: { char: 'kiro', pose: 'happy' } },
       { at: 1200, layer: 'lcd',     action: 'text',
         params: { text: 'RESERVED', sub: '契約中はヘルスチェック免除', color: '#c8b0ff', ms: 1800 } },
-      { at: 1400, layer: 'voice',   action: 'play',  params: { key: 'kiro_reserved_01' } },
+      { at: 1400, layer: 'voice',   action: 'play',  params: { key: 'luna_kita_01', force: true } },
     ],
   },
   {
@@ -211,7 +211,7 @@ export default [
       { at: 1000, layer: 'lcd',     action: 'text',
         params: { text: `3 YEAR / ${RSV.guaranteeGames['3year']}G 保証`, sub: '契約中はヘルスチェックで終わらない', color: '#ffe066', ms: 2200 } },
       { at: 1200, layer: 'overlay', action: 'particles', params: { preset: 'rainbow', x: 360, y: 380, count: 34 } },
-      { at: 1400, layer: 'voice',   action: 'play',  params: { key: 'george_reserved_3y_01' } },
+      { at: 1400, layer: 'voice',   action: 'play',  params: { key: 'luna_sugoi_01', force: true } },
     ],
   },
 
@@ -230,7 +230,7 @@ export default [
       { at: 200,  layer: 'char',    action: 'show',  params: { char: 'kiro', pose: 'surprised' } },
       { at: 400,  layer: 'lcd',     action: 'text',
         params: { text: 'EDGE BOOST', sub: `${CF.games}ゲームだけの上乗せ祭り`, color: '#bcd4ff', ms: 1900 } },
-      { at: 900,  layer: 'voice',   action: 'play',  params: { key: 'kiro_cloudfront_01' } },
+      { at: 900,  layer: 'voice',   action: 'play',  params: { key: 'luna_kita_01', force: true } },
     ],
   },
   {
@@ -265,7 +265,7 @@ export default [
       { at: 400,  layer: 'lcd',     action: 'text',
         params: { text: 'SHARDS', sub: 'シャードの数だけ上乗せが流れる', color: '#6ee0f5', ms: 1900 } },
       { at: 800,  layer: 'lcd',     action: 'particles', params: { preset: 'stream', x: 220, y: 220, count: 24 } },
-      { at: 1000, layer: 'voice',   action: 'play',  params: { key: 'kiro_kinesis_01' } },
+      { at: 1000, layer: 'voice',   action: 'play',  params: { key: 'luna_kita_01', force: true } },
     ],
   },
   {
@@ -298,7 +298,7 @@ export default [
       { at: 200,  layer: 'char',    action: 'show',  params: { char: 'george', pose: 'grin' } },
       { at: 500,  layer: 'lcd',     action: 'text',
         params: { text: 'STATE MACHINE', sub: '分岐を選んで Success State へ', color: '#c0c0ff', ms: 2100 } },
-      { at: 1000, layer: 'voice',   action: 'play',  params: { key: 'kiro_sfn_01' } },
+      { at: 1000, layer: 'voice',   action: 'play',  params: { key: 'luna_kita_01', force: true } },
       { at: 1200, layer: 'bgm',     action: 'change', params: { bgm: 'bgm_sfn' } },
     ],
   },
@@ -358,7 +358,7 @@ export default [
       { at: 300,  layer: 'lcd',     action: 'text',
         params: { text: 'Multi-Region へ昇格', sub: '全ステート制覇!!', color: '#7bf7d0', ms: 2200 } },
       { at: 400,  layer: 'overlay', action: 'particles', params: { preset: 'rainbow', x: 360, y: 400, count: 40 } },
-      { at: 900,  layer: 'voice',   action: 'play',  params: { key: 'george_sfn_clear_01' } },
+      { at: 900,  layer: 'voice',   action: 'play',  params: { key: 'luna_win_01', force: true } },
     ],
   },
 

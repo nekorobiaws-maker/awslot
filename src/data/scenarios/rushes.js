@@ -131,7 +131,8 @@ export default [
       { at: 60,  layer: 'char',    action: 'motion', params: { char: 'kiro', motion: 'bounce' } },
       // カウントアップが止まるあたりで、もう一度だけ音で押す
       { at: 560, layer: 'sfx',     action: 'synth', params: { preset: 'fanfare_reg', gain: 0.6 } },
-      { at: 200, layer: 'voice',   action: 'play',  params: { key: 'kiro_scaleout_01' } },
+      // 上乗せは何度も起きるので、毎回は喋らせない(U68)
+      { at: 200, layer: 'voice',   action: 'play',  params: { key: 'luna_madamada_01', chance: 0.25 } },
       { at: 1400, layer: 'char',   action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
     ],
   },
@@ -153,6 +154,8 @@ export default [
       { at: 640,  layer: 'sfx',     action: 'synth',  params: { preset: 'edge_hit' } },
       { at: 900,  layer: 'sfx',     action: 'synth',  params: { preset: 'fanfare_big' } },
       { at: 1400, layer: 'char',    action: 'show',   params: { char: 'kiro', pose: 'happy' } },
+      // RUSH突入の告知(U68)。間引かない
+      { at: 1600, layer: 'voice',   action: 'play',   params: { key: 'luna_rush_01', force: true } },
       { at: 1700, layer: 'lcd',     action: 'text',
         params: {
           text: 'CLOUDFRONT RUSH 突入!!', sub: 'エッジのキャッシュヒットが即・払い出し',
@@ -223,6 +226,8 @@ export default [
       { at: 900,  layer: 'sfx',     action: 'synth',  params: { preset: 'fanfare_big' } },
       { at: 1400, layer: 'char',    action: 'show',   params: { char: 'george', pose: 'grin' } },
       { at: 1400, layer: 'char',    action: 'motion', params: { char: 'george', motion: 'swimIn' } },
+      // RUSH突入の告知(U68)。間引かない
+      { at: 1600, layer: 'voice',   action: 'play',   params: { key: 'luna_rush_01', force: true } },
       { at: 1700, layer: 'lcd',     action: 'text',
         params: {
           // 初見でも意味が取れるように「何が増えるのか」を先に言う(AWS 用語は名前側に任せる)
@@ -289,6 +294,8 @@ export default [
       { at: 1200, layer: 'sfx',     action: 'synth',  params: { preset: 'upgrade_chime' } },
       { at: 1500, layer: 'char',    action: 'show',   params: { char: 'kiro', pose: 'happy' } },
       { at: 1500, layer: 'char',    action: 'motion', params: { char: 'kiro', motion: 'bounce' } },
+      // プレミアRUSHの突入告知(U68)。間引かない
+      { at: 1650, layer: 'voice',   action: 'play',   params: { key: 'luna_rush_01', force: true } },
       { at: 1800, layer: 'lcd',     action: 'text',
         params: {
           text: 'HERO RUSH 突入!!', sub: `${HERO.games}G限定 — ${heroHitLabel()}`,

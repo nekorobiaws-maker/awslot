@@ -546,6 +546,9 @@ async function boot() {
   bus.on('leverOn', (p) => {
     audio.playPreset('lever_on');
     linkVoiceToAudio();
+    // キャラ音声の1ゲーム区切り(U68)。ここで「このゲームはまだ喋っていない」に戻す。
+    // 予兆・煽りのボイスは1ゲーム1本までなので、この線が無いと最初の1本で打ち止めになる。
+    voice.beginGame();
     // レア役はレバーONの時点で少し遅らせて重ねる(告知感を出す)
     if (p.rare && FLAG_SFX[p.flag]) audio.playPreset(FLAG_SFX[p.flag], { delay: 0.12 });
   });
@@ -720,6 +723,14 @@ async function boot() {
       cutins.update(dt);
       lcdParticles.update(dt);
       overlayParticles.update(dt);
+      /*
+       * U68: キャラ大写しのカットインが出ている間は、液晶の常駐キャラを引っ込める。
+       * 主役がルナ1人になったので、放っておくと **同じ子が画面に2人** 並ぶ
+       * (カットインの大きいルナ + 液晶の小さいルナ)。
+       * 依存の向きの都合で render(chars)は staging(cutins)を見られないため、
+       * 両方を知っている main が毎フレーム橋渡しする。
+       */
+      chars.setCharCutinActive(cutins.hasCharCutin());
       chars.update(dt);
       // リザルトを開くまでの溜め(U7)。演出と同じ時計で数える
       resultPanel.update(dt);

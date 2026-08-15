@@ -1,8 +1,181 @@
 {
-  "note": "音声未生成のときのプレースホルダ。scripts/generate-voices.mjs を実行すると実データで上書きされる(手で編集しないこと)。空の voices を返すことで、起動時に manifest.json の 404 がコンソールへ出るのを防いでいる。",
-  "generatedAt": null,
+  "note": "scripts/generate-voices.mjs が自動生成します。手で編集しないこと。",
+  "generatedAt": "2026-08-15T11:49:35.258Z",
   "basePath": "assets/voices/",
   "pathRule": "{basePath}{char}/{file}",
-  "groups": {},
-  "voices": {}
+  "groups": {
+    "FREE_TIER": [
+      "luna_react_oh_01",
+      "luna_react_nani_01",
+      "luna_tease_kore_01",
+      "luna_tease_moshika_01",
+      "luna_hot_01",
+      "luna_cz_chance_01",
+      "luna_stage_summit_01",
+      "luna_stage_invent_01",
+      "luna_bonus_kakutei_01",
+      "luna_result_01",
+      "luna_kita_01",
+      "luna_win_01",
+      "luna_sugoi_01",
+      "luna_freeze_01",
+      "luna_hmm_01",
+      "luna_lose_01"
+    ],
+    "CZ": [
+      "luna_react_oh_01",
+      "luna_tease_kore_01",
+      "luna_tease_moshika_01",
+      "luna_hot_01",
+      "luna_cz_chance_01",
+      "luna_bonus_kakutei_01",
+      "luna_kita_01",
+      "luna_win_01",
+      "luna_lose_01"
+    ],
+    "BONUS_READY": [
+      "luna_bonus_kakutei_01"
+    ],
+    "BONUS": [
+      "luna_bonus_kakutei_01",
+      "luna_rush_01",
+      "luna_sugoi_01"
+    ],
+    "AS_RUSH": [
+      "luna_rush_01",
+      "luna_comeback_01",
+      "luna_sugoi_01",
+      "luna_miss_01",
+      "luna_madamada_01"
+    ],
+    "CF_RUSH": [
+      "luna_rush_01",
+      "luna_madamada_01"
+    ],
+    "AURORA_RUSH": [
+      "luna_rush_01",
+      "luna_madamada_01"
+    ],
+    "HERO_RUSH": [
+      "luna_rush_01"
+    ],
+    "HOT_STANDBY": [
+      "luna_rush_01",
+      "luna_comeback_01",
+      "luna_lose_01"
+    ],
+    "ROUTE53_FAILOVER": [
+      "luna_comeback_01"
+    ],
+    "RESULT": [
+      "luna_result_01"
+    ],
+    "SPOT_ZONE": [
+      "luna_kita_01",
+      "luna_miss_01",
+      "luna_madamada_01"
+    ]
+  },
+  "voices": {
+    "luna_react_oh_01": {
+      "file": "luna_01.mp3",
+      "char": "luna",
+      "text": "おっ?"
+    },
+    "luna_react_nani_01": {
+      "file": "luna_02.mp3",
+      "char": "luna",
+      "text": "なになに?"
+    },
+    "luna_tease_kore_01": {
+      "file": "luna_03.mp3",
+      "char": "luna",
+      "text": "これは…"
+    },
+    "luna_tease_moshika_01": {
+      "file": "luna_04.mp3",
+      "char": "luna",
+      "text": "もしかして?"
+    },
+    "luna_hot_01": {
+      "file": "luna_05.mp3",
+      "char": "luna",
+      "text": "激アツ?"
+    },
+    "luna_cz_chance_01": {
+      "file": "luna_06.mp3",
+      "char": "luna",
+      "text": "チャンスかも?"
+    },
+    "luna_stage_summit_01": {
+      "file": "luna_07.mp3",
+      "char": "luna",
+      "text": "サミット行きたいな〜"
+    },
+    "luna_stage_invent_01": {
+      "file": "luna_08.mp3",
+      "char": "luna",
+      "text": "インベント行きたいな〜"
+    },
+    "luna_bonus_kakutei_01": {
+      "file": "luna_09.mp3",
+      "char": "luna",
+      "text": "ボーナス確定っ!"
+    },
+    "luna_rush_01": {
+      "file": "luna_12.mp3",
+      "char": "luna",
+      "text": "ラッシュだ〜!"
+    },
+    "luna_comeback_01": {
+      "file": "luna_19.mp3",
+      "char": "luna",
+      "text": "おかえり!"
+    },
+    "luna_result_01": {
+      "file": "luna_20.mp3",
+      "char": "luna",
+      "text": "おつかれさま!"
+    },
+    "luna_kita_01": {
+      "file": "luna_10.mp3",
+      "char": "luna",
+      "text": "きたきたっ!"
+    },
+    "luna_win_01": {
+      "file": "luna_11.mp3",
+      "char": "luna",
+      "text": "やったー!"
+    },
+    "luna_sugoi_01": {
+      "file": "luna_17.mp3",
+      "char": "luna",
+      "text": "すごいすごい!"
+    },
+    "luna_freeze_01": {
+      "file": "luna_16.mp3",
+      "char": "luna",
+      "text": "フリーズ!?"
+    },
+    "luna_hmm_01": {
+      "file": "luna_13.mp3",
+      "char": "luna",
+      "text": "んー…"
+    },
+    "luna_lose_01": {
+      "file": "luna_14.mp3",
+      "char": "luna",
+      "text": "ざんねん…"
+    },
+    "luna_miss_01": {
+      "file": "luna_15.mp3",
+      "char": "luna",
+      "text": "あちゃー"
+    },
+    "luna_madamada_01": {
+      "file": "luna_18.mp3",
+      "char": "luna",
+      "text": "まだまだ〜"
+    }
+  }
 }

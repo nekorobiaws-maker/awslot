@@ -7,25 +7,39 @@
  * DESIGN.md 注意事項8 のとおり、パス描画は液晶Canvas(440×300)内に限定する。
  */
 
-import { drawKiro, KIRO_POSES } from './kiro.js';
-import { drawGeorge, GEORGE_POSES } from './george.js';
-import { drawLuna, LUNA_MOTIONS, LUNA_HOMES } from './lunachan.js';
+import {
+  drawLuna, LUNA_MOTIONS, LUNA_HOMES, LUNA_GROUND_HALF,
+} from './lunachan.js';
 import { drawHero, HERO_MOTIONS, HERO_HOMES } from './herochan.js';
 
 /*
- * 2026-08-14: キャラは2体ともサメ(assets/chars/shark.png)になった。
- * 'kiro' は旧・幽霊枠の呼び名がシナリオ側に大量に残っているため ID として維持し、
- * 中身は「小物付きポーズの相棒サメ」を描く(render/chars/kiro.js)。
+ * ══ 2026-08-15 U68: 常駐キャラはルナ(assets/chars/luna.png)═══════════
  *
- * さらに 2026-08-14 に3体目 'luna' を追加した。こちらは常設ではなく
- * **超低確率のカメオ専用**(data/scenarios/yokoku-luna.js からしか呼ばれない)。
- * 定位置・モーションの定義は本体側(render/chars/lunachan.js)にあり、
- * ここでは登録だけ行う。
+ * 【指示】サメを前面に出すのは控える(大人の事情)。メインキャラクターはルナにする。
  *
- * 同じ日に4体目 'hero'(render/chars/herochan.js / U30)を追加。
- * こちらは **ヒーローRUSH のあいだ画面に常駐する主役**で、
- * 毎ゲームの当落にリアクションを返す(data/scenarios/rushes.js が指揮する)。
- * ルナとヒーローの2人は「プレミア枠」としてまとめて扱う(PREMIUM_CHARS)。
+ * ■ ID はそのまま、中身だけ差し替える
+ *   シナリオ側(src/data/scenarios/**)には旧サメ2体の呼び名で書かれた
+ *   char キューが 300箇所以上ある。ここを機械置換すると差分が巨大になるので、
+ *   **ID を残して中身を差し替える**(2026-08-14 に幽霊 → サメへ替えたときと同じ手)。
+ *     'kiro'   … 常駐の主役 = ルナ本体。うろうろ・待機・リアクションを担う
+ *     'george' … 'kiro' への **別名**。旧「2体目」の指定はすべてルナ1人に集約する
+ *   ポーズ名(happy / grin / panic …)の読み替えは
+ *   render/chars/lunachan.js の LUNA_SITUATIONS が引き受ける。
+ *
+ * ■ なぜ 'george' は「別名」で、'hide' だけ無視するのか
+ *   旧データは「サメAを引っ込めてサメBを出す」書き方(hide george → show kiro)を
+ *   多用している。素直に別名化すると **出した直後に自分を消す** 並びが生まれるので、
+ *   別名側の hide だけは no-op にしてある(下の hide() のコメント参照)。
+ *
+ * ■ サメの残し方(低プロファイル)
+ *   render/chars/george.js と assets/chars/shark.png は **消さない**(データ保全)。
+ *   このファイルからの参照を外しただけなので、必要になれば1行で戻せる。
+ *   リール絵柄の BAR(SHARKBAR.png)は今までどおり不変。
+ *
+ * ■ プレミア枠(PREMIUM_CHARS)
+ *   'luna'  … 数百ゲームに1回のカメオ枠(後光つき・大きめ)。常駐と同じ絵なので、
+ *             出ているあいだは常駐を描かない(下の draw を参照)。
+ *   'hero'  … ヒーローRUSH の主役(render/chars/herochan.js / U30)。
  */
 
 /**
@@ -40,6 +54,18 @@ const PREMIUM_CHARS = new Set(['luna', 'hero']);
 
 /** 走査を毎フレーム回すので配列にもしておく(Set の反復より安い) */
 const PREMIUM_CHARS_ARR = [...PREMIUM_CHARS];
+
+/** 常駐キャラの実体ID(中身はルナ) */
+const RESIDENT = 'kiro';
+
+/**
+ * 旧・2体目('george')を常駐へ寄せる別名表(U68)。
+ * ここに載っているIDは show / pose / motion / home がすべて常駐へ転送される。
+ */
+const CHAR_ALIAS = { george: RESIDENT };
+
+/** 別名を実体IDへ解決する */
+const realId = (id) => CHAR_ALIAS[id] ?? id;
 
 /**
  * 演出テキスト帯による減光の効き(V21-09)。
@@ -71,9 +97,17 @@ const PREMIUM_DUCK = 0.4;
  * ■ wander(省略可)
  *   アイドル中のうろうろの最大移動量(px)。中央へ寄ってくると
  *   中央寄せの常設テキストに被るので、結論行のあるモードでは小さくしてある。
+ *
+ * ■ U68(常駐がルナになった)以降の読み方
+ *   実際に描かれるのは kiro(= ルナ本体)の1行だけ。george の行は
+ *   **別名として kiro へ転送される**ので使われないが、
+ *   「サメを戻したくなったら1行で戻せる」保全としてそのまま残してある。
+ *   ルナの箱は 132×165(サメは 186×150)で **1割ほど縦に長い**ため、
+ *   体の下端が結論行(y230〜)へ入らないよう、大きめの定位置だけ scale を見直した。
  */
 const MODE_HOMES = {
-  FREE_TIER:   { kiro: { x: 356, y: 196, scale: 0.72, wander: 42 }, george: { x: 80, y: 240, scale: 0.50, wander: 52 } },
+  // U68: 通常時は主役なので一回り大きく(165×0.78 ≒ 129px / 足元 y260 = テロップ帯の手前)
+  FREE_TIER:   { kiro: { x: 352, y: 196, scale: 0.78, wander: 44 }, george: { x: 80, y: 240, scale: 0.50, wander: 52 } },
   // CZ: 盤面(y34〜176)と結論行(y232〜262)に挟まれた帯へ、左右の端に小さく置く。
   // 旧値(y246〜250)は結論行そのものに座っていて「HTTP 200 OK…」の末尾に被っていた
   CZ:          { kiro: { x: 402, y: 202, scale: 0.30, wander: 16 }, george: { x: 40, y: 206, scale: 0.28, wander: 16 } },
@@ -106,8 +140,9 @@ const MODE_HOMES = {
   // ── Phase 5 ──
   // Route 53: 中央の大きなTTL表示を避けて左右の下端へ
   ROUTE53_FAILOVER: { kiro: { x: 394, y: 240, scale: 0.42 }, george: { x: 48, y: 244, scale: 0.36 } },
-  // Spot: 主役はジョージ(中断通知を運ぶ)。少し大きめに右下へ
-  SPOT_ZONE:        { kiro: { x: 402, y: 250, scale: 0.34 }, george: { x: 86, y: 232, scale: 0.60 } },
+  // Spot: 中断通知に振り回される場面。U68 で主役はルナ1人になったので、
+  // 旧ジョージの立ち位置(液晶の左寄り・大きめ)を常駐へ引き継ぐ
+  SPOT_ZONE:        { kiro: { x: 372, y: 236, scale: 0.46 }, george: { x: 86, y: 232, scale: 0.60 } },
   // EC2 バースト: 中央にクレジットゲージがあるので両端へ
   EC2_BURST:        { kiro: { x: 396, y: 232, scale: 0.42 }, george: { x: 46, y: 244, scale: 0.36 } },
   GRAVITON:         { kiro: { x: 388, y: 226, scale: 0.48 }, george: { x: 52, y: 248, scale: 0.34 } },
@@ -136,10 +171,12 @@ for (const [modeId, preset] of Object.entries(MODE_HOMES)) {
 
 const DEFAULT_HOME = MODE_HOMES.FREE_TIER;
 
-/** 現在の定位置(applyMode で切り替わる) */
+/**
+ * 現在の定位置(applyMode で切り替わる)。
+ * U68 以降 'george' は別名なので、ここに実体は要らない(残すと二重管理になる)。
+ */
 const HOME = {
   kiro: { ...DEFAULT_HOME.kiro },
-  george: { ...DEFAULT_HOME.george },
   luna: { ...DEFAULT_HOME.luna },
   hero: { ...DEFAULT_HOME.hero },
 };
@@ -149,65 +186,124 @@ const HOME = {
  *
  * 2026-08-14: キャラが画像になったので、芝居は「変形」でつける。
  * squash & stretch(潰れ/伸び)を足して、ぬいぐるみが跳ねるような
- * コミカルな手触りにしてある。ポーズ既定のアニメ(george.js の ANIMS)へ
+ * コミカルな手触りにしてある。ポーズ既定のアニメ(U68 以降は lunachan.js の ANIMS)へ
  * さらに上乗せされる。
  */
+/*
+ * ══ 接地の原則(2026-08-15 ユーザー指摘 U68b)══════════════════════
+ *
+ * ここのモーションは元々サメ(魚)用で、泳ぐ・漂う・尾びれを振るが基本だった。
+ * 主役が人間(ルナ)になったので **全部「床に足がついている」動きへ作り直した**。
+ *   ・offsetY を使ってよいのはジャンプの滞空中だけ(必ず 0 = 着地へ戻す)
+ *   ・沈み込み(squashY < 1)は _withBody が足元を固定するので、
+ *     「膝を曲げる」表現として安心して使える
+ *   ・入退場は泳ぎではなく歩き / 小走り(歩幅ぶんの上下 + 接地の沈み)
+ * **キー名は変えない**。シナリオ側(data/scenarios/**)が
+ * motion:'swimIn' のように参照していて、名前を変えると全置換が要るため。
+ * 名前は歴史、中身が正。
+ */
 const MOTIONS = {
-  /** ぴょんと跳ねる(着地で潰れる) */
+  /** ぴょんと跳ねる(跳ぶ → 着地 → 沈んで戻る) */
   bounce:  { ms: 700,  apply: (c, p) => {
-    const up = Math.abs(Math.sin(p * Math.PI * 2));
-    c.offsetY = -up * 26;
-    c.squashX = 1 - up * 0.06 + (1 - up) * 0.05;
-    c.squashY = 1 + up * 0.08 - (1 - up) * 0.05;
+    const ph = (p * 2) % 1;
+    const AIR = 0.6;
+    if (ph <= AIR) {
+      const up = Math.sin((ph / AIR) * Math.PI);
+      c.offsetY = -up * 24;
+      c.squashX = 1 - up * 0.05;
+      c.squashY = 1 + up * 0.07;
+    } else {
+      const land = 1 - (ph - AIR) / (1 - AIR);
+      c.offsetY = 0;
+      c.squashX = 1 + land * 0.06;
+      c.squashY = 1 - land * 0.07;
+    }
   } },
-  /** ぷるぷる(横揺れ) */
-  shake:   { ms: 600,  apply: (c, p) => { c.offsetX = Math.sin(p * Math.PI * 12) * 9; c.tilt = Math.sin(p * Math.PI * 12) * 0.05; } },
-  /** ぐいっと迫る */
+  /** ぷるぷる(横揺れ。足は床) */
+  shake:   { ms: 600,  apply: (c, p) => { c.offsetX = Math.sin(p * Math.PI * 12) * 9; c.tilt = Math.sin(p * Math.PI * 12) * 0.04; } },
+  /** ぐいっと迫る(カメラが寄る表現。上下には動かない) */
   zoom:    { ms: 900,  apply: (c, p) => { c.scaleMul = 1 + Math.sin(p * Math.PI) * 0.45; } },
-  /** 噛みつき(溜めてから突っ込む) */
+  /**
+   * 踏み込む(旧「噛みつき」)。溜めて一歩下がってから、前へぐっと出る。
+   * mouthOpen はサメ時代の名残で、ルナの描画では使われない(害はない)。
+   */
   bite:    { ms: 800,  apply: (c, p) => {
-    c.mouthOpen = p < 0.45 ? p / 0.45 : Math.max(0, 1 - (p - 0.45) / 0.25);
     c.offsetX = p < 0.45 ? -p * 40 : -18 + (p - 0.45) * 90;
-    c.squashX = 1 + (p > 0.45 ? 0.1 : -0.05);
-    c.squashY = 1 - (p > 0.45 ? 0.08 : -0.04);
+    // 溜めでしゃがみ、踏み込みで伸び上がる(足は床のまま)
+    c.squashY = p < 0.45 ? 1 - 0.06 : 1 + 0.04;
+    c.squashX = p < 0.45 ? 1 + 0.05 : 1 - 0.03;
+    c.tilt = p < 0.45 ? -0.03 : 0.05;
   } },
-  /** 画面外から泳いで入場 */
-  swimIn:  { ms: 900,  apply: (c, p) => { c.offsetX = -260 * (1 - easeOutCubic(p)); c.tilt = (1 - p) * -0.12; } },
-  /** 泳いで退場 */
-  swimOut: { ms: 800,  apply: (c, p) => { c.offsetX = -320 * easeInCubic(p); c.alphaMul = 1 - p * 0.6; c.tilt = p * -0.1; } },
-  /** 尾びれをバタつかせる(体をひねる) */
-  tailWhip:{ ms: 700,  apply: (c, p) => { c.tailAngle = Math.sin(p * Math.PI * 3) * 0.7; } },
+  /** 画面外から **歩いて** 入場(旧: 泳いで入場) */
+  swimIn:  { ms: 900,  apply: (c, p) => {
+    c.offsetX = -260 * (1 - easeOutCubic(p));
+    const step = Math.abs(Math.sin(p * Math.PI * 4)) * (1 - p * 0.4);
+    c.offsetY = -step * 3.5;
+    c.squashY = 1 - (1 - step) * 0.025;
+    c.tilt = (1 - p) * -0.04;
+  } },
+  /** 小走りで退場(旧: 泳いで退場) */
+  swimOut: { ms: 800,  apply: (c, p) => {
+    c.offsetX = -320 * easeInCubic(p);
+    const step = Math.abs(Math.sin(p * Math.PI * 4));
+    c.offsetY = -step * 4;
+    c.squashY = 1 - (1 - step) * 0.025;
+    c.alphaMul = 1 - p * 0.6;
+    c.tilt = p * -0.05;
+  } },
+  /** 体をひねる(旧「尾びれをバタつかせる」。ルナには尾が無いので上体のひねりへ) */
+  tailWhip:{ ms: 700,  apply: (c, p) => {
+    c.tilt = Math.sin(p * Math.PI * 3) * 0.09 * (1 - p * 0.3);
+    c.offsetX = Math.sin(p * Math.PI * 3) * 5;
+  } },
 
   // ── 2026-08-14 追加(画像キャラ向けのコミカル芝居)──
-  /** ぽんっと飛び出す(登場) */
+  /** しゃがんだ姿勢から立ち上がって登場(旧: ぽんっと飛び出す) */
   popIn:   { ms: 520,  apply: (c, p) => {
     const e = easeOutBack(p);
-    c.scaleMul = 0.3 + 0.7 * e;
-    c.offsetY = (1 - e) * 24;
+    c.scaleMul = 0.62 + 0.38 * e;
+    // 立ち上がる = 縦に伸びる。足元は _withBody が固定するので浮かない
+    c.squashY = 0.78 + 0.22 * e;
+    c.squashX = 1.10 - 0.10 * e;
   } },
-  /** ぷるぷる震える(強制終了・ペナルティ) */
+  /** ぷるぷる震える(強制終了・ペナルティ。横揺れだけ) */
   tremble: { ms: 900,  apply: (c, p) => {
     const k = 1 - p * 0.4;
     c.offsetX = Math.sin(p * Math.PI * 30) * 6 * k;
-    c.offsetY = Math.cos(p * Math.PI * 26) * 3 * k;
-    c.tilt = Math.sin(p * Math.PI * 30) * 0.04 * k;
+    c.tilt = Math.sin(p * Math.PI * 30) * 0.035 * k;
+    c.squashY = 1 - 0.02 * k;
   } },
   /** 首を振って否定(ハズレ) */
-  wiggle:  { ms: 800,  apply: (c, p) => { c.tilt = Math.sin(p * Math.PI * 6) * 0.18 * (1 - p); } },
-  /** 画面を横切って走り抜ける */
+  wiggle:  { ms: 800,  apply: (c, p) => { c.tilt = Math.sin(p * Math.PI * 6) * 0.15 * (1 - p); } },
+  /**
+   * 画面を横切って走り抜ける。
+   * **pose:'run'(走りポーズ)と組で使うこと**。立ちポーズのまま横滑りすると
+   * 氷の上を滑っているように見える(接地原則の趣旨に反する)。
+   */
   dashBy:  { ms: 900,  apply: (c, p) => {
     c.offsetX = -300 + easeOutCubic(p) * 600;
-    c.tilt = -0.14;
+    const step = Math.abs(Math.sin(p * Math.PI * 6));
+    c.offsetY = -step * 5;
+    c.squashY = 1 - (1 - step) * 0.03;
+    c.tilt = -0.08;
     c.alphaMul = p < 0.12 ? p / 0.12 : p > 0.86 ? (1 - p) / 0.14 : 1;
   } },
-  /** 喜びの連続ジャンプ */
+  /** 喜びの連続ジャンプ(跳ぶ → 着地 → 跳ぶ) */
   hooray:  { ms: 1200, apply: (c, p) => {
     const ph = (p * 3) % 1;
-    const up = Math.sin(ph * Math.PI);
-    c.offsetY = -up * 30;
-    c.squashX = 1 + (1 - up) * 0.08 - up * 0.04;
-    c.squashY = 1 - (1 - up) * 0.08 + up * 0.06;
-    c.tilt = Math.sin(p * Math.PI * 6) * 0.1;
+    const AIR = 0.6;
+    if (ph <= AIR) {
+      const up = Math.sin((ph / AIR) * Math.PI);
+      c.offsetY = -up * 28;
+      c.squashX = 1 - up * 0.04;
+      c.squashY = 1 + up * 0.06;
+    } else {
+      const land = 1 - (ph - AIR) / (1 - AIR);
+      c.offsetY = 0;
+      c.squashX = 1 + land * 0.07;
+      c.squashY = 1 - land * 0.08;
+    }
+    c.tilt = Math.sin(p * Math.PI * 6) * 0.07;
   } },
 };
 
@@ -227,11 +323,18 @@ const easeOutBack = (x) => 1 + 2.70158 * (x - 1) ** 3 + 1.70158 * (x - 1) ** 2;
 const LCD_W = 440;
 
 /**
- * アイドル時のうろうろ(2026-08-14 から2体とも)。
+ * アイドル時のうろうろ(= 液晶の中を **歩く**)。
  *
- * 定位置に浮いているだけだと置物に見えるので、待機中は液晶の中を
- * ゆっくり左右に漂わせる。演出(モーション/ポーズ指定)が入っている間は
- * そちらを優先し、アイドルへ戻ったら再開する。
+ * 定位置に立っているだけだと置物に見えるので、待機中はゆっくり左右へ歩かせる。
+ * 演出(モーション/ポーズ指定)が入っている間はそちらを優先し、
+ * アイドルへ戻ったら再開する。
+ *
+ * ■ U68b(接地): 常時の上下ゆらぎ(bobY)は廃止
+ *   旧実装は sin 波で体全体を上下に 5px 揺らし続けていた = 常時ホバリング。
+ *   人間なので **止まっているときは上下に動かない**(呼吸だけ。呼吸は
+ *   render/chars/lunachan.js の ANIMS.idle が sy で表現する)。
+ *   歩いている最中だけ、歩幅ぶんの小さな跳ね(walkBob)を入れて足取りを出す。
+ *   跳ねは必ず 0(接地)へ戻る値なので「浮いている」画にはならない。
  */
 const WANDER = {
   /** 定位置からの最大移動量(px) */
@@ -241,13 +344,18 @@ const WANDER = {
   /** 片道にかける時間(ms)。距離に応じてこの範囲で決まる */
   minMs: 2400,
   maxMs: 4200,
-  /** 折り返し前の「ふわっと止まる」時間(ms) */
+  /** 折り返し前に立ち止まる時間(ms) */
   holdMinMs: 260,
   holdMaxMs: 900,
-  /** 上下のゆらぎ(px) */
-  bobY: 5,
-  /** 進行方向への最大の傾き(rad) */
-  tilt: 0.17,
+  /** 歩幅ぶんの跳ね(px)。歩いている間だけ。0 で完全に接地 */
+  walkBob: 2.6,
+  /** 1秒あたりの歩数(2 = 左右で1歩ずつ) */
+  stepsPerSec: 2.6,
+  /**
+   * 進行方向への最大の傾き(rad)。
+   * 泳ぐ魚は大きく傾いてよかったが、歩く人はほとんど傾かない(旧 0.17 → 0.05)。
+   */
+  tilt: 0.05,
   /** 傾きが最大になる速さ(px/ms) */
   tiltSpeed: 0.075,
 };
@@ -262,8 +370,12 @@ class CharState {
     this.scale = HOME[id]?.scale ?? 1;
     this.alpha = 0;
     this.targetAlpha = 0;
-    // 定位置はジョージが左・相棒が右なので、既定の向きは内側(=お互いの方)にする
-    this.dir = id === 'kiro' ? -1 : 1;
+    /*
+     * 既定の向き。ルナの素材は左右反転を許していない(Tシャツの文字が鏡文字になる)ので、
+     * 常駐でも 1 のまま持つだけ。反転してよいポーズ(走り)だけが dir を見る
+     * (render/chars/lunachan.js の mirror)。
+     */
+    this.dir = 1;
     // モーションによる一時的な上書き
     this.motion = null;
     this.motionLeft = 0;
@@ -297,23 +409,35 @@ class CharState {
 export class CharacterLayer {
   constructor() {
     this.chars = {
-      kiro: new CharState('kiro'),
-      george: new CharState('george'),
+      // 常駐の主役(中身はルナ)。旧2体目 'george' はこの1人へ集約される
+      kiro: new CharState(RESIDENT),
       // カメオ専用。既定では出てこない(演出データが show したときだけ現れる)
       luna: new CharState('luna'),
       // ヒーローRUSH の主役。こちらも演出データが show したときだけ現れる
       hero: new CharState('hero'),
     };
     this.t = 0;
+    /**
+     * キャラ大写しのカットインが走っているか(U68)。
+     * true の間は常駐を描かない = 同じ子が画面に2人並ぶのを防ぐ。
+     * 値は毎フレーム src/main.js が Cutins.hasCharCutin() から渡す
+     * (render 層から staging 層は見られないので、外から教えてもらう形にしてある)。
+     */
+    this.charCutinActive = false;
+  }
+
+  /** @param {boolean} on キャラ大写しカットインの実行状態 */
+  setCharCutinActive(on) {
+    this.charCutinActive = Boolean(on);
   }
 
   /**
-   * @param {string} id 'kiro' | 'george'
+   * @param {string} id 'kiro'(=常駐ルナ)/ 'george'(別名)/ 'luna' / 'hero'
    * @param {string} [pose]
    * @param {object} [opts] { x, y, scale, dir }
    */
   show(id, pose = 'normal', opts = {}) {
-    const c = this.chars[id];
+    const c = this.chars[realId(id)];
     if (!c) return;
     c.visible = true;
     c.pose = pose;
@@ -324,7 +448,19 @@ export class CharacterLayer {
     if (opts.dir != null) c.dir = opts.dir;
   }
 
+  /**
+   * 引っ込める。
+   *
+   * ■ 別名('george')の hide は **何もしない**(U68)
+   *   旧データは「2体目を引っ込めてから1体目を出す」書き方
+   *   (hide george → show kiro)を多用している。ルナ1人に集約した今、
+   *   これを素直に実行すると **出した直後に自分を消す** 並びが生まれ、
+   *   同じ at のキュー順しだいで常駐がふっと消える。
+   *   別名側は「席を空ける」意図しか持っていないので、無視するのが正しい。
+   *   本当に引っ込めたい場面は必ず実体ID('kiro')で書かれている。
+   */
   hide(id) {
+    if (CHAR_ALIAS[id]) return;
     const c = this.chars[id];
     if (!c) return;
     c.targetAlpha = 0;
@@ -332,13 +468,13 @@ export class CharacterLayer {
 
   /** ポーズだけ変える */
   pose(id, pose) {
-    const c = this.chars[id];
+    const c = this.chars[realId(id)];
     if (c) c.pose = pose;
   }
 
   /** モーションを再生する */
   motion(id, motion) {
-    const c = this.chars[id];
+    const c = this.chars[realId(id)];
     const def = MOTIONS[motion];
     if (!c || !def) return;
     c.motion = motion;
@@ -347,11 +483,12 @@ export class CharacterLayer {
 
   /** 定位置に戻す */
   home(id) {
-    const c = this.chars[id];
-    if (!c) return;
-    c.x = HOME[id].x;
-    c.y = HOME[id].y;
-    c.scale = HOME[id].scale;
+    const key = realId(id);
+    const c = this.chars[key];
+    if (!c || !HOME[key]) return;
+    c.x = HOME[key].x;
+    c.y = HOME[key].y;
+    c.scale = HOME[key].scale;
   }
 
   /**
@@ -408,10 +545,9 @@ export class CharacterLayer {
       }
     }
 
-    // アイドル時のうろうろ。2026-08-14 に2体ともサメになったので両方動かす
+    // アイドル時のうろうろ。U68 で常駐が1人になったので、動かす対象もルナだけ
     // (置物に見えないようにするのが目的。演出中は _updateWander 側で止まる)
-    this._updateWander(this.chars.kiro, dt);
-    this._updateWander(this.chars.george, dt);
+    this._updateWander(this.chars[RESIDENT], dt);
   }
 
   /**
@@ -435,10 +571,6 @@ export class CharacterLayer {
       return;
     }
 
-    // ゆらゆら(左右移動とは別の周期にして機械的な往復に見えないようにする)。
-    // 位相はキャラごとにずらして、2体が同じ動きで揃わないようにする
-    c.wanderY = Math.sin(this.t * 0.9 + c.wanderPhase) * WANDER.bobY;
-
     const prevX = c.wanderX;
     if (c.wanderHold > 0) {
       c.wanderHold -= dt;
@@ -457,6 +589,17 @@ export class CharacterLayer {
     const v = dt > 0 ? (c.wanderX - prevX) / dt : 0;
     const target = Math.max(-1, Math.min(1, v / WANDER.tiltSpeed)) * WANDER.tilt;
     c.wanderTilt += (target - c.wanderTilt) * Math.min(1, dt / 180);
+
+    /*
+     * 歩幅ぶんの跳ね(U68b)。**歩いている間だけ**上下する。
+     * speed(0〜1)は今の移動の速さで、立ち止まっていれば 0 = 完全に接地。
+     * |sin| なので、1歩ごとに必ず 0(足が着いた瞬間)へ戻る。
+     */
+    const speed = Math.min(1, Math.abs(v) / WANDER.tiltSpeed);
+    const bob = speed > 0.02
+      ? Math.abs(Math.sin(this.t * Math.PI * WANDER.stepsPerSec + c.wanderPhase)) * WANDER.walkBob * speed
+      : 0;
+    c.wanderY += (-bob - c.wanderY) * Math.min(1, dt / 60);
   }
 
   /** 次の目標地点(定位置からのオフセット)を決める */
@@ -510,54 +653,41 @@ export class CharacterLayer {
     const dimMul = 1 - Math.max(0, Math.min(1, dim * DIM_GAIN));
     /*
      * プレミア枠が出ているあいだ、常設キャラは一歩下がる。
-     * ルナ(V21-10 で液晶の半分を使う大きさになった)やヒーローと
-     * サメが同じ濃さで並ぶと、どちらが主役か分からない画になるため。
+     * ヒーロー(RUSHの主役)と常駐が同じ濃さで並ぶと、どちらが主役か分からなくなる。
+     *
+     * ■ カメオのルナだけは「下がる」ではなく **完全に描かない**(U68)
+     *   常駐もカメオも同じルナなので、両方出すと画面にルナが2人並んでしまう。
+     *   カメオは後光つき・大きめの特別枠なので、そちらに主役を明け渡す。
      */
+    const lunaCameoOut = this.chars.luna?.visible && this.chars.luna.alpha > 0;
     const premiumOut = PREMIUM_CHARS_ARR.some((id) => {
       const c = this.chars[id];
       return c && c.visible && c.alpha > 0;
     });
     const sideMul = dimMul * (premiumOut ? PREMIUM_DUCK : 1);
-    if (sideMul <= 0 && !premiumOut) return;
-    const kiro = this.chars.kiro;
-    if (kiro.visible && kiro.alpha > 0 && sideMul > 0) {
-      const kx = kiro.x + kiro.offsetX + kiro.wanderX;
-      const ky = kiro.y + kiro.offsetY + kiro.wanderY;
-      this._withBody(ctx, kiro, kx, ky, () => {
-        drawKiro(ctx, {
-          x: kx,
-          y: ky,
-          scale: kiro.scale * kiro.scaleMul,
-          pose: KIRO_POSES[kiro.pose] ? kiro.pose : 'normal',
-          t: this.t,
-          alpha: kiro.alpha * kiro.alphaMul * sideMul,
-          dir: kiro.dir,
-        });
-      });
-    }
 
-    const g = this.chars.george;
-    if (g.visible && g.alpha > 0 && sideMul > 0) {
-      const poseName = GEORGE_POSES[g.pose] ? g.pose : 'normal';
-      const base = GEORGE_POSES[poseName];
-      const gx = g.x + g.offsetX + g.wanderX;
-      const gy = g.y + g.offsetY + g.wanderY;
-      this._withBody(ctx, g, gx, gy, () => {
-        drawGeorge(ctx, {
-          x: gx,
-          y: gy,
-          scale: g.scale * g.scaleMul,
-          dir: g.dir,
+    const resident = this.chars[RESIDENT];
+    // カメオ中・キャラ大写しカットイン中は、常駐を描かない(ルナが2人にならないように)
+    const residentOut = !lunaCameoOut && !this.charCutinActive;
+    if (resident.visible && resident.alpha > 0 && sideMul > 0 && residentOut) {
+      const rx = resident.x + resident.offsetX + resident.wanderX;
+      const ry = resident.y + resident.offsetY + resident.wanderY;
+      this._withBody(ctx, resident, rx, ry, () => {
+        drawLuna(ctx, {
+          x: rx,
+          y: ry,
+          scale: resident.scale * resident.scaleMul,
+          dir: resident.dir,
           t: this.t,
-          alpha: g.alpha * g.alphaMul * sideMul,
-          // pose を渡すとポーズ固有の芝居(浮遊/震え/明滅…)が付く。
-          // mouthOpen / tailAngle はモーションによる上書きを優先する
-          pose: poseName,
-          mouthOpen: g.mouthOpen ?? base.mouthOpen,
-          tailAngle: g.tailAngle ?? base.tailAngle,
-          brow: base.brow,
+          alpha: resident.alpha * resident.alphaMul * sideMul,
+          // ポーズ名でもシチュエーション名でも通る(旧サメのポーズ名も
+          // render/chars/lunachan.js の LUNA_SITUATIONS が読み替える)
+          pose: resident.pose,
+          // 常駐は後光なし・減光ありの「素の」ルナ(カメオとの格の差を保つ)
+          premium: false,
         });
-      });
+      // 接地補正(U68b)。伸び縮みしても足元の高さが変わらないようにする
+      }, LUNA_GROUND_HALF * resident.scale * resident.scaleMul);
     }
 
     // ── プレミア枠は最後(=一番手前)に描く ──
@@ -598,7 +728,8 @@ export class CharacterLayer {
           // ポーズ名でもシチュエーション名でも通る(未知の名前は smile へ落ちる)
           pose: luna.pose,
         });
-      });
+      // カメオも人間なので接地補正を掛ける(U68b)
+      }, LUNA_GROUND_HALF * luna.scale * luna.scaleMul);
     }
   }
 
@@ -606,8 +737,16 @@ export class CharacterLayer {
    * うろうろの傾き・モーションの傾き・squash & stretch を
    * 「キャラの立ち位置を軸」に掛けてから中身を描く。
    * 画像キャラは頂点を動かせないので、伸び縮みはここで面倒を見る。
+   *
+   * @param {number} [groundHalf]
+   *   接地補正(U68b)。キャラの箱の **半分の高さ(画面px)**。
+   *   基準点は箱の中心なので、squashY で縮めると足元まで上がって宙に浮く。
+   *   縮んだぶんの半分だけ下へずらすと、足元の高さが変わらない:
+   *       足元 = y + half*sqy + half*(1-sqy) = y + half
+   *   これで「膝を曲げて沈む」「背伸びする」が正しく地面の上で起きる。
+   *   0 を渡すと従来どおり中心を軸にした伸縮になる(人間でないキャラ用)。
    */
-  _withBody(ctx, c, x, y, drawFn) {
+  _withBody(ctx, c, x, y, drawFn, groundHalf = 0) {
     const tilt = (c.wanderTilt ?? 0) + (c.tilt ?? 0);
     const sqx = c.squashX ?? 1;
     const sqy = c.squashY ?? 1;
@@ -617,7 +756,7 @@ export class CharacterLayer {
       return;
     }
     ctx.save();
-    ctx.translate(x, y);
+    ctx.translate(x, y + groundHalf * (1 - sqy));
     if (tilt) ctx.rotate(tilt);
     if (sqx !== 1 || sqy !== 1) ctx.scale(sqx, sqy);
     ctx.translate(-x, -y);

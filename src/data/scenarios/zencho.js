@@ -185,6 +185,8 @@ export default [
       { at: 200, layer: 'lcd',  action: 'text',
         params: { text: 'SQS BACKLOG ${step}', sub: '未処理のメッセージが積み上がっている', color: '#ffd166', ms: 1100 } },
       { at: 240, layer: 'char', action: 'show', params: { char: 'kiro', pose: 'surprised' } },
+      // 前兆の入りの相槌(U68)。何かが起きかけている、を疑問形で置くだけ
+      { at: 320, layer: 'voice', action: 'play', params: { key: 'luna_react_nani_01', chance: 0.25 } },
       { at: 1400, layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'normal' } },
     ],
   },
@@ -207,6 +209,12 @@ export default [
       // 同じ絵が繰り返されると前兆が単調になるので、段階が見える文言にしてある
       { at: 360, layer: 'lcd', action: 'text',
         params: { text: 'CANARY ${step}0%', sub: '新バージョンへ流量を寄せている', color: '#7bf7d0', ms: 1100 } },
+      /*
+       * CZ示唆の相槌(U68)。カナリアリリースは CZ の題材そのものなので、
+       * 「チャンスかも?」を **疑問形のまま** 置く。断定しないので
+       * ガセ前兆で鳴っても嘘にならない(本前兆かどうかはここでは分からない)。
+       */
+      { at: 700, layer: 'voice', action: 'play', params: { key: 'luna_cz_chance_01', chance: 0.28 } },
     ],
   },
 
@@ -227,6 +235,15 @@ export default [
       { at: 220, layer: 'lcd',    action: 'anim',  params: { anim: 'step_up', step: '$level' } },
       { at: 300, layer: 'lcd',    action: 'text',
         params: { text: 'TRACE 5xx ×${step}', sub: 'X-Ray の赤いトレースが増えていく', color: '#ff6b6b', ms: 1200 } },
+      /*
+       * ステージ昇格への願望(U68)。「Invent会場(激アツステージ)に行きたい」。
+       * ■ なぜ前兆に貼るのか
+       *   ステージ昇格そのものは paramChange で **一瞬で決まって告知される** ので、
+       *   「昇格しそう」という前置きの場面が構造的に存在しない。
+       *   前兆 = 何かが動いている時間なので、期待を口にする場としてはここが一番近い。
+       *   到着の告知(normal.js の stage_up_*)には貼らない — あちらは結果であって願望ではない。
+       */
+      { at: 800, layer: 'voice',  action: 'play', params: { key: 'luna_stage_invent_01', chance: 0.2 } },
     ],
   },
 
@@ -294,6 +311,9 @@ export default [
       // U9: 対応役なし(汎用の中)なので金
       { at: 320, layer: 'lcd', action: 'text',
         params: { text: 'BILLING +${step}00%', sub: '今月の請求額が跳ね上がっている', color: '#ffd166', ms: 1100 } },
+      // ステージ昇格への願望(U68)。こちらは1段目の「サミット会場(高確)」版。
+      // 貼り先の考え方は zn_xray_trace のコメントを参照
+      { at: 760, layer: 'voice', action: 'play', params: { key: 'luna_stage_summit_01', chance: 0.2 } },
     ],
   },
 
@@ -433,6 +453,8 @@ export default [
       { at: 260,  layer: 'lcd',     action: 'text',
         params: { text: 'ESCALATED', sub: 'エスカレーション先を選定中…', tone: 'hot', color: '#ff3b30', ms: 1400 } },
       { at: 300,  layer: 'char',    action: 'show', params: { char: 'kiro', pose: 'panic' } },
+      // 前兆が伸びきった場面の煽り(U68)。ここは疑問形の「激アツ?」で、断定はしない
+      { at: 620,  layer: 'voice',   action: 'play', params: { key: 'luna_hot_01', chance: 0.5 } },
       { at: 1000, layer: 'sfx',     action: 'synth', params: { preset: 'countdown_tick' } },
       { at: 1700, layer: 'char',    action: 'pose', params: { char: 'kiro', pose: 'surprised' } },
     ],
@@ -462,7 +484,8 @@ export default [
       { at: 340,  layer: 'lcd',     action: 'text',
         params: { text: 'ESCALATION', sub: 'インシデントレベルが引き上げられた', color: '#ffe066', ms: 1600 } },
       { at: 640,  layer: 'lcd',     action: 'particles', params: { preset: 'spark', x: 352, y: 176, count: 20 } },
-      { at: 900,  layer: 'voice',   action: 'play',  params: { key: 'kiro_alarm_01' } },
+      // 格上げ = 本前兆が確定した瞬間。確定告知なので間引かない(U68)
+      { at: 900,  layer: 'voice',   action: 'play',  params: { key: 'luna_kita_01', force: true } },
       { at: 2000, layer: 'char',    action: 'pose',  params: { char: 'kiro', pose: 'surprised' } },
     ],
   },
@@ -544,7 +567,8 @@ export default [
         params: { text: 'RESOLVED', sub: '誤検知でした', color: '#8aa0b4', ms: 1200 } },
       { at: 300,  layer: 'char',  action: 'show', params: { char: 'kiro', pose: 'normal' } },
       { at: 900,  layer: 'lamp',  action: 'pattern', params: { pattern: 'idle' } },
-      { at: 1100, layer: 'voice', action: 'play', params: { key: 'kiro_talk_02' } },
+      // ガセ終了。落胆しすぎない「んー…」で流す(U68)
+      { at: 1100, layer: 'voice', action: 'play', params: { key: 'luna_hmm_01', chance: 0.5 } },
     ],
   },
 

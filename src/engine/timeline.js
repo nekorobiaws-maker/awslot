@@ -6,6 +6,9 @@
  *   { waitFor: "stop2", ... }        … 指定イベントが来たら発火
  *   { waitFor: "stop3", after: 200 } … 指定イベントから after ms 後に発火
  *
+ * シナリオに `waitGraceMs` を書くと「待ちが残ったまま畳むまでの猶予」を伸ばせる
+ * (プレイヤーが答えるまで待つ演出用。既定は WAIT_GRACE_MS = 20秒)。
+ *
  * ══ 【厳守】内容の切替はゲームイベント駆動(2026-08-15 ユーザー指示 U66-8)══
  *
  * ポップアップ(lcd.text)や盤面アニメの **中身が別のものへ切り替わる** タイミングは
@@ -92,6 +95,23 @@ export function resolveParams(params, ctx) {
   return resolveValue(params, ctx);
 }
 
+/**
+ * waitFor 待ちが残ったまま放置されたシナリオを畳むまでの猶予[ms]。
+ *
+ * 「待っていたイベントが二度と来ない」経路(セッションが終わった等)で
+ * キューが永久に残らないようにするための保険。
+ *
+ * ── シナリオごとに伸ばせる(2026-08-15 U69)────────────────────────
+ * リール3択クイズのように **プレイヤーが答えるまで待つ** 演出は、
+ * 既定の20秒では「読んでいる途中でシナリオごと消えて、
+ * 第1停止しても発表が出ない」ことが起こる(リールに自動停止は無いので、
+ * 押すまで何分でも待てる)。そういうシナリオは `waitGraceMs` を書いて伸ばす。
+ *
+ * 【注意】盤面アニメの尺(lcd.anim の ms)より必ず長くすること。
+ * 短いとシナリオだけ先に死んで、盤面が答えを出せないまま画面に残る。
+ */
+const WAIT_GRACE_MS = 20000;
+
 /** 実行中の1シナリオ */
 class Playing {
   /**
@@ -112,8 +132,8 @@ class Playing {
         releasedAt: cue.waitFor ? null : 0,
       }));
     this.duration = scenario.duration ?? 0;
-    /** waitFor 待ちが残る場合の保険 */
-    this.maxLifetime = this.duration + 20000;
+    /** waitFor 待ちが残る場合の保険(既定 WAIT_GRACE_MS。シナリオ側で伸ばせる) */
+    this.maxLifetime = this.duration + (scenario.waitGraceMs ?? WAIT_GRACE_MS);
   }
 
   get hasPendingWait() {

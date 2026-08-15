@@ -44,7 +44,7 @@ export default [
       { at: 1900, layer: 'sfx',     action: 'synth', params: { preset: 'fanfare_big' } },
       { at: 2500, layer: 'char',    action: 'show',  params: { char: 'kiro', pose: 'premium' } },
       { at: 2500, layer: 'char',    action: 'motion', params: { char: 'kiro', motion: 'zoom' } },
-      { at: 2700, layer: 'voice',   action: 'play',  params: { key: 'kiro_serverless_01' } },
+      { at: 2700, layer: 'voice',   action: 'play',  params: { key: 'luna_rush_01', force: true } },
       // 「突入」を含むので自動 sticky。純増と継続率は sub 行で補足する
       { at: 2900, layer: 'lcd',     action: 'text',
         params: { text: 'SERVERLESS RUSH 突入!!', sub: `純増${SLS.payoutPerGame}枚 / 継続${Math.round(SLS.continueRate * 100)}% — DC管理から解放された`, color: '#ffb46a', ms: 2200 } },
@@ -91,7 +91,7 @@ export default [
       { at: 2400, layer: 'sfx',     action: 'synth', params: { preset: 'fanfare_big' } },
       { at: 3000, layer: 'char',    action: 'show',  params: { char: 'george', pose: 'grin' } },
       { at: 3000, layer: 'char',    action: 'motion', params: { char: 'george', motion: 'tailWhip' } },
-      { at: 3200, layer: 'voice',   action: 'play',  params: { key: 'george_multiregion_01' } },
+      { at: 3200, layer: 'voice',   action: 'play',  params: { key: 'luna_rush_01', force: true } },
       // 「突入」を含むので自動 sticky
       { at: 3400, layer: 'lcd',     action: 'text',
         params: { text: 'MULTI-REGION 突入!!', sub: `純増${MREG.payoutPerGame}枚 / 継続${Math.round(MREG.continueRate * 100)}% — 全レア役で上乗せ確定`, color: '#ff9ad5', ms: 2200 } },
@@ -141,7 +141,7 @@ export default [
       { at: 100,  layer: 'char',    action: 'motion', params: { char: 'kiro', motion: 'shake' } },
       { at: 400,  layer: 'lcd',     action: 'text',
         params: { text: 'DNS FAILOVER', sub: 'TTL の伝播を待て', color: '#ff9a9a', ms: 1900 } },
-      { at: 900,  layer: 'voice',   action: 'play',  params: { key: 'kiro_route53_01' } },
+      { at: 900,  layer: 'voice',   action: 'play',  params: { key: 'luna_madamada_01', force: true } },
       { at: 1200, layer: 'bgm',     action: 'change', params: { bgm: 'bgm_standby' } },
     ],
   },
@@ -173,7 +173,7 @@ export default [
       { at: 300, layer: 'lcd',     action: 'text',
         params: { text: 'RESOLVED!!', sub: 'DNS が切り替わった', color: '#7bf7d0', ms: 2000 } },
       { at: 500, layer: 'overlay', action: 'particles', params: { preset: 'rainbow', x: 360, y: 380, count: 36 } },
-      { at: 800, layer: 'voice',   action: 'play',  params: { key: 'george_route53_win_01' } },
+      { at: 800, layer: 'voice',   action: 'play',  params: { key: 'luna_comeback_01', force: true } },
     ],
   },
   {
@@ -188,7 +188,7 @@ export default [
       { at: 100, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'panic' } },
       { at: 300, layer: 'lcd',  action: 'text',
         params: { text: 'NO HEALTHY ENDPOINT', sub: '正常な向き先が残っていない', color: '#ff8a8a', ms: 1400 } },
-      { at: 600, layer: 'voice', action: 'play', params: { key: 'kiro_lose_01' } },
+      { at: 600, layer: 'voice', action: 'play', params: { key: 'luna_lose_01', force: true } },
     ],
   },
 
@@ -209,7 +209,7 @@ export default [
       { at: 1200, layer: 'char',    action: 'show',  params: { char: 'kiro', pose: 'premium' } },
       { at: 1200, layer: 'char',    action: 'show',  params: { char: 'george', pose: 'grin' } },
       { at: 1400, layer: 'lcd',     action: 'anim',  params: { anim: 'ed_confetti' } },
-      { at: 2000, layer: 'voice',   action: 'play',  params: { key: 'kiro_ending_01' } },
+      { at: 2000, layer: 'voice',   action: 'play',  params: { key: 'luna_sugoi_01', force: true } },
       { at: 2600, layer: 'lcd',     action: 'text',
         params: { text: 'COMPLETE!!', sub: '完走おめでとう', color: '#ffe066', ms: 2400 } },
       { at: 2800, layer: 'bgm',     action: 'change', params: { bgm: 'bgm_ending' } },
@@ -261,7 +261,7 @@ export default [
       { at: 0,    layer: 'lamp',    action: 'pattern', params: { pattern: 'rare' } },
       { at: 100,  layer: 'lcd',     action: 'anim',  params: { anim: 'auto_recovery' } },
       { at: 200,  layer: 'char',    action: 'show',  params: { char: 'kiro', pose: 'happy' } },
-      { at: 1400, layer: 'voice',   action: 'play',  params: { key: 'kiro_ceiling_01' } },
+      { at: 1400, layer: 'voice',   action: 'play',  params: { key: 'luna_kita_01', force: true } },
     ],
   },
   {

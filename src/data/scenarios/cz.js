@@ -28,7 +28,7 @@ export default [
       { at: 240,  layer: 'char',    action: 'motion', params: { char: 'kiro', motion: 'bounce' } },
       { at: 400,  layer: 'lcd',     action: 'text',
         params: { text: '$state.goal', sub: '期待度 ${state.stars} — ${state.goalDetail}', color: '#7cf3ff', ms: 2400 } },
-      { at: 500,  layer: 'voice',   action: 'play',  params: { key: 'kiro_cz_start_01' } },
+      { at: 500,  layer: 'voice',   action: 'play',  params: { key: 'luna_kita_01', force: true } },
       { at: 600,  layer: 'bgm',     action: 'change', params: { bgm: 'bgm_cz' } },
     ],
   },
@@ -49,7 +49,7 @@ export default [
         // 2026-08-13 ユーザー指示: 「全項目グリーン = ボーナス確定」がこのCZのルール。
         // ルール説明なので sticky にはしない(「確定」の語を入れると当選告知に化けるため)。
         params: { text: '$state.goal', sub: '期待度 ${state.stars} — ${state.goalDetail}', color: '#ffd166', ms: 2400 } },
-      { at: 900,  layer: 'voice',   action: 'play',  params: { key: 'kiro_cz_ta_01' } },
+      { at: 900,  layer: 'voice',   action: 'play',  params: { key: 'luna_kita_01', force: true } },
       { at: 1000, layer: 'bgm',     action: 'change', params: { bgm: 'bgm_cz' } },
     ],
   },
@@ -73,7 +73,7 @@ export default [
       { at: 450,  layer: 'lcd',     action: 'text',
         // ルール説明。sticky 語(確定/突入)を避けて次ゲームまで残らないようにする
         params: { text: '$state.goal', sub: '期待度 ${state.stars} — ${state.goalDetail}', color: '#c0c0ff', ms: 2400 } },
-      { at: 900,  layer: 'voice',   action: 'play',  params: { key: 'kiro_cz_start_01' } },
+      { at: 900,  layer: 'voice',   action: 'play',  params: { key: 'luna_kita_01', force: true } },
       { at: 1000, layer: 'bgm',     action: 'change', params: { bgm: 'bgm_cz' } },
     ],
   },
@@ -100,7 +100,7 @@ export default [
       { at: 500,  layer: 'char',    action: 'show',  params: { char: 'kiro', pose: 'happy' } },
       { at: 700,  layer: 'lcd',     action: 'text',
         params: { text: '$state.goal', sub: '期待度 ${state.stars} — ${state.goalDetail}', color: '#ffe066', ms: 2400 } },
-      { at: 1200, layer: 'voice',   action: 'play',  params: { key: 'george_cz_wa_01' } },
+      { at: 1200, layer: 'voice',   action: 'play',  params: { key: 'luna_kita_01', force: true } },
       { at: 1400, layer: 'overlay', action: 'particles', params: { preset: 'coin', x: 360, y: 380, count: 22 } },
       { at: 1500, layer: 'bgm',     action: 'change', params: { bgm: 'bgm_cz' } },
     ],
@@ -141,7 +141,8 @@ export default [
       { at: 0,    layer: 'char',    action: 'pose',  params: { char: 'kiro', pose: 'panic' } },
       { at: 100,  layer: 'lcd',     action: 'anim',  params: { anim: 'cw_alarm_result', result: true } },
       { at: 1500, layer: 'char',    action: 'pose',  params: { char: 'kiro', pose: 'happy' } },
-      { at: 1500, layer: 'voice',   action: 'play',  params: { key: 'kiro_cz_win' } },
+      // CZ突破 = 当選確定。間引かない(U68)
+      { at: 1500, layer: 'voice',   action: 'play',  params: { key: 'luna_win_01', force: true } },
     ],
   },
 
@@ -163,7 +164,8 @@ export default [
           color: '#8ad4ff', ms: 1600, sticky: false,
         } },
       { at: 1200, layer: 'char',  action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
-      { at: 1300, layer: 'voice', action: 'play',  params: { key: 'kiro_cz_lose' } },
+      // CZ非突破。結果が確定した瞬間なので間引かない(U68)
+      { at: 1300, layer: 'voice', action: 'play',  params: { key: 'luna_lose_01', force: true } },
     ],
   },
 
@@ -227,7 +229,7 @@ export default [
         // 「確定」を含むので自動 sticky = 次のレバーONまで残る
         params: { text: 'ボーナス確定!!', sub: 'Step Functions — ワークフローを完走した', color: '#7bf7d0', ms: 2200, sticky: true } },
       { at: 500,  layer: 'overlay', action: 'particles', params: { preset: 'coin', x: 360, y: 380, count: 26 } },
-      { at: 900,  layer: 'voice',   action: 'play',  params: { key: 'kiro_cz_win' } },
+      { at: 900,  layer: 'voice',   action: 'play',  params: { key: 'luna_win_01', force: true } },
     ],
   },
 
@@ -245,7 +247,7 @@ export default [
         params: { anim: 'health_check', ok: false, label: 'EXECUTION FAILED' } },
       { at: 1200, layer: 'overlay', action: 'flash', params: { color: '#ff4d4d', ms: 280 } },
       { at: 1300, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
-      { at: 1400, layer: 'voice', action: 'play', params: { key: 'kiro_cz_lose' } },
+      { at: 1400, layer: 'voice', action: 'play', params: { key: 'luna_lose_01', force: true } },
     ],
   },
 
@@ -283,7 +285,7 @@ export default [
         // 「確定」を含むので自動 sticky = 次のレバーONまで残る
         params: { text: 'ALL GREEN', sub: '全項目クリア — ボーナス確定!!', color: '#4ce0a0', ms: 2200, sticky: true } },
       { at: 800, layer: 'overlay', action: 'particles', params: { preset: 'coin', x: 360, y: 380, count: 26 } },
-      { at: 1100, layer: 'voice',  action: 'play',  params: { key: 'kiro_cz_win' } },
+      { at: 1100, layer: 'voice',  action: 'play',  params: { key: 'luna_win_01', force: true } },
     ],
   },
 
@@ -302,7 +304,7 @@ export default [
       { at: 100,  layer: 'lcd',  action: 'anim',  params: { anim: 'health_check', ok: false, label: 'NEEDS WORK' } },
       { at: 1200, layer: 'overlay', action: 'flash', params: { color: '#ff4d4d', ms: 300 } },
       { at: 1300, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
-      { at: 1400, layer: 'voice', action: 'play', params: { key: 'kiro_cz_lose' } },
+      { at: 1400, layer: 'voice', action: 'play', params: { key: 'luna_lose_01', force: true } },
     ],
   },
 
@@ -330,7 +332,7 @@ export default [
       { at: 300,  layer: 'char',    action: 'motion', params: { char: 'george', motion: 'swimIn' } },
       { at: 700,  layer: 'lcd',     action: 'text',
         params: { text: '$state.goal', sub: '$state.goalDetail', color: '#ffe066', ms: 2400, sticky: true } },
-      { at: 1200, layer: 'voice',   action: 'play',  params: { key: 'george_cz_wa_01' } },
+      { at: 1200, layer: 'voice',   action: 'play',  params: { key: 'luna_kita_01', force: true } },
       { at: 1400, layer: 'overlay', action: 'particles', params: { preset: 'coin', x: 360, y: 380, count: 24 } },
       { at: 1500, layer: 'bgm',     action: 'change', params: { bgm: 'bgm_cz' } },
     ],
@@ -407,7 +409,7 @@ export default [
       { at: 1300, layer: 'char', action: 'pose',
         params: { char: 'kiro', pose: "$success ? 'happy' : 'normal'" } },
       { at: 1400, layer: 'voice', action: 'play',
-        params: { key: "$success ? 'kiro_cz_win' : 'kiro_cz_lose'" } },
+        params: { key: "$success ? 'luna_win_01' : 'luna_lose_01'", force: true } },
     ],
   },
 
@@ -443,7 +445,7 @@ export default [
       { at: 240,  layer: 'char',    action: 'motion', params: { char: 'kiro', motion: 'bounce' } },
       { at: 420,  layer: 'lcd',     action: 'text',
         params: { text: '$state.goal', sub: '期待度 ${state.stars} — ${state.goalDetail}', color: '#8ad4ff', ms: 2400 } },
-      { at: 900,  layer: 'voice',   action: 'play',  params: { key: 'kiro_cz_start_01' } },
+      { at: 900,  layer: 'voice',   action: 'play',  params: { key: 'luna_kita_01', force: true } },
       { at: 1000, layer: 'bgm',     action: 'change', params: { bgm: 'bgm_cz' } },
     ],
   },
@@ -500,7 +502,7 @@ export default [
         // 「確定」を含むので自動 sticky = 次のレバーONまで残る
         params: { text: 'HTTP 200 OK', sub: '全ターゲット healthy — ボーナス確定!!', color: '#4ce0a0', ms: 2200, sticky: true } },
       { at: 500, layer: 'overlay', action: 'particles', params: { preset: 'coin', x: 360, y: 380, count: 26 } },
-      { at: 900, layer: 'voice',   action: 'play',  params: { key: 'kiro_cz_win' } },
+      { at: 900, layer: 'voice',   action: 'play',  params: { key: 'luna_win_01', force: true } },
     ],
   },
 
@@ -526,7 +528,7 @@ export default [
         params: { anim: 'health_check', ok: false, label: 'TARGET UNHEALTHY' } },
       { at: 1200, layer: 'overlay', action: 'flash', params: { color: '#ff4d4d', ms: 280 } },
       { at: 1300, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
-      { at: 1400, layer: 'voice', action: 'play', params: { key: 'kiro_cz_lose' } },
+      { at: 1400, layer: 'voice', action: 'play', params: { key: 'luna_lose_01', force: true } },
     ],
   },
 
@@ -545,7 +547,7 @@ export default [
       { at: 220,  layer: 'char',    action: 'show',  params: { char: 'kiro', pose: 'surprised' } },
       { at: 440,  layer: 'lcd',     action: 'text',
         params: { text: '$state.goal', sub: '期待度 ${state.stars} — ${state.goalDetail}', color: '#ffb27a', ms: 2400 } },
-      { at: 900,  layer: 'voice',   action: 'play',  params: { key: 'kiro_cz_start_01' } },
+      { at: 900,  layer: 'voice',   action: 'play',  params: { key: 'luna_kita_01', force: true } },
       { at: 1000, layer: 'bgm',     action: 'change', params: { bgm: 'bgm_cz' } },
     ],
   },
@@ -598,7 +600,7 @@ export default [
       { at: 300, layer: 'lcd',     action: 'text',
         params: { text: 'QUEUE EMPTY', sub: 'DLQ を空にした — ボーナス確定!!', color: '#4ce0a0', ms: 2200, sticky: true } },
       { at: 500, layer: 'overlay', action: 'particles', params: { preset: 'coin', x: 360, y: 380, count: 26 } },
-      { at: 900, layer: 'voice',   action: 'play',  params: { key: 'kiro_cz_win' } },
+      { at: 900, layer: 'voice',   action: 'play',  params: { key: 'luna_win_01', force: true } },
     ],
   },
 
@@ -625,7 +627,7 @@ export default [
        * 他CZの非突破(ALB / SFN / GameDay)も文字を持たない形で揃えてある。
        */
       { at: 1400, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
-      { at: 1500, layer: 'voice', action: 'play', params: { key: 'kiro_cz_lose' } },
+      { at: 1500, layer: 'voice', action: 'play', params: { key: 'luna_lose_01', force: true } },
     ],
   },
 
@@ -656,7 +658,7 @@ export default [
       { at: 220,  layer: 'char',    action: 'show',  params: { char: 'kiro', pose: 'surprised' } },
       { at: 460,  layer: 'lcd',     action: 'text',
         params: { text: '$state.goal', sub: '期待度 ${state.stars} — ${state.goalDetail}', color: '#8ad4ff', ms: 2400 } },
-      { at: 900,  layer: 'voice',   action: 'play',  params: { key: 'kiro_cz_start_01' } },
+      { at: 900,  layer: 'voice',   action: 'play',  params: { key: 'luna_kita_01', force: true } },
       { at: 1000, layer: 'bgm',     action: 'change', params: { bgm: 'bgm_cz' } },
     ],
   },
@@ -726,7 +728,7 @@ export default [
       { at: 300, layer: 'lcd',     action: 'text',
         params: { text: 'DEPLOYMENT SUCCEEDED', sub: 'Green へ 100% — ボーナス確定!!', color: '#4ce0a0', ms: 2200, sticky: true } },
       { at: 500, layer: 'overlay', action: 'particles', params: { preset: 'coin', x: 360, y: 380, count: 26 } },
-      { at: 900, layer: 'voice',   action: 'play',  params: { key: 'kiro_cz_win' } },
+      { at: 900, layer: 'voice',   action: 'play',  params: { key: 'luna_win_01', force: true } },
     ],
   },
 
@@ -747,7 +749,7 @@ export default [
        */
       { at: 300,  layer: 'lcd',  action: 'anim',  params: { anim: 'lcd_flash', color: '#ff4d4d', strength: 0.45 } },
       { at: 1300, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
-      { at: 1400, layer: 'voice', action: 'play', params: { key: 'kiro_cz_lose' } },
+      { at: 1400, layer: 'voice', action: 'play', params: { key: 'luna_lose_01', force: true } },
     ],
   },
 
@@ -768,7 +770,7 @@ export default [
       { at: 500,  layer: 'char',    action: 'show',  params: { char: 'kiro', pose: 'panic' } },
       { at: 600,  layer: 'lcd',     action: 'text',
         params: { text: '$state.goal', sub: '期待度 ${state.stars} — ${state.goalDetail}', color: '#ffb27a', ms: 2400 } },
-      { at: 1100, layer: 'voice',   action: 'play',  params: { key: 'kiro_cz_start_01' } },
+      { at: 1100, layer: 'voice',   action: 'play',  params: { key: 'luna_kita_01', force: true } },
       { at: 1300, layer: 'bgm',     action: 'change', params: { bgm: 'bgm_cz' } },
     ],
   },
@@ -867,7 +869,7 @@ export default [
       { at: 300, layer: 'lcd',     action: 'text',
         params: { text: 'RESILIENT', sub: '全障害を耐え切った — ボーナス確定!!', color: '#4ce0a0', ms: 2200, sticky: true } },
       { at: 500, layer: 'overlay', action: 'particles', params: { preset: 'coin', x: 360, y: 380, count: 26 } },
-      { at: 900, layer: 'voice',   action: 'play',  params: { key: 'kiro_cz_win' } },
+      { at: 900, layer: 'voice',   action: 'play',  params: { key: 'luna_win_01', force: true } },
     ],
   },
 
@@ -885,7 +887,7 @@ export default [
         params: { anim: 'health_check', ok: false, label: 'SLO VIOLATION' } },
       { at: 1200, layer: 'overlay', action: 'flash', params: { color: '#ff4d4d', ms: 280 } },
       { at: 1300, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
-      { at: 1400, layer: 'voice', action: 'play', params: { key: 'kiro_cz_lose' } },
+      { at: 1400, layer: 'voice', action: 'play', params: { key: 'luna_lose_01', force: true } },
     ],
   },
 
@@ -926,7 +928,7 @@ export default [
       { at: 420,  layer: 'lcd',     action: 'text',
         // ルール説明。sticky 語(確定/突入)は入れない
         params: { text: '$state.goal', sub: '期待度 ${state.stars} — ${state.goalDetail}', color: '#8ad4ff', ms: 2400 } },
-      { at: 900,  layer: 'voice',   action: 'play',  params: { key: 'kiro_cz_start_01' } },
+      { at: 900,  layer: 'voice',   action: 'play',  params: { key: 'luna_kita_01', force: true } },
       { at: 1000, layer: 'bgm',     action: 'change', params: { bgm: 'bgm_cz' } },
     ],
   },
@@ -1000,7 +1002,7 @@ export default [
         // 「確定」を含むので自動 sticky = 次のレバーONまで残る
         params: { text: 'ALL COMPLIANT', sub: '全ルールが準拠 — ボーナス確定!!', color: '#4ce0a0', ms: 2200, sticky: true } },
       { at: 500, layer: 'overlay', action: 'particles', params: { preset: 'coin', x: 360, y: 380, count: 26 } },
-      { at: 900, layer: 'voice',   action: 'play',  params: { key: 'kiro_cz_win' } },
+      { at: 900, layer: 'voice',   action: 'play',  params: { key: 'luna_win_01', force: true } },
     ],
   },
 
@@ -1018,7 +1020,7 @@ export default [
         params: { anim: 'health_check', ok: false, label: 'NON_COMPLIANT' } },
       { at: 1200, layer: 'overlay', action: 'flash', params: { color: '#ff4d4d', ms: 280 } },
       { at: 1300, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
-      { at: 1400, layer: 'voice', action: 'play', params: { key: 'kiro_cz_lose' } },
+      { at: 1400, layer: 'voice', action: 'play', params: { key: 'luna_lose_01', force: true } },
     ],
   },
 
@@ -1038,7 +1040,7 @@ export default [
       { at: 240,  layer: 'char',    action: 'motion', params: { char: 'kiro', motion: 'bounce' } },
       { at: 450,  layer: 'lcd',     action: 'text',
         params: { text: '$state.goal', sub: '期待度 ${state.stars} — ${state.goalDetail}', color: '#c8b4ff', ms: 2400 } },
-      { at: 900,  layer: 'voice',   action: 'play',  params: { key: 'kiro_cz_start_01' } },
+      { at: 900,  layer: 'voice',   action: 'play',  params: { key: 'luna_kita_01', force: true } },
       { at: 1000, layer: 'bgm',     action: 'change', params: { bgm: 'bgm_cz' } },
     ],
   },
@@ -1093,7 +1095,7 @@ export default [
       { at: 300, layer: 'lcd',     action: 'text',
         params: { text: 'ALL LINKS UP', sub: '専用線4本が開通 — ボーナス確定!!', color: '#4ce0a0', ms: 2200, sticky: true } },
       { at: 500, layer: 'overlay', action: 'particles', params: { preset: 'coin', x: 360, y: 380, count: 26 } },
-      { at: 900, layer: 'voice',   action: 'play',  params: { key: 'kiro_cz_win' } },
+      { at: 900, layer: 'voice',   action: 'play',  params: { key: 'luna_win_01', force: true } },
     ],
   },
 
@@ -1111,7 +1113,7 @@ export default [
         params: { anim: 'health_check', ok: false, label: 'BGP DOWN' } },
       { at: 1200, layer: 'overlay', action: 'flash', params: { color: '#ff4d4d', ms: 280 } },
       { at: 1300, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
-      { at: 1400, layer: 'voice', action: 'play', params: { key: 'kiro_cz_lose' } },
+      { at: 1400, layer: 'voice', action: 'play', params: { key: 'luna_lose_01', force: true } },
     ],
   },
 
@@ -1141,7 +1143,7 @@ export default [
       { at: 400,  layer: 'char',    action: 'show',  params: { char: 'kiro', pose: 'panic' } },
       { at: 400,  layer: 'lcd',     action: 'text',
         params: { text: '$state.goal', sub: '期待度 ${state.stars} — ${state.goalDetail}', color: '#ffb27a', ms: 1500 } },
-      { at: 900,  layer: 'voice',   action: 'play',  params: { key: 'kiro_cz_start_01' } },
+      { at: 900,  layer: 'voice',   action: 'play',  params: { key: 'luna_kita_01', force: true } },
       { at: 1000, layer: 'bgm',     action: 'change', params: { bgm: 'bgm_cz' } },
     ],
   },
@@ -1256,7 +1258,7 @@ export default [
       { at: 300, layer: 'lcd',     action: 'text',
         params: { text: 'ATTACK MITIGATED', sub: '全波を緩和しきった — ボーナス確定!!', color: '#4ce0a0', ms: 2200, sticky: true } },
       { at: 500, layer: 'overlay', action: 'particles', params: { preset: 'coin', x: 360, y: 380, count: 26 } },
-      { at: 900, layer: 'voice',   action: 'play',  params: { key: 'kiro_cz_win' } },
+      { at: 900, layer: 'voice',   action: 'play',  params: { key: 'luna_win_01', force: true } },
     ],
   },
 
@@ -1274,7 +1276,7 @@ export default [
         params: { anim: 'health_check', ok: false, label: 'SERVICE DEGRADED' } },
       { at: 1200, layer: 'overlay', action: 'flash', params: { color: '#ff4d4d', ms: 280 } },
       { at: 1300, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
-      { at: 1400, layer: 'voice', action: 'play', params: { key: 'kiro_cz_lose' } },
+      { at: 1400, layer: 'voice', action: 'play', params: { key: 'luna_lose_01', force: true } },
     ],
   },
 ];

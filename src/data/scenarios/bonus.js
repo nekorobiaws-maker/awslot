@@ -66,10 +66,12 @@ export default [
       { at: 260,  layer: 'sfx',     action: 'synth',  params: { preset: 'announce' } },
       { at: 300,  layer: 'lcd',     action: 'text',
         params: { text: 'BONUS 確定', sub: 'ゴースト7を揃えろ!', color: '#ffd24a', ms: 1900 } },
-      // ゴースト7狙いは相棒サメ(kiro枠)が主役。ジョージは引っ込める
+      // U68: 主役はルナ1人になった(char:'george' は別名として同じ子に届く)
       { at: 600,  layer: 'char',    action: 'hide',   params: { char: 'george' } },
       { at: 700,  layer: 'char',    action: 'show',   params: { char: 'kiro', pose: 'happy' } },
       { at: 700,  layer: 'char',    action: 'motion', params: { char: 'kiro', motion: 'bounce' } },
+      // 確定告知なので間引かない(U68)。テロップの「BONUS 確定」と同じ意味を声でも言う
+      { at: 900,  layer: 'voice',   action: 'play',   params: { key: 'luna_bonus_kakutei_01', force: true } },
       { at: 900,  layer: 'sfx',     action: 'synth',  params: { preset: 'charge_up' } },
       { at: 1200, layer: 'overlay', action: 'particles', params: { preset: 'coin', x: 360, y: 320, count: 14 } },
     ],
@@ -91,10 +93,12 @@ export default [
       { at: 0,    layer: 'sfx',     action: 'synth',  params: { preset: 'announce' } },
       { at: 260,  layer: 'lcd',     action: 'text',
         params: { text: 'BONUS 確定', sub: 'サメBARを揃えろ!', color: '#ffd166', ms: 1700 } },
-      // サメBAR狙いはジョージが主役。相棒サメ(kiro枠)は引っ込める
+      // U68: BAR揃いの告知は **絵柄** が担う。キャラはルナが歩いて出てきて喜ぶだけ
       { at: 500,  layer: 'char',    action: 'hide',   params: { char: 'kiro' } },
       { at: 600,  layer: 'char',    action: 'show',   params: { char: 'george', pose: 'grin' } },
       { at: 600,  layer: 'char',    action: 'motion', params: { char: 'george', motion: 'swimIn' } },
+      // 確定告知なので間引かない(U68)
+      { at: 900,  layer: 'voice',   action: 'play',   params: { key: 'luna_bonus_kakutei_01', force: true } },
       { at: 900,  layer: 'sfx',     action: 'synth',  params: { preset: 'charge_up' } },
     ],
   },
@@ -148,7 +152,7 @@ export default [
       { at: 60,   layer: 'char',    action: 'hide',   params: { char: 'kiro' } },
       { at: 900,  layer: 'char',    action: 'show',   params: { char: 'george', pose: 'bite' } },
       { at: 900,  layer: 'char',    action: 'motion', params: { char: 'george', motion: 'swimIn' } },
-      { at: 1000, layer: 'voice',   action: 'play',   params: { key: 'george_bonus_01' } },
+      { at: 1000, layer: 'voice',   action: 'play',   params: { key: 'luna_win_01', force: true } },
       { at: 1400, layer: 'overlay', action: 'particles', params: { preset: 'coin', x: 360, y: 380, count: 24 } },
     ],
   },
@@ -171,7 +175,7 @@ export default [
       { at: 60,   layer: 'char',    action: 'hide',   params: { char: 'george' } },
       { at: 700,  layer: 'char',    action: 'show',   params: { char: 'kiro', pose: 'happy' } },
       { at: 700,  layer: 'char',    action: 'motion', params: { char: 'kiro', motion: 'bounce' } },
-      { at: 1000, layer: 'voice',   action: 'play',   params: { key: 'kiro_bonus_01' } },
+      { at: 1000, layer: 'voice',   action: 'play',   params: { key: 'luna_win_01', force: true } },
       { at: 1400, layer: 'overlay', action: 'particles', params: { preset: 'coin', x: 360, y: 380, count: 24 } },
     ],
   },
@@ -191,7 +195,7 @@ export default [
       { at: 80,   layer: 'overlay', action: 'cutin',  params: { id: 'big_bonus_logo', title: 'BIG BONUS' } },
       { at: 200,  layer: 'char',    action: 'hide',   params: { char: 'george' } },
       { at: 900,  layer: 'char',    action: 'show',   params: { char: 'kiro', pose: 'premium' } },
-      { at: 1000, layer: 'voice',   action: 'play',   params: { key: 'kiro_bonus_01' } },
+      { at: 1000, layer: 'voice',   action: 'play',   params: { key: 'luna_win_01', force: true } },
       /*
        * 突入ロゴは「瞬間の演出」。sticky:false を明示する(2026-08-14 V21-01)。
        * 'BONUS' の語で自動 sticky になると **次のレバーONまで帯が居座り**、
@@ -225,7 +229,7 @@ export default [
       { at: 200, layer: 'char',    action: 'hide',  params: { char: 'kiro' } },
       { at: 800, layer: 'char',    action: 'show',  params: { char: 'george', pose: 'bite' } },
       { at: 800, layer: 'char',    action: 'motion', params: { char: 'george', motion: 'swimIn' } },
-      { at: 1000, layer: 'voice',  action: 'play',  params: { key: 'george_bonus_01' } },
+      { at: 1000, layer: 'voice',  action: 'play',  params: { key: 'luna_win_01', force: true } },
       // 突入ロゴは残さない(sticky:false の理由は bonus_big_logo のコメント参照)
       { at: 1100, layer: 'lcd',    action: 'text',
         params: {
@@ -255,7 +259,7 @@ export default [
       { at: 700,  layer: 'char',    action: 'motion', params: { char: 'kiro', motion: 'zoom' } },
       { at: 1200, layer: 'lcd',     action: 'text',
         params: { text: 'GHOST SP', sub: `セット継続型 — 1セット${GHOST_SP.setGames}G / 継続${Math.round(GHOST_SP.continueRate * 100)}%`, color: '#7bf7d0', ms: 2000 } },
-      { at: 1400, layer: 'voice',   action: 'play',   params: { key: 'kiro_premium_01' } },
+      { at: 1400, layer: 'voice',   action: 'play',   params: { key: 'luna_sugoi_01', force: true } },
       { at: 1600, layer: 'overlay', action: 'particles', params: { preset: 'coin', x: 360, y: 340, count: 32 } },
       { at: 1800, layer: 'bgm',     action: 'change', params: { bgm: 'bgm_bonus' } },
     ],

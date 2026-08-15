@@ -18,7 +18,13 @@
  */
 
 import { getLayerRect } from '../../engine/layers.js';
-import { drawShark, sharkArtReady } from '../../render/chars/george.js';
+/*
+ * U68(2026-08-15): カットインの主役も **ルナ**(assets/chars/luna.png)。
+ * サメの大写し(render/chars/george.js の drawShark)は全部ここから外した。
+ * george.js と shark.png は保全のため残してあるので、戻すなら import 1行で戻せる。
+ */
+import { drawLuna, lunaArtReady } from '../../render/chars/lunachan.js';
+import { drawHero } from '../../render/chars/herochan.js';
 import { CUTINS_EXTRA } from './cutins-extra.js';
 
 const FONT_HEAVY = '"Arial Black", "Helvetica Neue", "Hiragino Sans", sans-serif';
@@ -128,8 +134,8 @@ const easeOutBack = (x) => 1 + 2.70158 * (x - 1) ** 3 + 1.70158 * (x - 1) ** 2;
 /**
  * キャラを1回だけオフスクリーンに描いてキャッシュする。
  *
- * 2026-08-14: キャラがサメ画像になったので、**画像が届く前に描いた白紙を
- * 掴み続けない**ようキーへ読み込み状態を混ぜる(sharkArtReady)。
+ * 2026-08-14: キャラが画像になったので、**画像が届く前に描いた白紙を
+ * 掴み続けない**ようキーへ読み込み状態を混ぜる(U68 以降は lunaArtReady)。
  * 素材が届いた瞬間に別キーへ切り替わり、絵の入ったキャンバスが作り直される。
  */
 class CharCache {
@@ -139,7 +145,7 @@ class CharCache {
 
   /** @returns {HTMLCanvasElement} */
   get(rawKey, w, h, drawFn) {
-    const key = `${rawKey}@${sharkArtReady() ? 1 : 0}`;
+    const key = `${rawKey}@${lunaArtReady() ? 1 : 0}`;
     if (this.cache.has(key)) return this.cache.get(key);
     const c = document.createElement('canvas');
     c.width = w;
@@ -158,7 +164,16 @@ const charCache = new CharCache();
 
 /** カットイン定義 */
 export const CUTINS = {
-  /** サメがBARプレートに噛みつく(ボーナス当選) */
+  /**
+   * BARプレート + ルナのガッツポーズ(ボーナス当選)。
+   *
+   * ■ U68(2026-08-15): 「サメがBARに噛みつく」から配役変更
+   *   サメの大写しは控える方針になったので、**告知の主体を絵柄(BARプレート)へ**寄せ、
+   *   ルナはそこへ飛び込んで拳を握る(fire = 炎オーラの拳)役にした。
+   *   「BAR揃い = ボーナス確定」という情報は **絵柄そのもの** が担うので、
+   *   キャラが替わっても意味は1ミリも変わらない(むしろ台の絵柄と直結して読みやすい)。
+   *   ID はシナリオ側(bonus.js / freeze.js)が参照しているので shark_bite_bar のまま。
+   */
   shark_bite_bar: {
     ms: 1800,
     draw(ctx, p, params, w, h) {
@@ -188,21 +203,21 @@ export const CUTINS = {
       ctx.fillText('BAR', 0, 2);
       ctx.restore();
 
-      // サメが左から突っ込んで噛みつく
+      // ルナが左から駆け込んできて、BARプレートの横で拳を握る
       const biteP = clamp01((p - 0.18) / 0.42);
-      const mouth = biteP < 0.6 ? biteP / 0.6 : Math.max(0, 1 - (biteP - 0.6) / 0.4);
-      const gx = -260 + easeOutCubic(biteP) * (w / 2 + 210);
-      // 大口を開けて飛びかかるポーズ(スプライトの「水しぶきジャンプ」)
-      const sharkCanvas = charCache.get('george_cutin', 340, 260, (cx) => {
-        drawShark(cx, { x: 0, y: 0, scale: 1.5, t: 0, dir: 1, pose: 'jump', anim: 'none' });
+      // 到着後の「ぐっ」= 一瞬だけ縦に詰まる(拳を握り込む溜め)
+      const punch = biteP < 0.6 ? biteP / 0.6 : Math.max(0, 1 - (biteP - 0.6) / 0.4);
+      const gx = -260 + easeOutCubic(biteP) * (w / 2 + 190);
+      // 炎オーラの拳 = このゲームで一番熱いポーズ
+      const lunaCanvas = charCache.get('luna_cutin_bar', 340, 300, (cx) => {
+        drawLuna(cx, { x: 0, y: 0, scale: 1.5, t: 0, dir: 1, pose: 'fire', anim: 'none', aura: false });
       });
       ctx.save();
       ctx.globalAlpha = Math.min(1, biteP * 4);
       const sc = 1.15;
-      // mouthOpen はキャッシュ済みなので、噛みつきは横スケールの詰めで表現する
       ctx.translate(gx, cy + 10);
-      ctx.scale(sc, sc * (1 - mouth * 0.06));
-      ctx.drawImage(sharkCanvas, -170, -130);
+      ctx.scale(sc, sc * (1 - punch * 0.06));
+      ctx.drawImage(lunaCanvas, -170, -150);
       ctx.restore();
 
       // 噛みついた瞬間のインパクト
@@ -227,9 +242,10 @@ export const CUTINS = {
   },
 
   /**
-   * サメ+7のドン(ボーナス当選・別パターン)。
+   * ルナ + 7のドン(ボーナス当選・別パターン)。
    * ID はシナリオ側が参照しているので ghost_seven_don のまま。
-   * 中身は 2026-08-14 に「炎の拳サメ + 7」へ差し替え済み(お化けは描かない)。
+   * 2026-08-14 に「炎の拳サメ + 7」、U68(2026-08-15)で **ルナのお祝いポーズ + 7** へ。
+   * 上の shark_bite_bar が「拳(熱)」なので、こちらは「クラッカー(祝)」で描き分ける。
    */
   ghost_seven_don: {
     ms: 1800,
@@ -258,19 +274,20 @@ export const CUTINS = {
       ctx.fillText('7', 0, 0);
       ctx.restore();
 
-      // サメが左から飛び込む。7 に合わせて「炎の拳」= 一番レアなポーズを使う
+      // ルナが左から飛び込む。7 に合わせて「クラッカーでお祝い」= 確定役のポーズ
       const kiroP = clamp01((p - 0.15) / 0.4);
       const kx = -140 + easeOutCubic(kiroP) * (w * 0.36 + 140);
-      const kiroCanvas = charCache.get('kiro_cutin', 320, 320, (cx) => {
-        drawShark(cx, { x: 0, y: 0, scale: 1.7, pose: 'fire', anim: 'none', t: 0, dir: 1 });
+      const kiroCanvas = charCache.get('luna_cutin_seven', 320, 340, (cx) => {
+        drawLuna(cx, { x: 0, y: 0, scale: 1.7, pose: 'party', anim: 'none', t: 0, dir: 1, aura: false });
       });
       ctx.save();
       ctx.globalAlpha = Math.min(1, kiroP * 3);
-      ctx.translate(kx, cy + Math.sin(p * 8) * 10);
+      // U68b(接地): 上下のふわふわ(旧 sin(p*8)*10)は廃止。人間なので床に立つ
+      ctx.translate(kx, cy);
       // 到着後にぷるぷる+明滅(激アツの余韻)
       const buzz = kiroP >= 1 ? Math.sin(p * 46) : 0;
       ctx.rotate(buzz * 0.03);
-      ctx.drawImage(kiroCanvas, -160, -160);
+      ctx.drawImage(kiroCanvas, -160, -170);
       ctx.restore();
 
       if (p > 0.5) {
@@ -409,8 +426,9 @@ export const CUTINS = {
   },
 
   /**
-   * レア役の軽いカットイン(ミニサメのちょい出し)。IDEAS.md 2-14
-   * ID は互換のため mini_ghost_peek のまま(絵は「ひょっこり覗きサメ」)。
+   * レア役の軽いカットイン(ちょい出し予告)。IDEAS.md 2-14
+   * ID は互換のため mini_ghost_peek のまま。
+   * 絵は 幽霊 → サメ → **ルナのひょっこり覗き**(U68)と替わってきている。
    */
   mini_ghost_peek: {
     ms: 1200,
@@ -420,50 +438,85 @@ export const CUTINS = {
        * そこは **液晶の外**(リールと筐体の領域)。告知級ではないので液晶の中へ移す。
        * 左右どちらから覗くかはそのままに、液晶の左右端を基準点にする。
        */
+      /*
+       * U68b(接地): 「ぴょこぴょこ跳ねながら上下に顔を出す」のをやめた。
+       * 人間なので **画面の端から横に体を出し入れする**(peek ポーズの意図どおり)。
+       * 出入りは liveliness を殺さないよう、覗き込む首の傾きで表情をつける。
+       */
       const side = params.side === 'right' ? 1 : -1;
       const spot = lcdSpot(0.78, side < 0 ? 0.16 : 0.84);
-      const baseX = spot.x;
       const peek = Math.sin(clamp01(p) * Math.PI);
-      const x = baseX + side * -34 * peek;
-      const y = spot.y + Math.sin(p * 12) * 8;
+      // 端に隠れた状態(peek=0)から内側へ出てくる
+      const x = spot.x + side * -46 * peek + side * 24;
+      const y = spot.y;
 
-      // 「ひょっこり覗き」ポーズ。下から顔だけ出すのでそのまま使える
-      const cache = charCache.get(`kiro_mini_peek_${side}`, 140, 140, (cx) => {
-        drawShark(cx, { x: 0, y: 0, scale: 0.62, pose: 'peek', anim: 'none', t: 0, dir: side < 0 ? 1 : -1 });
+      // 「ひょっこり覗き」ポーズ
+      // (ルナの素材は反転させない = Tシャツの文字が鏡文字になるため。dir は渡さない)
+      const cache = charCache.get('luna_mini_peek', 150, 170, (cx) => {
+        drawLuna(cx, { x: 0, y: 0, scale: 0.62, pose: 'peek', anim: 'none', t: 0, dir: 1, aura: false });
       });
       ctx.save();
       ctx.globalAlpha = peek * 0.95;
-      // ぴょこぴょこ跳ねながら覗く
-      ctx.translate(x, y - Math.abs(Math.sin(p * Math.PI * 3)) * 8);
-      ctx.rotate(Math.sin(p * Math.PI * 4) * 0.07);
-      ctx.drawImage(cache, -70, -70);
+      ctx.translate(x, y);
+      // 覗き込む首の傾き(体は床に着いたまま)
+      ctx.rotate(side * -0.06 * peek);
+      ctx.drawImage(cache, -75, -85);
       ctx.restore();
     },
   },
 
-  /** Spot ゾーン突入: サメが口を開けて突っ込んでくる。IDEAS.md 3-13 */
+  /**
+   * Spot ゾーン突入。IDEAS.md 3-13
+   *
+   * ══ U68(2026-08-15): サメの残し方の設計判断 ═══════════════════════
+   *
+   * 【指示】サメを前面に出すのは控える。ただし「サメ = Spot中断」のメタファーは
+   *        ①小さく短時間で残す か ②文言だけにする を選んでよい。
+   * 【判断】**①を採る。ただしキャラのサメ(shark.png)は使わず、背びれだけを描く。**
+   * 【理由】
+   *   1. Spot ゾーンの肝は「安いけど、いつ取り上げられるか分からない」緊張感で、
+   *      追ってくる捕食者の画が **なぜ強制終了なのかを1枚で説明** している。
+   *      文言だけにすると「INTERRUPTION NOTICE」の意味を字で読むしかなくなる。
+   *   2. 背びれ(下の drawFinSilhouette)は **プロシージャル描画** なので、
+   *      キャラ素材の大写しには当たらない。露出は「小さい・短い・顔なし」の3点で最小。
+   *      同じ絵は既存のガセ予告 shark_fin_tease でも使っていて、台の語彙として一貫する。
+   *   3. 主役はルナ。驚き(!!)ポーズで前に立たせ、背びれはその **後ろを横切るだけ**。
+   *      「相棒が焦っている」ほうが、プレイヤーの気持ちに近い画になる。
+   */
   spot_entry: {
     ms: 2000,
     draw(ctx, p, params, w, h) {
       const cy = h * 0.38;
       drawSpeedLines(ctx, w, h, cy, p, '224,112,28');
 
-      // ジョージが左から慌てて飛び込んでくる(中断通知を運んでくる役)。
-      // 「驚き・焦り(!!)」ポーズ + 到着後のぷるぷるで、悪い知らせだと一目で分かる
-      const gp = clamp01(p / 0.5);
-      const cache = charCache.get('george_spot', 360, 280, (cx) => {
-        drawShark(cx, { x: 0, y: 0, scale: 1.7, t: 0, dir: 1, pose: 'panic', anim: 'none' });
-      });
       // 液晶の上寄りに配置して、リール窓と下部のルール説明を塞がないようにする
-      const spot = lcdCharSpot(360, 280, { hRatio: 0.52, wRatio: 0.7, cyRatio: 0.34 });
+      const spot = lcdCharSpot(340, 300, { hRatio: 0.52, wRatio: 0.7, cyRatio: 0.34 });
+
+      // ── 背びれが後ろを横切る(0.10〜0.55 の 0.45 ぶんだけ。小さく・短く)──
+      const finP = clamp01((p - 0.1) / 0.45);
+      if (finP > 0 && finP < 1) {
+        ctx.save();
+        ctx.globalAlpha = Math.sin(finP * Math.PI) * 0.75;
+        const fx = spot.left + (spot.right - spot.left + 160) * finP - 80;
+        drawFinSilhouette(ctx, fx, spot.y + 60, 0.5 + Math.sin(finP * Math.PI) * 0.06);
+        ctx.restore();
+      }
+
+      // ── ルナが左から慌てて飛び込んでくる(悪い知らせに気づいた側)──
+      // 「驚き(!!)」ポーズ + 到着後のぷるぷるで、良くない知らせだと一目で分かる
+      const gp = clamp01(p / 0.5);
+      const cache = charCache.get('luna_spot', 340, 300, (cx) => {
+        drawLuna(cx, { x: 0, y: 0, scale: 1.6, t: 0, dir: 1, pose: 'surprise', anim: 'none', aura: false });
+      });
       const gx = spot.left - 180 + easeOutCubic(gp) * (spot.x - spot.left + 180);
       const shiver = gp >= 1 ? Math.sin(p * 52) * 4 : 0;
       ctx.save();
       ctx.globalAlpha = Math.min(1, gp * 4);
-      ctx.translate(gx + shiver, spot.y + Math.sin(p * 41) * 2);
+      // U68b(接地): 震えは横だけ(上下に揺らすと浮いて見える)
+      ctx.translate(gx + shiver, spot.y);
       const s = spot.scale * (1 + (1 - gp) * 0.3);
       ctx.scale(s, s);
-      ctx.drawImage(cache, -180, -140);
+      ctx.drawImage(cache, -170, -150);
       ctx.restore();
 
       // 「2分前通知」の警告帯
@@ -637,21 +690,31 @@ export const CUTINS = {
       }
       ctx.restore();
 
-      // 壇上の2匹(お祝いポーズ + 喜びポーズ)。交互に跳ねて漫才っぽく見せる
+      /*
+       * 壇上の2人(U68 で配役変更: サメ2匹 → **ルナ + ヒーロー**)。
+       * 完走した人を出迎える場なので、主役のルナ(クラッカー)と
+       * ヒーローRUSH の主役(両拳バンザイ)を並べる。交互に跳ねさせて祝祭感を出す。
+       */
       const cp = clamp01((p - 0.15) / 0.3);
       if (cp > 0) {
-        const kiro = charCache.get('kiro_ed', 340, 340, (cx) => {
-          drawShark(cx, { x: 0, y: 0, scale: 1.8, pose: 'party', anim: 'none', t: 0, dir: 1 });
+        const luna = charCache.get('luna_ed', 340, 360, (cx) => {
+          drawLuna(cx, { x: 0, y: 0, scale: 1.8, pose: 'party', anim: 'none', t: 0, dir: 1, aura: false });
         });
-        const george = charCache.get('george_ed', 360, 300, (cx) => {
-          drawShark(cx, { x: 0, y: 0, scale: 1.6, pose: 'cheer', anim: 'none', t: 0, dir: -1 });
+        const hero = charCache.get('hero_ed', 360, 320, (cx) => {
+          drawHero(cx, { x: 0, y: 0, scale: 1.6, pose: 'banzai', anim: 'none', t: 0, dir: -1, aura: false });
         });
         ctx.save();
         ctx.globalAlpha = cp;
-        const hopA = Math.abs(Math.sin(p * 7)) * 14;
-        const hopB = Math.abs(Math.cos(p * 7)) * 14;
-        ctx.drawImage(kiro, w * 0.3 - 170, h * 0.34 - 170 - hopA);
-        ctx.drawImage(george, w * 0.68 - 180, h * 0.36 - 150 - hopB);
+        /*
+         * U68b(接地): 跳ねっぱなしにしない。
+         * 1周期のうち跳んでいるのは前半だけで、残りは **床に立っている**。
+         * 2人の位相をずらして交互に跳ばせる(漫才っぽい間)。
+         */
+        const hopA = stageHop(p * 3.2);
+        const hopB = stageHop(p * 3.2 + 0.5);
+        // 中央には re:Invent / KEYNOTE のロゴが降りてくるので、2人は外側へ寄せる
+        ctx.drawImage(luna, w * 0.26 - 170, h * 0.34 - 180 - hopA);
+        ctx.drawImage(hero, w * 0.72 - 180, h * 0.36 - 160 - hopB);
         ctx.restore();
       }
 
@@ -662,7 +725,11 @@ export const CUTINS = {
     },
   },
 
-  /** ガセ用: サメの尾びれチラ見せ(弱)。IDEAS.md 2-15 */
+  /**
+   * ガセ用: 背びれチラ見せ(弱)。IDEAS.md 2-15
+   * U68 でもここは据え置き。**顔のないシルエットなので「サメを前面に出す」には当たらない**
+   * (キャラ素材 shark.png は一切使っていない)。
+   */
   shark_fin_tease: {
     ms: 1100,
     draw(ctx, p, params, w, h) {
@@ -672,25 +739,7 @@ export const CUTINS = {
       const y = spot.y + (1 - peek) * 90;
       ctx.save();
       ctx.globalAlpha = peek;
-      ctx.translate(spot.x + p * 90, y);
-      ctx.beginPath();
-      ctx.moveTo(-30, 46);
-      ctx.quadraticCurveTo(-6, 10, 6, -52);
-      ctx.quadraticCurveTo(16, 8, 36, 46);
-      ctx.closePath();
-      ctx.fillStyle = '#e0701c';
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(120,55,8,0.7)';
-      ctx.lineWidth = 3;
-      ctx.stroke();
-      // 波紋
-      ctx.strokeStyle = `rgba(255,180,120,${0.5 * peek})`;
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-      ctx.moveTo(-70, 48);
-      ctx.quadraticCurveTo(-30, 40, 0, 48);
-      ctx.quadraticCurveTo(34, 56, 76, 48);
-      ctx.stroke();
+      drawFinSilhouette(ctx, spot.x + p * 90, y, 1, peek);
       ctx.restore();
     },
   },
@@ -711,6 +760,60 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.arcTo(x, y + h, x, y, rr);
   ctx.arcTo(x, y, x + w, y, rr);
   ctx.closePath();
+}
+
+/**
+ * 壇上のジャンプ1周期(U68b の接地版)。
+ * 跳ぶのは周期の前半 60% だけで、残りは床の上(0)。
+ * @param {number} cycles 経過した周期数
+ * @returns {number} 地面からの高さ(px)
+ */
+function stageHop(cycles) {
+  const ph = cycles % 1;
+  const AIR = 0.6;
+  if (ph > AIR) return 0;
+  return Math.sin((ph / AIR) * Math.PI) * 14;
+}
+
+/**
+ * 背びれのシルエット + 波紋(U68 で共通化)。
+ *
+ * 「サメ = 中断・捕食」のメタファーを **顔のない図形** だけで表す共通パーツ。
+ * キャラ素材(assets/chars/shark.png)は使わないので、サメの露出は最小に保てる。
+ * 使いどころは2つだけ:
+ *   shark_fin_tease … ガセ予告(液晶の中を横切る)
+ *   spot_entry      … Spot ゾーン突入(ルナの後ろを小さく短く横切る)
+ *
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {number} x 背びれの根元の中心
+ * @param {number} y 同上
+ * @param {number} [scale=1]
+ * @param {number} [ripple=1] 波紋の濃さ(0で波紋なし)
+ */
+function drawFinSilhouette(ctx, x, y, scale = 1, ripple = 1) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(scale, scale);
+  ctx.beginPath();
+  ctx.moveTo(-30, 46);
+  ctx.quadraticCurveTo(-6, 10, 6, -52);
+  ctx.quadraticCurveTo(16, 8, 36, 46);
+  ctx.closePath();
+  ctx.fillStyle = '#e0701c';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(120,55,8,0.7)';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  if (ripple > 0) {
+    ctx.strokeStyle = `rgba(255,180,120,${0.5 * ripple})`;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(-70, 48);
+    ctx.quadraticCurveTo(-30, 40, 0, 48);
+    ctx.quadraticCurveTo(34, 56, 76, 48);
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 function drawSpeedLines(ctx, w, h, cy, p, rgb) {
@@ -774,11 +877,35 @@ function drawImpactText(ctx, text, x, y, p, colors, maxWidth = 600) {
   ctx.restore();
 }
 
+/**
+ * **キャラを大写しにする**カットイン(U68)。
+ *
+ * ルナが常駐の主役になったので、これらが出ている間に液晶の常駐を描くと
+ * 同じ子が画面に2人並ぶ。ここに載っている ID が1本でも走っている間は
+ * 常駐を引っ込める(配線は src/main.js → CharacterLayer.setCharCutinActive)。
+ * **キャラを描くカットインを足したら、必ずここにも足すこと。**
+ */
+export const CHAR_CUTINS = new Set([
+  'shark_bite_bar',      // ルナ(炎の拳)+ BARプレート
+  'ghost_seven_don',     // ルナ(クラッカー)+ 7
+  'mini_ghost_peek',     // ルナ(ひょっこり覗き)
+  'spot_entry',          // ルナ(驚き)+ 背びれ
+  'rush_slam',           // ルナ / ヒーローの迫り出し
+  'iam_admin_badge',     // ルナ(ニヤリ指差し)+ バッジ
+  'reinvent_keynote',    // ルナ + ヒーローが壇上に並ぶ
+]);
+
 /** 実行中カットインの管理 */
 export class Cutins {
   constructor() {
     /** @type {{id:string, def:object, params:object, left:number, ms:number}[]} */
     this.active = [];
+  }
+
+  /** キャラ大写しのカットインが1本でも走っているか(U68) */
+  hasCharCutin() {
+    for (const a of this.active) if (CHAR_CUTINS.has(a.id)) return true;
+    return false;
   }
 
   play(id, params = {}) {

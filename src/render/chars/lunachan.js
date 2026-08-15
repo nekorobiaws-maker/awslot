@@ -87,7 +87,9 @@ const CELL_H = LUNA_SHEET.imgH / LUNA_SHEET.rows;  // 313.5
 /**
  * 20ポーズのレジストリ。
  *   col/row  … スプライトシート上の位置(左上が 0,0)
- *   anim     … 既定の芝居(ANIMS のキー)
+ *   anim     … 既定の芝居(ANIMS のキー)。
+ *               U68b(2026-08-15)で **全部「接地版」** に作り直してある
+ *               (ルナは人間なので床に立つ / 詳細は下の ANIMS の冒頭)
  *   fx       … 追加エフェクト(FX のキー)
  *   fxColor  … エフェクトの色(役の色と合わせるために使う)
  *   mirror   … true のポーズだけ dir で左右反転してよい(既定は反転しない)
@@ -131,6 +133,15 @@ export const LUNA_POSES = {
  *   強チェリー   → fire     (炎オーラで拳)
  *   チャンス目   → penlight (ペンライト / 水色の音符)
  *   確定役(サメ揃い・ゴースト揃い) → party (クラッカー)
+ *
+ * ■ 常駐キャラのレガシーポーズ名(2026-08-15 U68 主役交代)
+ *   ルナが **常駐の主役** になったが、シナリオ側(src/data/scenarios/**)には
+ *   旧サメ2体の呼び名(char:'kiro' / char:'george')で書かれたポーズ指定が
+ *   300箇所以上ある。そこを機械置換すると差分が巨大になり事故りやすいので、
+ *   **ポーズ名の対応表をここに足して吸収する**(chars/index.js が呼ぶ)。
+ *     kiro 側   normal / surprised / happy / panic / premium
+ *     george 側 normal / grin / bite / angry / chill
+ *   新しく書く演出は下の「素の」ポーズ名かシチュエーション名を使うこと。
  */
 export const LUNA_SITUATIONS = {
   normal: 'smile',
@@ -157,6 +168,18 @@ export const LUNA_SITUATIONS = {
   explain: 'present',
   dash: 'run',
   sleep: 'sleep',
+
+  // ── 旧サメ2体のポーズ名(U68)────────────────────
+  // kiro 枠(相棒サメ)
+  surprised: 'surprise',   // 「え、なに?」= 予兆の入り
+  happy: 'joy',            // 当選・良い知らせ
+  panic: 'dizzy',          // 慌てる・強制終了・お手上げ
+  // premium は上の 'party' と同じ意味なので既存行をそのまま使う
+  // george 枠(サメ ジョージ)
+  grin: 'joy',             // にやり = 良い流れ。ルナでは満面の喜びに寄せる
+  bite: 'fire',            // 噛みつく = 攻める。炎オーラの拳へ
+  angry: 'sulk',           // むすっ(悪い知らせを運んできた場面)
+  chill: 'sleep',          // のんびり待機
 };
 
 /**
@@ -243,142 +266,191 @@ function cutCell(img, pose) {
  *
  * 返り値: { dx, dy, rot, sx, sy } … 位置オフセット/回転/スケール
  * すべて「scale=1 のときの画面px」基準。
+ *
+ * ══ 接地の原則(2026-08-15 ユーザー指摘 U68b)══════════════════════
+ *
+ * 【指摘】「ルナが空中を漂ってるみたいな動き。人間だから地面に立ってる。
+ *          サメの動きをそのまま使ってるでしょ」→ **そのとおり**だった。
+ *   ここの芝居は魚(サメ)用に書かれたもので、待機・考え中・プレゼン・
+ *   ペンライトまで、ぜんぶ dy を定常的にサイン波で揺らしていた
+ *   = 常時ホバリング。人間の芝居ではない。
+ *
+ * 【新しい約束】
+ *   1. **dy を定常的に揺らさない**。上下に動いてよいのは
+ *      「跳ぶ(必ず着地して 0 へ戻る)」「歩幅ぶんの跳ね」だけ。
+ *   2. 呼吸・膝の屈伸・背伸びは **dy ではなく sy(縦の伸び縮み)** で書く。
+ *      足元は drawLuna が固定する(下の接地補正)ので、
+ *      sy を縮めれば「膝を曲げて沈む」、伸ばせば「背伸び」になる。
+ *   3. 重心の移動は dx と rot で書く。人間は左右に体重を移す。
+ *   4. 傾き(rot)は控えめに。泳ぐ魚のような大きな傾きは使わない。
+ *
+ * ■ 接地補正のしくみ(drawLuna 側)
+ *   描画は「箱(BOX)の中心」を基準にしているので、sy を縮めると
+ *   足元も一緒に上がってしまう(= 浮く)。そこで drawLuna が
+ *      dy += (BOX.h / 2) * (1 - sy)
+ *   を足して、**足元の高さを常に一定に保つ**。
+ *   個々の芝居はこの補正を意識せず sy だけ書けばよい。
  * ──────────────────────────────────────────────────────────── */
 
 const TAU = Math.PI * 2;
 
+/**
+ * 人間のジャンプ1周期(跳ぶ → 着地 → 一拍ためる)。
+ *
+ * サメ版は sin 波で跳ね続けていて「ずっと浮いている」状態だったので、
+ * **空中に居る割合(air)を1周期の一部に限り、残りは床の上**にした。
+ * 着地したら膝を曲げて沈む(sy < 1)= 体重が乗っている画になる。
+ *
+ * @param {number} t 経過秒
+ * @param {object} opt
+ * @param {number} [opt.speed]  1秒あたりの周期数
+ * @param {number} [opt.height] 跳ぶ高さ(px)
+ * @param {number} [opt.air]    1周期のうち空中に居る割合(0〜1)
+ * @param {number} [opt.spin]   跳んでいる間の体のひねり(rad)
+ */
+function hopCycle(t, { speed = 1.4, height = 12, air = 0.55, spin = 0 } = {}) {
+  const ph = (t * speed) % 1;
+  if (ph > air) {
+    // 着地 → 溜め。膝を曲げて沈み、ゆっくり戻る(足は床に着いたまま)
+    const k = 1 - (ph - air) / (1 - air);
+    return { sy: 1 - 0.07 * k, sx: 1 + 0.05 * k };
+  }
+  const jump = Math.sin((ph / air) * Math.PI);
+  return {
+    dy: -height * jump,
+    sy: 1 + 0.05 * jump,
+    sx: 1 - 0.04 * jump,
+    rot: spin ? Math.sin(t * 6.3) * spin : 0,
+  };
+}
+
 const ANIMS = {
-  /** ふわふわ待機 */
-  idle: (t) => ({ dy: Math.sin(t * 1.9) * 3, rot: Math.sin(t * 1.05) * 0.035 }),
-
-  /** ご機嫌に体を揺らす */
-  sway: (t) => ({ dy: Math.sin(t * 2.6) * 3, rot: Math.sin(t * 1.7) * 0.09 }),
-
-  /** ぴょこぴょこ跳ねる(着地で潰れる) */
-  hop: (t) => {
-    const ph = (t * 1.6) % 1;
-    const jump = Math.sin(ph * Math.PI);
-    const land = Math.max(0, 1 - jump * 6);
-    return {
-      dy: -13 * jump,
-      sx: 1 + 0.10 * land - 0.045 * jump,
-      sy: 1 - 0.10 * land + 0.06 * jump,
-      rot: Math.sin(t * 3.2) * 0.045,
-    };
-  },
-
-  /** 喜びの連続ジャンプ(高め・回転多め) */
-  cheerJump: (t) => {
-    const ph = (t * 2.1) % 1;
-    const jump = Math.sin(ph * Math.PI);
-    const land = Math.max(0, 1 - jump * 7);
-    return {
-      dy: -20 * jump,
-      dx: Math.sin(t * 4.2) * 2.5,
-      sx: 1 + 0.12 * land - 0.05 * jump,
-      sy: 1 - 0.12 * land + 0.08 * jump,
-      rot: Math.sin(t * 6.3) * 0.06,
-    };
-  },
-
-  /** ビクッと驚く(小刻み+ときどき大きく) */
-  jitter: (t) => ({
-    dx: Math.sin(t * 24) * 3.4,
-    dy: Math.sin(t * 7.5) * 4 - 3,
-    rot: Math.sin(t * 12) * 0.08,
-    sy: 1 + Math.max(0, Math.sin(t * 3.1)) * 0.05,
+  /** 立ち待機(呼吸と重心移動だけ。足は床から離れない) */
+  idle: (t) => ({
+    dx: Math.sin(t * 0.55) * 1.6,
+    sy: 1 + Math.sin(t * 1.5) * 0.008,     // 呼吸
+    rot: Math.sin(t * 0.7) * 0.014,
   }),
 
-  /** 目が回っている(ゆっくり傾いて漂う) */
+  /** ご機嫌に体を揺らす(左右へ体重を移す) */
+  sway: (t) => ({ dx: Math.sin(t * 2.2) * 3.5, rot: Math.sin(t * 2.2) * 0.05 }),
+
+  /** ぴょこぴょこ跳ねる(跳ぶ → 着地 → 一拍) */
+  hop: (t) => hopCycle(t, { speed: 1.35, height: 12, air: 0.55 }),
+
+  /** 喜びの連続ジャンプ(高め・体をひねる) */
+  cheerJump: (t) => ({
+    ...hopCycle(t, { speed: 1.55, height: 20, air: 0.6, spin: 0.05 }),
+    dx: Math.sin(t * 3.1) * 2,
+  }),
+
+  /** ビクッと驚く(のけぞって半歩下がる。飛び上がらない) */
+  jitter: (t) => {
+    const k = 0.6 + 0.4 * Math.sin(t * 6.5);
+    return {
+      dx: Math.sin(t * 22) * 2.4 - 2.5,
+      rot: -0.05 - Math.sin(t * 5) * 0.02,   // 上体が後ろへ反る
+      sy: 1 - 0.02 * k,                      // 膝が少し落ちる
+    };
+  },
+
+  /** 目が回ってよろける(足はもつれるが床の上) */
   spin: (t) => ({
-    dx: Math.sin(t * 1.6) * 6,
-    dy: Math.sin(t * 2.3) * 4,
-    rot: Math.sin(t * 1.15) * 0.16,
+    dx: Math.sin(t * 1.5) * 8,
+    rot: Math.sin(t * 1.5 + 0.6) * 0.12,
+    sy: 1 - Math.abs(Math.sin(t * 1.5)) * 0.02,
   }),
 
-  /** しゃくりあげる(泣き) */
+  /** しゃくりあげる(泣き。肩が上下するので体が伸び縮みする) */
   sob: (t) => {
     const hic = Math.max(0, Math.sin(t * 3.4)) ** 3;
-    return { dy: -5 * hic + 2, sy: 1 + hic * 0.04, sx: 1 - hic * 0.03, rot: Math.sin(t * 1.3) * 0.03 };
+    return { sy: 1 + hic * 0.035, sx: 1 - hic * 0.025, rot: 0.03 + Math.sin(t * 1.3) * 0.02 };
   },
 
-  /** 考え中(ゆっくり首をかしげる) */
-  ponder: (t) => ({ rot: Math.sin(t * 1.1) * 0.1 + 0.03, dy: Math.sin(t * 1.6) * 2.5 }),
+  /** 考え中(首をかしげるだけ。足は動かない) */
+  ponder: (t) => ({ rot: Math.sin(t * 1.1) * 0.09 + 0.03 }),
 
-  /** タイピング(前傾で小刻み) */
-  typing: (t) => ({ dy: Math.sin(t * 13) * 1.4, rot: 0.02 + Math.sin(t * 6.5) * 0.012 }),
+  /** タイピング(座って前傾。指先だけ小刻み) */
+  typing: (t) => ({ rot: 0.02 + Math.sin(t * 6.5) * 0.008, dx: Math.sin(t * 13) * 0.7 }),
 
-  /** 手を振る(体ごと左右へ) */
-  waveArm: (t) => ({ rot: Math.sin(t * 3.4) * 0.13, dx: Math.sin(t * 3.4) * 4, dy: Math.sin(t * 6.8) * 2 }),
+  /** 手を振る(体重を左右へ移しながら) */
+  waveArm: (t) => ({ rot: Math.sin(t * 3.4) * 0.10, dx: Math.sin(t * 3.4) * 4 }),
 
-  /** ぷくっと膨れて震える(むすっ) */
+  /** ぷくっと膨れて足踏み(むすっ) */
   puff: (t) => {
     const p = (Math.sin(t * 1.5) + 1) / 2;
     return { sx: 1 + p * 0.05, sy: 1 - p * 0.02, dx: Math.sin(t * 26) * 1.4, rot: Math.sin(t * 1.9) * 0.02 };
   },
 
-  /** ペンライトを振るリズム */
+  /** ペンライトを振るリズム(膝でリズムを取る = 沈んで戻る) */
   swingLight: (t) => ({
-    rot: Math.sin(t * 4.4) * 0.11,
-    dy: Math.abs(Math.sin(t * 4.4)) * -5,
-    dx: Math.sin(t * 2.2) * 3,
+    rot: Math.sin(t * 4.4) * 0.09,
+    sy: 1 - Math.abs(Math.sin(t * 4.4)) * 0.035,
+    dx: Math.sin(t * 2.2) * 2.5,
   }),
 
-  /** 走る(前傾 + 前後にシュッ) */
-  dash: (t) => ({
-    dx: Math.sin(t * 6.2) * 6,
-    dy: Math.abs(Math.sin(t * 6.2)) * -5,
-    rot: Math.sin(t * 6.2) * 0.035,
-    sx: 1 + Math.sin(t * 6.2) * 0.025,
-  }),
+  /** 走る(前傾 + 歩幅ぶんの跳ね。踏み込みで沈む) */
+  dash: (t) => {
+    const step = Math.abs(Math.sin(t * 6.2));
+    return {
+      dx: Math.sin(t * 6.2) * 4,
+      dy: -step * 4,                 // 走行中の跳ね。step=0(接地)で必ず 0 に戻る
+      sy: 1 - (1 - step) * 0.03,     // 着地の踏み込み
+      rot: 0.05 + Math.sin(t * 6.2) * 0.02,
+    };
+  },
 
-  /** ときめき(心拍) */
+  /** ときめき(心拍で伸び上がる) */
   throb: (t) => {
     const beat = Math.max(0, Math.sin(t * 4.2)) ** 2;
-    return { dy: -5 * beat, sx: 1 + beat * 0.07, sy: 1 + beat * 0.05, rot: Math.sin(t * 2.1) * 0.04 };
+    return { sy: 1 + beat * 0.05, sx: 1 + beat * 0.04, rot: Math.sin(t * 2.1) * 0.03 };
   },
 
-  /** 炎をまとって明滅(激アツ) */
+  /** 炎をまとって力む(踏ん張るので少し沈む) */
   flare: (t) => {
-    const k = 1 + Math.sin(t * 8.5) * 0.05;
-    return { dy: Math.sin(t * 3.8) * 3, sx: k, sy: k, rot: Math.sin(t * 15) * 0.016 };
+    const k = (Math.sin(t * 8.5) + 1) / 2;
+    return {
+      sy: 1 - 0.02 - k * 0.012,
+      sx: 1 + 0.02 + k * 0.012,
+      dx: Math.sin(t * 17) * 0.8,
+      rot: Math.sin(t * 15) * 0.01,
+    };
   },
 
-  /** 指し棒でとんとん(プレゼン) */
+  /** 指し棒でとんとん(重心を前へ) */
   presenting: (t) => {
     const tap = Math.max(0, Math.sin(t * 3.6)) ** 2;
-    return { dx: tap * 3, dy: Math.sin(t * 1.7) * 2.5, rot: -0.02 - tap * 0.02 };
+    return { dx: tap * 3, rot: -0.02 - tap * 0.02 };
   },
 
-  /** 看板を掲げる(上下に大きめ) */
+  /** 看板を掲げる(背伸び。かかとは上がっても足は床) */
   lift: (t) => {
     const up = (Math.sin(t * 2.4) + 1) / 2;
-    return { dy: -8 * up, rot: Math.sin(t * 2.4) * 0.05, sy: 1 + up * 0.03 };
+    return { sy: 1 + up * 0.045, rot: Math.sin(t * 2.4) * 0.03 };
   },
 
   /** 首をかしげる(はてな) */
-  tilt: (t) => ({ rot: Math.sin(t * 1.8) * 0.15, dy: Math.sin(t * 3.6) * 2.5 }),
+  tilt: (t) => ({ rot: Math.sin(t * 1.8) * 0.13, dx: Math.sin(t * 1.8) * 1.5 }),
 
-  /** 横からひょっこり(出たり引っ込んだり) */
+  /** 横からひょっこり(体を左右へ出し入れする。上下には動かない) */
   peekSide: (t) => {
     const ph = (t * 0.8) % 1;
     const out = ph < 0.18 ? ph / 0.18 : ph < 0.7 ? 1 : Math.max(0, 1 - (ph - 0.7) / 0.3);
-    return { dx: (1 - out) * -34, dy: Math.sin(t * 3.2) * 2, rot: (1 - out) * -0.06 };
+    return { dx: (1 - out) * -34, rot: (1 - out) * -0.06 };
   },
 
-  /** すやすや(呼吸だけ) */
+  /** すやすや(座って呼吸するだけ) */
   breathe: (t) => ({
-    dy: Math.sin(t * 1.05) * 2.5,
-    sx: 1 + Math.sin(t * 1.05) * 0.02,
-    sy: 1 - Math.sin(t * 1.05) * 0.016,
-    rot: Math.sin(t * 0.5) * 0.015,
+    sy: 1 + Math.sin(t * 1.05) * 0.018,
+    sx: 1 - Math.sin(t * 1.05) * 0.012,
+    rot: Math.sin(t * 0.5) * 0.012,
   }),
 
-  /** キメ(ゆっくり構える) */
+  /** キメ(片足に体重を乗せて構える) */
   swagger: (t) => ({
-    dy: Math.sin(t * 1.7) * 3.5,
-    rot: Math.sin(t * 0.85) * 0.05 - 0.02,
-    sx: 1 + Math.sin(t * 1.7) * 0.015,
+    dx: Math.sin(t * 1.2) * 2.2,
+    rot: Math.sin(t * 0.85) * 0.04 - 0.02,
+    sy: 1 - Math.abs(Math.sin(t * 1.2)) * 0.008,
   }),
 };
 
@@ -561,6 +633,14 @@ function note(ctx, s) {
  */
 const BOX = { w: 132, h: 165 };
 
+/**
+ * 箱の半分の高さ。**接地補正の基準**(U68b)。
+ * 描画の基準点は箱の中心なので、体を縮めた(sy<1)ぶんの半分だけ
+ * 下へ戻してやると足元の高さが変わらない = 地面に立ったままになる。
+ * render/chars/index.js の squash & stretch も同じ値で補正している。
+ */
+export const LUNA_GROUND_HALF = BOX.h / 2;
+
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 
 /* ────────────────────────────────────────────────────────────
@@ -610,18 +690,28 @@ const solidify = (a) => clamp01(a / LUNA_SOLID_AT);
  * @param {number} [state.t=0] 経過秒
  * @param {number} [state.dir=1] 1=右向き -1=左向き(mirror:true のポーズだけ効く)
  * @param {number} [state.alpha=1]
- *   0〜1。**プレミアカメオなので減光は受け付けない**(上の LUNA_SOLID_AT 参照)。
+ *   0〜1。**プレミア枠(premium:true)では減光を受け付けない**(上の LUNA_SOLID_AT 参照)。
  *   入場/退場のフェードだけが残るように solidify() を通してから使う。
  * @param {boolean} [state.fx=true] 追加エフェクトを描くか
- * @param {boolean} [state.aura=true]
+ * @param {boolean} [state.premium=true]
+ *   プレミア枠として描くか(2026-08-15 U68 で追加)。
+ *   ルナが **常駐の主役** になったので、同じ絵を2つの立場で描き分ける必要が出た:
+ *     premium:true (既定) … 数百ゲームに1回のカメオ。後光つき・減光を無視して常に濃い
+ *     premium:false       … 常駐キャラ。後光なし・減光(演出テキスト帯)にきちんと従う
+ *   常駐で solidify() を通すと「文字が主役、キャラは背景」の減光(chars/index.js の
+ *   DIM_GAIN)が効かなくなり、テキスト帯の上にルナが居座って字が読めなくなる。
+ * @param {boolean} [state.aura]
  *   プレミアの後光(V21-10)。「小さくて存在感がない」への対処で、
  *   キャラの後ろに虹色の光条とスポットを敷いて **特別枠であること** を出す。
+ *   既定は premium と同じ(常駐では出ない)。
  */
 export function drawLuna(ctx, state) {
   const {
-    x, y, scale = 1, t = 0, dir = 1, alpha = 1, fx = true, aura = true,
+    x, y, scale = 1, t = 0, dir = 1, alpha = 1, fx = true, premium = true,
   } = state;
-  const solid = solidify(alpha);
+  const aura = state.aura ?? premium;
+  // 常駐(premium:false)は届いた alpha をそのまま使う = 減光がそのまま効く
+  const solid = premium ? solidify(alpha) : clamp01(alpha);
   if (solid <= 0 || scale <= 0) return;
 
   const name = resolveLunaPose(state.pose);
@@ -633,10 +723,18 @@ export function drawLuna(ctx, state) {
   const anim = ANIMS[animName] ?? ANIMS.idle;
   const m = animName === 'none' ? {} : anim(t, state);
   const dx = m.dx ?? 0;
-  const dy = m.dy ?? 0;
   const rot = m.rot ?? 0;
   const sx = m.sx ?? 1;
   const sy = m.sy ?? 1;
+  /*
+   * 接地補正(U68b)。描画の基準点は箱の中心なので、体を縮める(sy<1)と
+   * 足元まで一緒に上がって **宙に浮く**。縮んだぶんの半分だけ下へ戻して、
+   * 足元の高さを常に一定に保つ。
+   *   sy < 1 … 膝を曲げて沈む(着地・踏ん張り)
+   *   sy > 1 … 背伸び・伸び上がる(かかとは上がるが足は床)
+   * ジャンプの滞空(dy)はこの補正とは別で、必ず 0 へ戻る値だけを使う。
+   */
+  const dy = (m.dy ?? 0) + LUNA_GROUND_HALF * (1 - sy);
 
   // 画面上でキャラが向く方向。反転を許したポーズだけ dir に従い、
   // それ以外は素材のまま(Tシャツの文字を鏡文字にしないため)
@@ -763,24 +861,41 @@ const easeOutBack = (x) => 1 + 2.70158 * (x - 1) ** 3 + 1.70158 * (x - 1) ** 2;
 /**
  * ルナ専用のモーション。chars/index.js の MOTIONS へマージされる。
  * (カメオ演出の「入場 → ポーズ決め → 退場」の3拍がここで完結する)
+ *
+ * ■ 接地の原則(U68b)
+ *   ここも ANIMS と同じで **浮かせない**。
+ *   offsetY を使ってよいのは「跳んで着地する」瞬間だけで、
+ *   縮み(squashY)による足元のズレは chars/index.js の _withBody が補正する。
+ *   入退場は「スライドして消える」ではなく **歩いて出入りする**
+ *   (歩幅ぶんの小さな上下 + 足が着くタイミングでの沈み込み)。
  */
 export const LUNA_MOTIONS = {
-  /** 画面の左端からひょっこり出てくる */
+  /**
+   * 画面の左端から **歩いて** 出てくる(旧: ふわっとスライド)。
+   * 歩幅に合わせて上下に小さく跳ね、足が着くたびに少し沈む。
+   */
   lunaPeekIn: { ms: 620, apply: (c, p) => {
-    const e = easeOutBack(p);
+    const e = easeOutCubic(p);
     c.offsetX = -150 * (1 - e);
-    c.offsetY = (1 - easeOutCubic(p)) * 8;
+    // 3歩ぶんの歩幅。step=0 が接地の瞬間
+    const step = Math.abs(Math.sin(p * Math.PI * 3)) * (1 - p * 0.5);
+    c.offsetY = -step * 3.5;
+    c.squashY = 1 - (1 - step) * 0.03;
+    c.squashX = 1 + (1 - step) * 0.02;
     c.alphaMul = Math.min(1, p / 0.18);
-    c.tilt = (1 - p) * 0.12;
+    c.tilt = (1 - p) * 0.05;
   } },
-  /** ポーズを決める(ぽんっと弾んで止まる) */
+  /** ポーズを決める(小さく跳ねて着地し、ぐっと踏みしめる) */
   lunaPop: { ms: 560, apply: (c, p) => {
-    const e = easeOutBack(Math.min(1, p / 0.55));
-    c.scaleMul = 0.82 + 0.18 * e;
-    const up = Math.sin(Math.min(1, p / 0.55) * Math.PI);
-    c.offsetY = -up * 14;
-    c.squashX = 1 + (1 - up) * 0.05 - up * 0.03;
-    c.squashY = 1 - (1 - up) * 0.05 + up * 0.05;
+    const k = Math.min(1, p / 0.55);
+    const e = easeOutBack(k);
+    c.scaleMul = 0.86 + 0.14 * e;
+    // 前半で跳ね、後半は床の上で溜め(滞空しっぱなしにしない)
+    const up = k < 1 ? Math.sin(k * Math.PI) : 0;
+    c.offsetY = -up * 12;
+    const land = k >= 1 ? 1 - (p - 0.55) / 0.45 : 0;
+    c.squashX = 1 - up * 0.03 + land * 0.05;
+    c.squashY = 1 + up * 0.05 - land * 0.06;
   } },
   /**
    * すっと左へ引っ込む。
@@ -796,24 +911,39 @@ export const LUNA_MOTIONS = {
   lunaSlipOut: { ms: 1000, apply: (c, p) => {
     const move = clamp01(p / 0.62);                 // 移動と傾きは 620ms で完了
     c.offsetX = -170 * easeInCubic(move);
+    // 小走りで捌ける。歩幅の跳ねは接地(0)へ必ず戻る
+    const step = Math.abs(Math.sin(move * Math.PI * 3)) * (1 - move * 0.3);
+    c.offsetY = -step * 4;
+    c.squashY = 1 - (1 - step) * 0.03;
     c.alphaMul = 1 - clamp01((p - 0.2) / 0.42);     // 2100ms から 2520ms かけて 0 へ
-    c.tilt = move * 0.1;
+    c.tilt = move * 0.05;
   } },
-  /** 万歳しながら2回跳ねる(お祝い) */
+  /** 万歳しながら2回跳ねる(お祝い。跳ぶ → 着地 → 跳ぶ) */
   lunaHooray: { ms: 1100, apply: (c, p) => {
     const ph = (p * 2) % 1;
-    const up = Math.sin(ph * Math.PI);
-    c.offsetY = -up * 26;
-    c.squashX = 1 + (1 - up) * 0.07 - up * 0.04;
-    c.squashY = 1 - (1 - up) * 0.07 + up * 0.06;
-    c.tilt = Math.sin(p * Math.PI * 5) * 0.09;
+    const AIR = 0.62;                      // 1周期のうち空中に居る割合
+    if (ph <= AIR) {
+      const up = Math.sin((ph / AIR) * Math.PI);
+      c.offsetY = -up * 26;
+      c.squashX = 1 - up * 0.04;
+      c.squashY = 1 + up * 0.06;
+    } else {
+      // 着地して膝を曲げる(足は床の上)
+      const land = 1 - (ph - AIR) / (1 - AIR);
+      c.offsetY = 0;
+      c.squashX = 1 + land * 0.07;
+      c.squashY = 1 - land * 0.08;
+    }
+    c.tilt = Math.sin(p * Math.PI * 5) * 0.06;
   } },
-  /** 目を丸くしてビクッ(驚き) */
+  /** 目を丸くしてビクッ(驚き。飛び上がらず、のけぞって半歩下がる) */
   lunaStartle: { ms: 520, apply: (c, p) => {
     const k = 1 - p;
-    c.offsetX = Math.sin(p * Math.PI * 16) * 5 * k;
-    c.offsetY = -Math.sin(Math.min(1, p / 0.3) * Math.PI) * 10;
-    c.scaleMul = 1 + Math.sin(Math.min(1, p / 0.3) * Math.PI) * 0.08;
+    const hit = Math.sin(Math.min(1, p / 0.3) * Math.PI);
+    c.offsetX = Math.sin(p * Math.PI * 16) * 5 * k - hit * 4;
+    c.tilt = -hit * 0.10;                  // 上体が後ろへ反る
+    c.squashY = 1 - hit * 0.05;            // 膝が落ちる(沈む)
+    c.squashX = 1 + hit * 0.04;
   } },
 };
 

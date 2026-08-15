@@ -12,7 +12,12 @@
  * の形でマージしてください(または `Object.assign(CUTINS, CUTINS_EXTRA)`)。
  */
 
-import { drawShark, sharkArtReady } from '../../render/chars/george.js';
+/*
+ * U68(2026-08-15): キャラの大写しは **ルナ**(assets/chars/luna.png)へ。
+ * サメの大写し(render/chars/george.js の drawShark)はここから外した。
+ * george.js と shark.png は保全のため残してある(戻すなら import 1行)。
+ */
+import { drawLuna, lunaArtReady } from '../../render/chars/lunachan.js';
 import { drawHero, heroArtReady } from '../../render/chars/herochan.js';
 import { getLayerRect } from '../../engine/layers.js';
 
@@ -142,7 +147,7 @@ class CharCache {
 
   /** @returns {HTMLCanvasElement} */
   get(rawKey, w, h, drawFn) {
-    const key = `${rawKey}@${sharkArtReady() ? 1 : 0}${heroArtReady() ? 1 : 0}`;
+    const key = `${rawKey}@${lunaArtReady() ? 1 : 0}${heroArtReady() ? 1 : 0}`;
     if (this.cache.has(key)) return this.cache.get(key);
     const c = document.createElement('canvas');
     c.width = w;
@@ -181,9 +186,13 @@ const charCache = new CharCache();
  *   rgb              … 集中線と背景バーストの基調色(カンマ区切りのRGB)
  *   grad1 / grad2    … ロゴのグラデーション [上, 下]
  *   icon             … 放射状に飛ぶアイコン 'instance'(EC2の箱) / 'lambda'(λ) / 'region'(◆)
- *   char             … ドンと出るキャラのポーズ違い。
- *                      'george' = 炎の拳(激アツ) / 'kiro' = ジェットパック(突入感)
- *                      ※ 2026-08-14 にお化けキャラは全廃。どちらもサメの別ポーズ
+ *   char             … ドンと出るキャラ。**キー名は互換のため据え置き**(U68)。
+ *                      'george' = ルナ:炎の拳(激アツ寄りのRUSH)
+ *                      'kiro'   = ルナ:ペンライト(お祭り寄りのRUSH)
+ *                      'hero'   = ヒーロー本人(HERO_RUSH だけ)
+ *                      ※ 2026-08-14 にお化け全廃 → 2026-08-15(U68)にサメ全廃。
+ *                        キー名を変えると変種テーブルとシナリオの対応表が
+ *                        二重管理になるので、名前だけ歴史として残している。
  */
 const RUSH_VARIANTS = {
   AS_RUSH: {
@@ -462,11 +471,12 @@ export const CUTINS_EXTRA = {
       if (chP > 0) {
         const key = `rush_slam_${V.char}`;
         /*
-         * kiro枠  = ジェットパックで突っ込むサメ
-         * george枠 = 炎の拳で気合を入れるサメ
+         * kiro枠  = ルナがペンライトを振る(お祭り感のあるRUSH)
+         * george枠 = ルナが炎の拳で気合(激アツ寄りのRUSH)
          * hero枠  = **ヒーロー本人が両拳バンザイでデビュー**(U30 / HERO_RUSH 専用)
          *   ヒーローRUSH はここが初登場の場なので、キャラだけは別素材にする。
-         *   足元のスポット(aura)はカットインの光と喧嘩するので切っておく。
+         *   足元のスポット(aura)はカットインの光と喧嘩するので切っておく
+         *   (U68 でルナ側にも同じ理由で aura:false を付けた)。
          */
         let cache;
         if (V.char === 'hero') {
@@ -476,12 +486,16 @@ export const CUTINS_EXTRA = {
             });
           });
         } else if (V.char === 'kiro') {
-          cache = charCache.get(key, 420, 340, (c) => {
-            drawShark(c, { x: 0, y: 0, scale: 1.8, pose: 'jet', anim: 'none', t: 0, dir: 1 });
+          cache = charCache.get(key, 420, 380, (c) => {
+            drawLuna(c, {
+              x: 0, y: 0, scale: 1.8, pose: 'penlight', anim: 'none', t: 0, dir: 1, aura: false,
+            });
           });
         } else {
-          cache = charCache.get(key, 420, 340, (c) => {
-            drawShark(c, { x: 0, y: 0, scale: 1.9, pose: 'fire', anim: 'none', t: 0, dir: 1 });
+          cache = charCache.get(key, 420, 380, (c) => {
+            drawLuna(c, {
+              x: 0, y: 0, scale: 1.9, pose: 'fire', anim: 'none', t: 0, dir: 1, aura: false,
+            });
           });
         }
         ctx.save();
@@ -720,31 +734,39 @@ export const CUTINS_EXTRA = {
     },
   },
 
-  /** IAMロールカットイン(サメがAdministratorAccessバッジ装着)。IAMポリシー=チェリー格の延長ネタ。IDEAS.md 2-12 */
+  /** IAMロールカットイン(AdministratorAccessバッジ装着)。IAMポリシー=チェリー格の延長ネタ。IDEAS.md 2-12 */
   iam_admin_badge: {
     ms: 2000,
     draw(ctx, p, params, w, h) {
-      // U66-4: サメとバッジを液晶の中へ(旧: cy = h*0.38 = 液晶の外)
+      // U66-4: キャラとバッジを液晶の中へ(旧: cy = h*0.38 = 液晶の外)
       const { x: cx, y: cy } = lcdSpot(0.46);
 
-      // George がせり上がって登場
+      /*
+       * ルナが横から歩み出て登場(U68: サメのキメ顔 → ルナのニヤリ指差し)。
+       * U68b(接地): 旧実装は下から 80px せり上がる動きだったが、
+       * 人間が床から生えてくる画になるので **横からの入り** に変えた。
+       */
       const showP = clamp01(p / 0.35);
-      // 権限MAX = サングラスのキメ顔
-      const cache = charCache.get('george_iam_badge', 360, 300, (c) => {
-        drawShark(c, { x: 0, y: 0, scale: 1.7, t: 0, dir: 1, pose: 'cool', anim: 'none' });
+      // 権限MAX = 「持ってるよ」のニヤリ顔
+      const cache = charCache.get('luna_iam_badge', 360, 340, (c) => {
+        drawLuna(c, { x: 0, y: 0, scale: 1.7, t: 0, dir: 1, pose: 'point', anim: 'none', aura: false });
       });
       ctx.save();
       ctx.globalAlpha = Math.min(1, showP * 3);
-      ctx.translate(cx, cy + (1 - easeOutCubic(showP)) * 80);
-      ctx.drawImage(cache, -180, -150);
+      ctx.translate(cx - (1 - easeOutCubic(showP)) * 140, cy);
+      ctx.drawImage(cache, -180, -170);
       ctx.restore();
 
       // 胸元にバッジが装着される
       const badgeP = clamp01((p - 0.3) / 0.3);
       if (badgeP > 0) {
         ctx.save();
-        // 胸元 = サメの胸びれの上あたり。口が大きくなった v3 の体型に合わせてある
-        ctx.translate(cx + 16, cy + 50);
+        /*
+         * 胸元 = 黒Tシャツの左胸あたり。
+         * U68b: 実画面で確認したら **顔に被っていた**(旧 y+26 はまだ顔の高さ)。
+         * ルナの箱は 132×165 を scale 1.7 で描いているので、顔から胸まで約70px下。
+         */
+        ctx.translate(cx - 18, cy + 74);
         const s = easeOutBack(badgeP);
         ctx.scale(s, s);
         ctx.beginPath();

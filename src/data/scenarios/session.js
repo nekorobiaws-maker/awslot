@@ -45,6 +45,8 @@ export default [
       { at: 900,  layer: 'sfx',     action: 'synth', params: { preset: 'countdown_tick' } },
       { at: 1400, layer: 'sfx',     action: 'synth', params: { preset: 'announce' } },
       { at: 1400, layer: 'char',    action: 'show',  params: { char: 'kiro', pose: 'happy' } },
+      // 100ゲーム完走のねぎらい(U68)。セッションに1回だけなので間引かない
+      { at: 1500, layer: 'voice',   action: 'play',  params: { key: 'luna_result_01', force: true } },
       { at: 1400, layer: 'lcd',     action: 'text',
         params: {
           text: 'あなたの成績は…?',

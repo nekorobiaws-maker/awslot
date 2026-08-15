@@ -116,7 +116,10 @@ const rate = (p) => (LUNA_CAMEO_DEBUG.force ? 1 : p);
  * @param {string} [opt.motion] 決めポーズに乗せるモーション
  * @param {string} [opt.extraSfx] さらに重ねる効果音(確定役のみ使用)
  */
-function cameoCues({ pose, chime, chimeGain = 0.55, motion = 'lunaPop', extraSfx = null }) {
+function cameoCues({
+  pose, chime, chimeGain = 0.55, motion = 'lunaPop', extraSfx = null,
+  voice = 'luna_kita_01',
+}) {
   return [
     // 気配。小さい音なので他の停止音・入賞音の邪魔をしない
     { at: 0, layer: 'sfx', action: 'synth', params: { preset: 'cutin_whoosh', gain: 0.3, rate: 1.3 } },
@@ -126,6 +129,15 @@ function cameoCues({ pose, chime, chimeGain = 0.55, motion = 'lunaPop', extraSfx
     { at: 640, layer: 'char', action: 'pose', params: { char: 'luna', pose } },
     { at: 640, layer: 'char', action: 'motion', params: { char: 'luna', motion } },
     { at: 660, layer: 'sfx', action: 'synth', params: { preset: chime, gain: chimeGain } },
+    /*
+     * カメオ専用ボイス(U68)。
+     * ルナが常駐の主役になったので、カメオは「特別な出方」で差をつける必要がある:
+     *   常駐 … 小さい・後光なし・相槌は疑問形で控えめ(chance で間引く)
+     *   カメオ … 液晶の半分を使う大きさ + 後光 + **必ず喋る**(force)
+     * ここが間引かれると「決めポーズだけ無言」になって特別感が消えるので force。
+     * 数百ゲームに1回しか来ないので、喋りすぎにはならない。
+     */
+    { at: 820, layer: 'voice', action: 'play', params: { key: voice, force: true } },
     ...(extraSfx
       ? [{ at: 780, layer: 'sfx', action: 'synth', params: { preset: extraSfx, gain: 0.45 } }]
       : []),
@@ -208,6 +220,8 @@ export default [
       chime: 'upgrade_chime',
       chimeGain: 0.65,
       extraSfx: 'edge_hit',
+      // 確定役のときだけ最上位のリアクション(他のカメオは「きたきたっ!」)
+      voice: 'luna_sugoi_01',
     }),
   },
 ];

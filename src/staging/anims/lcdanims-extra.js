@@ -584,8 +584,22 @@ const PICK_LABELS = ['左', '中', '右'];
 /** キー割当の再掲(engine/input.js の KEY_MAP と同じ。押す手が迷わないように) */
 const PICK_KEYS = ['←', '↓', '→'];
 
-/** 停止操作を待つフェーズの尺[ms]。長考しても盤面が消えない長さ */
-const PICK_WAIT_MS = 20000;
+/**
+ * 出題(第1停止を待つ)フェーズの尺[ms]。
+ *
+ * ── 事実上の「回答されるまで保持」(2026-08-15 U69)────────────────
+ * 【旧】20秒。**リールに自動停止は無い**(game/reelctrl.js)ので、
+ *   問題文を読んでから押すまでに20秒かかると
+ *   **回っている最中に出題が勝手に消える**(尺切れ + 末尾フェード)。
+ *   実際に「出た瞬間に消える / 途中で消える」として報告された不具合の本体。
+ * 【新】5分。第1停止が来た瞬間に phase:'answer' の再生が同じ animId を
+ *   差し替えるので、通常プレイでここまで到達することはない。
+ *   到達したら消える = **固まらないための自己修復**として残してある。
+ *
+ * 【厳守】data/scenarios/quiz.js の `waitGraceMs` より必ず短くすること。
+ * 逆転するとシナリオだけ先に畳まれ、発表の来ない盤面が画面に残る。
+ */
+const PICK_WAIT_MS = 300000;
 /** 発表フェーズの既定尺[ms]。正解の場所まで読ませるので押し順当て時代より長い */
 const PICK_REVEAL_MS = 3200;
 /** 判定が出るまでの溜め[ms]。第1停止から一拍おいて発表する */
@@ -639,6 +653,30 @@ const PICK_BAR_Y = 182;
 /** CZ盤面の上に出すときの縮小率(クイズの V3 対応と同じ考え方) */
 const PICK_COMPACT_SCALE = 0.74;
 const PICK_COMPACT_TOP = 2;
+
+/**
+ * 画面上での文字の下限[px]。lcdanims.js の LCD_ANIM_MIN_FONT_PX と同じ値。
+ * (このファイルは lcdanims.js から import される側なので、逆輸入せず定数を置く)
+ */
+const PICK_MIN_FONT_PX = 11;
+
+/**
+ * 縮小表示でも「画面で 11px を切らない」ようにした fitFont の下限。
+ *
+ * compact は盤面ごと 0.74 倍されるので、fitFont へ 11 を渡すと
+ * **画面では 8.1px** になり、U39 で決めた下限を大きく割る
+ * (2026-08-15 U69「3択が小さく表示される」の実体のひとつ)。
+ * 縮小率のぶんだけ指定を持ち上げて、実効サイズで下限を守る。
+ *
+ * 入り切らない文言は fitFont の方針どおり「多少はみ出させる」。
+ * 読めない大きさで収めるより、はみ出しても読める方を採る。
+ * @param {number} minPx 画面上で確保したい最小サイズ
+ * @param {boolean} compact
+ * @returns {number} fitFont / strokedText へ渡すサイズ
+ */
+const pickMinFont = (minPx, compact) => (
+  compact ? Math.ceil(minPx / PICK_COMPACT_SCALE) : minPx
+);
 
 /**
  * 進行中の出題。'ask' で引き直し、'answer' が読み継ぐ。
@@ -2507,14 +2545,16 @@ export const LCD_ANIMS_EXTRA = {
    *            盤面は当落に触れない。false のときだけ盤面が「役は不成立…」を出す。
    *   pick   … 実際に最初に止めたリール(0=左 / 1=中 / 2=右)。届かなければ名指ししない
    *   quizId … 出題を固定したいとき(?quiz= のデバッグ用)
-   *   compact… CZ盤面の上に出すときの縮小(判定の座標も compact 用へ切り替わる)
+   *   compact… CZ盤面の上に出すときの縮小(判定の座標も compact 用へ切り替わる)。
+   *             **発表(phase:'answer')でしか効かない**(U69。出題は常にフルサイズ)。
+   *             いま渡しているシナリオは1本も無い。理由は data/scenarios/quiz.js を参照
    *   hold   … 判定まで背景の切替を保留する(U42)。描画には使わず、
    *             lcdanims.js の STAGE_HOLD_ANIMS だけが見る。**モードが変わる出題だけ** true
    *
    * シナリオ側は
-   *   at:0          → phase:'ask'
+   *   レバーON時    → phase:'ask'(at:0 か waitFor:'leverOn')
    *   waitFor stop1 → phase:'answer'(pick:'$stop1.index')
-   * と2行並べるだけでよい。
+   * と2行並べるだけでよい。**出題はレバーONの瞬間に出すこと**(U69)。
    *
    * **正誤は params では決まらない**(押したリールと正解の位置の一致だけで決まる)。
    * レイアウトの取り決めはファイル上部の PICK_* 定数のコメントを参照。
@@ -2555,7 +2595,17 @@ export const LCD_ANIMS_EXTRA = {
       const cellW = (w - PICK_PAD_X * 2 - PICK_COL_GAP * 2) / 3;
       const cellX = (i) => PICK_PAD_X + i * (cellW + PICK_COL_GAP);
 
-      const compact = params.compact === true;
+      /* ── 縮小は「発表」だけ(2026-08-15 U69)────────────────────────────
+       * 【旧】compact:true を渡した再生は出題も発表も 0.74 倍で描いていた。
+       *   ところが出題中は hold:true で **背景が1つ前(通常ステージ)のまま**なので、
+       *   縮めて空けた下側から覗けるのは CZ盤面ではなく通常ステージの絵。
+       *   つまり出題を縮める理由が無く、**問題文と選択肢が小さいだけ**だった
+       *   (「3択クイズが小さく表示されることがある」= CZ突入経由の出題)。
+       * 【新】出題は必ずフルサイズ。縮小は発表(phase:'answer')に限る。
+       *   発表の瞬間に hold が解けて背景が CZ へ切り替わるので、
+       *   そこで初めて「下から CZ盤面が覗ける」という当初の狙い(V3)が成立する。
+       * シナリオが出題へ compact を渡しても効かない = 二度と小さくならない。 */
+      const compact = params.compact === true && answering;
       const LY = compact ? PICK_VERDICT_LAYOUT.compact : PICK_VERDICT_LAYOUT.full;
       if (compact) {
         ctx.save();
@@ -2584,11 +2634,10 @@ export const LCD_ANIMS_EXTRA = {
        *   ・設問にも選択肢にも無い情報を1つだけ足す = 答え合わせに学びが増える
        *   ・行は増やさない(既にある行の中身を入れ替えるだけ)ので座席割りは不変
        *
-       * ■ compact(当選版)に足さない理由
+       * ■ compact に足さない理由
        *   compact は LY.headY が null で、detailY:190(画面y143)が
        *   告知プレート直前の実質下限。**行を増やす余地が物理的に無い**。
-       *   加えて体験上も、当選版は直後に CZ が始まって読む時間が無いので、
-       *   ここで分類を足しても読まれずに流れる。 */
+       *   ※ U69 で3本ともフルサイズになったため、いまは当選版でもこの行が出る。 */
       if (LY.headY != null) {
         strokedText(ctx, 'AWS QUIZ', 14, LY.headY, {
           size: 12, color: '#7cf3ff', edge: 'rgba(0,10,30,0.9)', align: 'left',
@@ -2620,8 +2669,13 @@ export const LCD_ANIMS_EXTRA = {
         ctx.strokeStyle = 'rgba(124,243,255,0.35)';
         ctx.lineWidth = 1.2;
         ctx.stroke();
-        // min は下限フック(11px)以上。compact では ×0.74 されるので下げすぎない
-        const qSize = fitFont(ctx, round.question, w - 40, { max: 19, min: 13 });
+        /*
+         * min は **画面で 13px** を確保する(compact なら ×0.74 されるぶん持ち上げる)。
+         * 下限フック(lcdanims.js の LCD_ANIM_MIN_FONT_PX = 11)より上に置くこと。
+         */
+        const qSize = fitFont(ctx, round.question, w - 40, {
+          max: 19, min: pickMinFont(13, compact),
+        });
         strokedText(ctx, round.question, w / 2, qTop + PICK_Q_H / 2, {
           size: qSize, color: '#ffffff', edge: 'rgba(0,10,30,0.95)',
         });
@@ -2703,7 +2757,9 @@ export const LCD_ANIMS_EXTRA = {
          * 測った幅より広く描かれてマスからはみ出す(2026-08-15 実測)。
          */
         const choice = round.choices[i] ?? '';
-        const cSize = fitFont(ctx, choice, cellW - 16, { max: 17, min: 11 });
+        const cSize = fitFont(ctx, choice, cellW - 16, {
+          max: 17, min: pickMinFont(PICK_MIN_FONT_PX, compact),
+        });
         strokedText(ctx, choice, cellW / 2, PICK_CHOICE_Y, {
           size: cSize, color: label, edge: 'rgba(0,10,30,0.95)',
         });
@@ -2712,7 +2768,7 @@ export const LCD_ANIMS_EXTRA = {
         if (isAnswer) {
           ctx.globalAlpha = alpha * dim * clamp01((verdictP - 0.35) / 0.25);
           strokedText(ctx, '正解', cellW - 20, 14, {
-            size: 11, color: '#4ce0a0', edge: 'rgba(0,20,10,0.95)',
+            size: pickMinFont(PICK_MIN_FONT_PX, compact), color: '#4ce0a0', edge: 'rgba(0,20,10,0.95)',
           });
         }
         ctx.restore();
@@ -2773,7 +2829,9 @@ export const LCD_ANIMS_EXTRA = {
         if (detail) {
           ctx.save();
           ctx.globalAlpha = alpha * clamp01((verdictP - 0.3) / 0.3);
-          const dSize = fitFont(ctx, detail, w - 36, { max: LY.detailSize, min: 11, heavy: false });
+          const dSize = fitFont(ctx, detail, w - 36, {
+            max: LY.detailSize, min: pickMinFont(PICK_MIN_FONT_PX, compact), heavy: false,
+          });
           strokedText(ctx, detail, w / 2, LY.detailY, {
             size: dSize, color: 'rgba(230,240,255,0.95)', edge: 'rgba(0,10,30,0.95)', heavy: false,
           });

@@ -50,6 +50,18 @@ const CHARS = {
     uuidEnv: 'GEORGE_MODEL_UUID',
     speakingRate: 1.15,   // 荒っぽく畳みかける
   },
+  /*
+   * 2026-08-15 U68: 主役交代でルナが常駐キャラになった。
+   * セリフではなく **短いリアクション**(1〜3秒)だけを持たせるのが方針:
+   *   一緒に打っている相棒の相槌なので、長い説明を喋らせると
+   *   台のテンポを殺すし、同じ文が繰り返されると一気に飽きる。
+   * speakingRate はテンション高めの子なので少し速め。
+   */
+  luna: {
+    label: 'ルナ',
+    uuidEnv: 'LUNA_MODEL_UUID',
+    speakingRate: 1.12,
+  },
 };
 
 /**
@@ -226,6 +238,90 @@ const PHRASES = [
   { char: 'george', key: 'george_bonus_dynamo_01', file: 'george_19.mp3',
     modes: ['CZ', 'BONUS'],
     text: 'ダイナモディービー、無限にスケールだ!' },
+
+  /* ── ルナ(2026-08-15 U68 / 主役)───────────────────────────────
+   *
+   * ■ セリフではなく「リアクション」
+   *   台の説明はテロップ(lcd.text)の仕事なので、ここは相槌だけにする。
+   *   1本1〜3秒。同じ場面で何度も聞くものほど短くしてある。
+   *
+   * ■ 嘘をつかせない
+   *   予兆・煽りの声は **全部が疑問形**(「これは…」「もしかして?」「激アツ?」)。
+   *   断定するのは、当落が確定した瞬間に鳴らすもの
+   *   (ボーナス確定っ! / ラッシュだ〜! / おかえり!)だけ。
+   *   ガセ演出にも同じ疑問形を貼るので、声で信頼度が漏れることはない。
+   *
+   * ■ 読み(TTSはテキストをそのまま読む)
+   *   英字は README のとおりカタカナへ。'invent' は「インベント」。
+   *   伸ばしと「っ」で勢いを作る(「ボーナス確定っ!」)。
+   */
+  // 予兆の入り(小さいリアクション)
+  { char: 'luna', key: 'luna_react_oh_01', file: 'luna_01.mp3',
+    modes: ['FREE_TIER', 'CZ'],
+    text: 'おっ?' },
+  { char: 'luna', key: 'luna_react_nani_01', file: 'luna_02.mp3',
+    modes: ['FREE_TIER'],
+    text: 'なになに?' },
+  // 煽り(疑問形のまま引っぱる)
+  { char: 'luna', key: 'luna_tease_kore_01', file: 'luna_03.mp3',
+    modes: ['FREE_TIER', 'CZ'],
+    text: 'これは…' },
+  { char: 'luna', key: 'luna_tease_moshika_01', file: 'luna_04.mp3',
+    modes: ['FREE_TIER', 'CZ'],
+    text: 'もしかして?' },
+  { char: 'luna', key: 'luna_hot_01', file: 'luna_05.mp3',
+    modes: ['FREE_TIER', 'CZ'],
+    text: '激アツ?' },
+  { char: 'luna', key: 'luna_cz_chance_01', file: 'luna_06.mp3',
+    modes: ['FREE_TIER', 'CZ'],
+    text: 'チャンスかも?' },
+  // ステージ昇格への期待(到着の告知ではなく「行きたいな〜」の願望)
+  { char: 'luna', key: 'luna_stage_summit_01', file: 'luna_07.mp3',
+    modes: ['FREE_TIER'],
+    text: 'サミット行きたいな〜' },
+  { char: 'luna', key: 'luna_stage_invent_01', file: 'luna_08.mp3',
+    modes: ['FREE_TIER'],
+    text: 'インベント行きたいな〜' },
+  // 確定告知(ここだけ断定する)
+  { char: 'luna', key: 'luna_bonus_kakutei_01', file: 'luna_09.mp3',
+    modes: ['FREE_TIER', 'CZ', 'BONUS_READY', 'BONUS'],
+    text: 'ボーナス確定っ!' },
+  { char: 'luna', key: 'luna_rush_01', file: 'luna_12.mp3',
+    modes: ['BONUS', 'AS_RUSH', 'CF_RUSH', 'AURORA_RUSH', 'HERO_RUSH', 'HOT_STANDBY'],
+    text: 'ラッシュだ〜!' },
+  { char: 'luna', key: 'luna_comeback_01', file: 'luna_19.mp3',
+    modes: ['AS_RUSH', 'HOT_STANDBY', 'ROUTE53_FAILOVER'],
+    text: 'おかえり!' },
+  { char: 'luna', key: 'luna_result_01', file: 'luna_20.mp3',
+    modes: ['FREE_TIER', 'RESULT'],
+    text: 'おつかれさま!' },
+  // 喜び / 驚き
+  { char: 'luna', key: 'luna_kita_01', file: 'luna_10.mp3',
+    modes: ['FREE_TIER', 'CZ', 'SPOT_ZONE'],
+    text: 'きたきたっ!' },
+  { char: 'luna', key: 'luna_win_01', file: 'luna_11.mp3',
+    modes: ['FREE_TIER', 'CZ'],
+    text: 'やったー!' },
+  { char: 'luna', key: 'luna_sugoi_01', file: 'luna_17.mp3',
+    modes: ['FREE_TIER', 'BONUS', 'AS_RUSH'],
+    text: 'すごいすごい!' },
+  { char: 'luna', key: 'luna_freeze_01', file: 'luna_16.mp3',
+    modes: ['FREE_TIER'],
+    text: 'フリーズ!?' },
+  // 落胆 / 間
+  { char: 'luna', key: 'luna_hmm_01', file: 'luna_13.mp3',
+    modes: ['FREE_TIER'],
+    text: 'んー…' },
+  { char: 'luna', key: 'luna_lose_01', file: 'luna_14.mp3',
+    modes: ['FREE_TIER', 'CZ', 'HOT_STANDBY'],
+    text: 'ざんねん…' },
+  { char: 'luna', key: 'luna_miss_01', file: 'luna_15.mp3',
+    modes: ['SPOT_ZONE', 'AS_RUSH'],
+    text: 'あちゃー' },
+  // 継続の後押し
+  { char: 'luna', key: 'luna_madamada_01', file: 'luna_18.mp3',
+    modes: ['AS_RUSH', 'CF_RUSH', 'AURORA_RUSH', 'SPOT_ZONE'],
+    text: 'まだまだ〜' },
 ];
 
 // ─────────────────────────────────────────────
@@ -255,7 +351,7 @@ function printHelp() {
     '',
     '  --dry-run, -n     APIを叩かず、定義の検証と対象一覧の表示だけ行う',
     '  --force,   -f     既存MP3も作り直す(デフォルトはスキップ)',
-    '  --char=<id>       kiro / george のどちらかに絞る',
+    `  --char=<id>       ${Object.keys(CHARS).join(' / ')} のいずれかに絞る`,
     '  --only=<keys>     カンマ区切りの key だけ生成する',
     '  --help,    -h     このヘルプ',
   ].join('\n'));
@@ -312,17 +408,19 @@ function loadEnvFile(envPath) {
   return env;
 }
 
-/** 設定の解決。.env を基本とし、シェルの環境変数があればそちらを優先する */
+/**
+ * 設定の解決。.env を基本とし、シェルの環境変数があればそちらを優先する。
+ * uuids は **CHARS から自動で組み立てる**(キャラを足したときの追記漏れを防ぐ)。
+ */
 function resolveConfig() {
   const fileEnv = loadEnvFile(ENV_PATH);
   const pick = (name) => (process.env[name] ?? fileEnv[name] ?? '').trim();
+  const uuids = {};
+  for (const [id, spec] of Object.entries(CHARS)) uuids[id] = pick(spec.uuidEnv);
   return {
     envFileFound: existsSync(ENV_PATH),
     apiKey: pick('AIVIS_CLOUD_API_KEY'),
-    uuids: {
-      kiro: pick(CHARS.kiro.uuidEnv),
-      george: pick(CHARS.george.uuidEnv),
-    },
+    uuids,
   };
 }
 
@@ -344,7 +442,7 @@ function reportMissingConfig(config, neededChars) {
   console.error('    1) cp awslot/.env.example awslot/.env');
   console.error('    2) https://hub.aivis-project.com/ でAPIキーを発行して AIVIS_CLOUD_API_KEY に貼る');
   console.error('    3) 使いたい音声モデルのページURL末尾のUUIDを');
-  console.error('       KIRO_MODEL_UUID(幽霊Kiro)/ GEORGE_MODEL_UUID(サメ ジョージ)に貼る');
+  console.error('       LUNA_MODEL_UUID(ルナ / 現在の主役)/ KIRO_MODEL_UUID / GEORGE_MODEL_UUID に貼る');
   console.error('    4) node scripts/generate-voices.mjs');
   console.error('');
   console.error('  ※ .env はコミット禁止(リポジトリルートの .gitignore で除外済み)');
@@ -426,7 +524,7 @@ async function main() {
   let targets = PHRASES;
   if (opts.char) {
     if (!CHARS[opts.char]) {
-      console.error(`[generate-voices] 未知のキャラです: ${opts.char}(kiro / george)`);
+      console.error(`[generate-voices] 未知のキャラです: ${opts.char}(${Object.keys(CHARS).join(' / ')})`);
       return 1;
     }
     targets = targets.filter((p) => p.char === opts.char);

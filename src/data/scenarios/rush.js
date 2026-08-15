@@ -42,7 +42,8 @@ export default [
       { at: 1500, layer: 'char',    action: 'show',   params: { char: 'kiro', pose: 'happy' } },
       { at: 1500, layer: 'char',    action: 'show',   params: { char: 'george', pose: 'grin' } },
       { at: 1500, layer: 'char',    action: 'motion', params: { char: 'george', motion: 'swimIn' } },
-      { at: 1700, layer: 'voice',   action: 'play',   params: { key: 'george_rush_01' } },
+      // RUSH突入は最大の告知。間引かない(U68)
+      { at: 1700, layer: 'voice',   action: 'play',   params: { key: 'luna_rush_01', force: true } },
       // 「突入」と「RUSH」を含むので可読性エンジンが自動で sticky 扱いにする
       // (= 次のレバーONまで残る。テロップを見逃してもRUSHに入ったことが分かる)
       { at: 1800, layer: 'lcd',     action: 'text',
@@ -71,7 +72,7 @@ export default [
       { at: 100,  layer: 'char',    action: 'motion', params: { char: 'kiro', motion: 'shake' } },
       { at: 300,  layer: 'lcd',     action: 'text',
         params: { text: 'AZ-a DOWN', sub: 'フェイルオーバーを待て', color: '#ff8a8a', ms: 1900 } },
-      { at: 600,  layer: 'voice',   action: 'play', params: { key: 'kiro_standby_01' } },
+      { at: 600,  layer: 'voice',   action: 'play', params: { key: 'luna_madamada_01', force: true } },
       { at: 1200, layer: 'bgm',     action: 'change', params: { bgm: 'bgm_standby' } },
     ],
   },
@@ -114,6 +115,8 @@ export default [
       { at: 0,   layer: 'sfx',     action: 'synth', params: { preset: 'fanfare_big' } },
       { at: 100, layer: 'char',    action: 'show',  params: { char: 'george', pose: 'grin' } },
       { at: 100, layer: 'char',    action: 'motion', params: { char: 'george', motion: 'tailWhip' } },
+      // 引き戻し成功。見せ場なので間引かない(U68)
+      { at: 150, layer: 'voice',   action: 'play',  params: { key: 'luna_comeback_01', force: true } },
       { at: 200, layer: 'lcd',     action: 'text',
         params: { text: 'FAILOVER OK', sub: 'AZ-c で復旧しました', color: '#7bf7d0', ms: 1800 } },
       { at: 300, layer: 'overlay', action: 'particles', params: { preset: 'scale', x: 360, y: 360, count: 28 } },
@@ -150,7 +153,8 @@ export default [
       { at: 400,  layer: 'lcd',     action: 'text',
         params: { text: 'SYSTEM DOWN', sub: '切り替えが完了しませんでした', color: '#ff8a8a', ms: 1900 } },
       { at: 1500, layer: 'char',    action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
-      { at: 1600, layer: 'voice',   action: 'play',  params: { key: 'kiro_cz_lose' } },
+      // 引き戻し失敗。終わったことが伝わる短い落胆(U68)
+      { at: 1600, layer: 'voice',   action: 'play',  params: { key: 'luna_lose_01', force: true } },
     ],
   },
 
