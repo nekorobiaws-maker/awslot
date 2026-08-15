@@ -115,8 +115,15 @@ const MODE_STAGE_ART = {
 /** 派生ゾーンで重ねる色調の濃さ */
 const STAGE_TINT_ALPHA = 0.42;
 
-/** 演出テキスト帯が出ている間、キャラをどれだけ沈めるか(V2) */
-const CHAR_DIM_WHILE_TEXT = 0.45;
+/**
+ * 演出テキスト帯が出ている間、キャラをどれだけ沈めるか。
+ * 0.45(V2) → **0(U79 / 2026-08-15 ユーザー指示「半透明にしなくてよい」)**。
+ * サメ2匹が文字に被っていた頃の対策で、常駐がルナ1人+立ち位置が
+ * 帯と重ならない設計(U71 の stand() 配置)になった今は沈める理由がない。
+ * ルナのカメオ半透明事件(U38)の根もこの定数。戻すときは lunachan.js の
+ * solidify() が premium 系を保護している前提ごと見直すこと。
+ */
+const CHAR_DIM_WHILE_TEXT = 0;
 
 /**
  * 盤面の常設ルール行の基準Y(U66-5 で廃止した説明テロップ帯の跡地)。
@@ -127,6 +134,43 @@ const CHAR_DIM_WHILE_TEXT = 0.45;
  * 告知プレート(lcd.text)は y152〜236 なので重ならない。
  */
 const RULE_LINE_Y = 280;
+
+/* ══ ボーナス盤面の座席(2026-08-16 検証指摘 V80-1 / V80-11 / V80-16)══════
+ *
+ * 数値(獲得枚数 / 残りG / ベル説明 / SET)は **1か所に固定** して、
+ * 演出が何を出していても動かさない。プレートの上端は演出テキスト帯の下端(236)、
+ * 下端は液晶の下端(300)より内側に取ってあるので、
+ *   豆知識カード(y38〜146) / ポップアップ(y152〜236) / 数値(y238〜292)
+ * の3つが縦に並んで一度も重ならない。 */
+const BONUS_PANEL_Y = 238;
+const BONUS_PANEL_H = 54;
+
+/**
+ * ボーナス突入(とセット継続)の大ロゴを出しておく時間[ms]。
+ * これを過ぎたらロゴは消え、名前は液晶ヘッダ(state.headerName)が持ち続ける。
+ * 「常設の大ロゴ + ヘッダの和名」で名前が2つ出ていた V80-7 の解でもある。
+ */
+const BONUS_LOGO_MS = 2200;
+
+/* ══ CZ盤面の「キャラのレーン」(2026-08-16 検証指摘 V80-18)══════════════
+ *
+ * 【指摘】CZ 5種でルナが情報に重なる
+ *   TRUSTED_ADVISOR / CONFIG … 行の右端の判定(GREEN / COMPLIANT)
+ *   WELL-ARCHITECTED / DX   … いちばん右の柱の名前
+ *   ALB                     … 3枚目のターゲットカードと結論行
+ *   SHIELD / FIS            … いちばん右の攻撃カード
+ *
+ * 【なぜ位置替えでは直らないか】
+ * 11種の盤面はどれも「横いっぱいに並べる」造りで、**空いている側が存在しない**。
+ * ルナを左へ動かすと今度は左端の情報に重なるだけで、いたちごっこになる。
+ * U71 で大きさは動かさないと決めてあるので、逃がせる余地も無い。
+ *
+ * 【決めごと】盤面のほうが **右端 CZ_LANE_W px を常設キャラの席として空ける**。
+ * 盤面は「幅 czBoardW・中心 czBoardCx」の中で並べる = どのCZでも同じ約束になり、
+ * 新しいCZを足すときも迷わない。結論行(y246)も同じ中心で書く。
+ * 常設キャラの定位置(render/chars/index.js の MODE_HOMES.CZ)はレーンの中央。
+ */
+const CZ_LANE_W = 96;
 
 /**
  * 盤面が「残り n G」を自前で出しているモード(2026-08-14 検証指摘 V21-11)。
@@ -306,6 +350,9 @@ export class LcdView {
     this._labelKey = null;
     /** そのラベルが出た時刻[秒]。ここからの経過でスライドを描く */
     this._labelAt = -99;
+    /* ── ボーナスの登場ロゴ(V80-1)。ボーナスID|セット数 が変わったら張り直す ── */
+    this._bonusIntroKey = null;
+    this._bonusIntroAt = -99;
     // 演出サブレイヤー(DESIGN.md 5.4)
     this.anims = anims;
     this.chars = chars;
@@ -315,6 +362,12 @@ export class LcdView {
   update(dt) {
     this.t += dt / 1000;
   }
+
+  /** CZ盤面が使ってよい幅(右端の CZ_LANE_W は常設キャラの席) */
+  get czBoardW() { return this.w - CZ_LANE_W; }
+
+  /** CZ盤面の中心X(czBoardW の真ん中) */
+  get czBoardCx() { return (this.w - CZ_LANE_W) / 2; }
 
   /**
    * サブレイヤー順に描画する(DESIGN.md 5.4):
@@ -358,9 +411,22 @@ export class LcdView {
    * @returns {{modeId:string, stage:string|null, title:string}}
    */
   _stageSource(view) {
+    /*
+     * ── ヘッダのステージ名は「1モード1表記」(2026-08-16 検証指摘 V80-7 / V80-8)──
+     *
+     * ボーナスと RUSH は **和名(state.name)と英字ロゴ(盤面)の2系統** を
+     * 同時に出していた:
+     *   ヘッダ「ゴーストボーナスSP」/ 盤面「GHOST BONUS SP」
+     *   ヘッダ「ヒーローRUSH」    / 盤面「HERO RUSH」+ ポップアップ「AWS Hero」
+     * 同じものを別の綴りで名乗るので、画面のどこを見ても名前が食い違って見える。
+     *
+     * 共通仕様として **ヘッダは英字ショート名に一本化** し、
+     * 名乗りたいモードは game/modes/*.js が state.headerName に英字を載せる。
+     * 載せていないモード(通常時・CZ・ゾーン)は今までどおり state.name のまま。
+     */
     const title = (view.modeId === 'FREE_TIER'
       ? view.state?.subStateName ?? view.state?.name
-      : view.state?.name) ?? view.modeId;
+      : view.state?.headerName ?? view.state?.name) ?? view.modeId;
     const key = { modeId: view.modeId, stage: view.state?.stage ?? null, title };
 
     if (!this._stageKey
@@ -764,11 +830,22 @@ export class LcdView {
    * @param {string} [opts.color]
    * @param {number} [opts.size]
    * @param {string} [opts.sub] 2行目(さらに小さく出す補足)
+   * @param {string} [opts.coverKey] 重複判定に使う文言(既定は text そのもの)
+   *
+   * ── coverKey が要る理由(2026-08-16 検証指摘 V80-19)────────────────
+   * CZ の目標行は `${goal}  期待度 ★☆☆` と **連結してから** 描いている。
+   * 一方ポップアップ(突入告知)が出すのは `goal` 単体なので、連結後の文字列で
+   * covers() を引くと一致せず、**同じ目標が帯とポップアップに二重に出ていた**
+   * (甘スロCZの「ALARM を発報させろ!」)。判定は必ず「素の文」で行う。
    */
-  _drawRuleLine(ctx, text, { color = 'rgba(255,255,255,0.78)', size = 13, sub = '' } = {}) {
+  _drawRuleLine(ctx, text, {
+    color = 'rgba(255,255,255,0.78)', size = 13, sub = '', coverKey = null,
+  } = {}) {
     if (!text) return;
     // ポップアップが同じことを言っている間は黙る(U8。役割分担は瞬間=ポップアップ)
-    if (this.anims?.covers?.(text) ?? false) return;
+    const key = coverKey ?? text;
+    if (this.anims?.covers?.(key) ?? false) return;
+    if (coverKey && (this.anims?.covers?.(text) ?? false)) return;
 
     ctx.save();
     ctx.textAlign = 'center';
@@ -831,6 +908,8 @@ export class LcdView {
       this._drawRuleLine(ctx, `${state.goal}${state.stars ? `  期待度 ${state.stars}` : ''}`, {
         color: '#ffd166',
         sub: state?.goalDetail ?? '',
+        // 突入ポップアップは goal 単体を出すので、判定も素の goal で行う(V80-19)
+        coverKey: state.goal,
       });
     }
     if (state?.ui === 'checklist') return this._drawCzChecklist(ctx, state, textActive);
@@ -867,9 +946,11 @@ export class LcdView {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    // ── ステートマシン図 ──
-    const startX = 40;
-    const endX = this.w - 40;
+    /* ── ステートマシン図 ──(右端はキャラのレーン = V80-18)
+     * 左端は「ノード名を中央寄せで置いても液晶からはみ出さない」幅を残す
+     * (いちばん長い ValidateInput が 10px で約70px なので半分の 35px + 余白)。 */
+    const startX = 44;
+    const endX = this.czBoardW - 26;
     const y = 96;
     const step = (endX - startX) / (total - 1);
     const r = Math.min(12, Math.max(7, step / 5));
@@ -941,33 +1022,41 @@ export class LcdView {
     }
 
     // ── 進捗ゲージ ──
-    this._drawGauge(ctx, 60, 140, this.w - 120, 8, idx / total,
+    this._drawGauge(ctx, 44, 140, this.czBoardW - 88, 8, idx / total,
       failed ? ['#7a1c1c', '#ff5a5a'] : ['#1c5a7a', '#4ce0a0']);
     ctx.font = `700 11px ${FONT}`;
     ctx.fillStyle = 'rgba(255,255,255,0.7)';
-    ctx.fillText(`${idx} / ${total} States`, this.w / 2, 160);
+    ctx.fillText(`${idx} / ${total} States`, this.czBoardCx, 160);
 
     // ── 現在の状態 ──
-    if (failed) {
+    /*
+     * 現在の状態(y196)は **告知プレート(y152〜236)の真ん中**。
+     * 2026-08-16 検証指摘 V80-21④: FAILED / SUCCEEDED だけ textActive を見ておらず、
+     * 「FAIL STATE」のポップアップと重なって両方読めなくなっていた。
+     * 3つとも同じ扱い(帯が出ている間は盤面が譲る)に揃える。
+     */
+    if (textActive) {
+      /* 帯が主役。ここには何も置かない */
+    } else if (failed) {
       ctx.font = `900 26px ${FONT_HEAVY}`;
       ctx.fillStyle = '#ff5a5a';
-      ctx.fillText('FAILED', this.w / 2, 196);
+      ctx.fillText('FAILED', this.czBoardCx, 196);
     } else if (cleared) {
       ctx.font = `900 26px ${FONT_HEAVY}`;
       ctx.fillStyle = '#7bf7d0';
-      ctx.fillText('SUCCEEDED', this.w / 2, 196);
-    } else if (!textActive) {
+      ctx.fillText('SUCCEEDED', this.czBoardCx, 196);
+    } else {
       ctx.font = `700 14px ${FONT}`;
       ctx.fillStyle = '#ffe066';
       const cur = names?.[idx];
       const curName = (cur && typeof cur === 'object' ? cur.name : cur) ?? 'Task State';
-      ctx.fillText(String(curName), this.w / 2, 196);
+      ctx.fillText(String(curName), this.czBoardCx, 196);
     }
 
     if (!textActive) {
       ctx.font = `600 11px ${FONT}`;
       ctx.fillStyle = 'rgba(255,255,255,0.5)';
-      ctx.fillText('Success State 到達でボーナス', this.w / 2, 218);
+      ctx.fillText('Success State 到達でボーナス', this.czBoardCx, 218, this.czBoardW - 16);
     }
   }
 
@@ -988,8 +1077,9 @@ export class LcdView {
     const labels = Array.isArray(state?.statusLabels) && state.statusLabels.length === 3
       ? state.statusLabels
       : ['NG', 'WARN', 'GREEN'];
-    const x = 46;
-    const w = this.w - 92;
+    // 右端はキャラのレーン(CZ_LANE_W)。行はその手前で終える(V80-18)
+    const x = 30;
+    const w = this.czBoardW - 60;
     ctx.textBaseline = 'middle';
 
     /**
@@ -1025,7 +1115,18 @@ export class LcdView {
       ctx.textAlign = 'left';
       ctx.font = `600 13px ${FONT}`;
       ctx.fillStyle = 'rgba(255,255,255,0.9)';
-      ctx.fillText(it.name, x + 30, y + rowH / 2);
+      /*
+       * 項目名は右の判定ラベル(GREEN / NON_COMPLIANT)の手前で切る。
+       * AWS Config のルール名は s3-bucket-public-read-prohibited のように長く、
+       * 切らないと判定ラベルの上に重なって両方読めなくなる(2026-08-16 V80-18 の
+       * 幅詰めで顕在化)。
+       */
+      const nameMaxW = w - 40 - 88;
+      let nameShown = String(it.name ?? '');
+      while (nameShown.length > 3 && ctx.measureText(nameShown).width > nameMaxW) {
+        nameShown = `${nameShown.slice(0, -2)}…`;
+      }
+      ctx.fillText(nameShown, x + 30, y + rowH / 2);
       ctx.textAlign = 'right';
       // 状態名は最大 'NON_COMPLIANT'(13文字)まで来るので、行の余白に合わせて詰める
       ctx.font = `700 11px ${FONT}`;
@@ -1054,7 +1155,7 @@ export class LcdView {
       ctx.fillStyle = done ? '#4ce0a0' : '#ffffff';
       const goalLabel = state?.goalLabel
         ?? (done ? `${okWord} ${greens} / ${need} — 達成` : `${okWord} ${greens} / ${need} — あと${need - greens}`);
-      ctx.fillText(goalLabel, this.w / 2, 222);
+      ctx.fillText(goalLabel, this.czBoardCx, 222, this.czBoardW - 16);
     }
   }
 
@@ -1066,7 +1167,8 @@ export class LcdView {
     const w = 46;
     const gap = 10;
     const totalW = pillars.length * w + (pillars.length - 1) * gap;
-    const startX = (this.w - totalW) / 2;
+    // 右端はキャラのレーン。柱はその手前の幅で中央に置く(V80-18)
+    const startX = this.czBoardCx - totalW / 2;
 
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'center';
@@ -1114,7 +1216,7 @@ export class LcdView {
     if (!textActive) {
       ctx.font = `900 16px ${FONT_HEAVY}`;
       ctx.fillStyle = done ? '#ffe066' : '#ffffff';
-      ctx.fillText(count, this.w / 2, 224);
+      ctx.fillText(count, this.czBoardCx, 224);
       return;
     }
     ctx.save();
@@ -1133,9 +1235,10 @@ export class LcdView {
   }
 
   _drawCzGraph(ctx, state, textActive = false) {
-    const gx = 40;
+    // 右端はキャラのレーン(V80-18)。グラフはその手前で閉じる
+    const gx = 30;
     const gy = 58;
-    const gw = this.w - 80;
+    const gw = this.czBoardW - 60;
     const gh = 150;
 
     ctx.fillStyle = 'rgba(0,0,0,0.3)';
@@ -1190,7 +1293,7 @@ export class LcdView {
       ctx.textBaseline = 'middle';
       ctx.font = `900 20px ${FONT_HEAVY}`;
       ctx.fillStyle = '#ffffff';
-      ctx.fillText('CloudWatch ALARM', this.w / 2, gy + gh + 24);
+      ctx.fillText('CloudWatch ALARM', this.czBoardCx, gy + gh + 24);
       /*
        * 目標(state.goal)はここには描かない(2026-08-15 U66-5)。
        * CZ11種で共通の持続情報なので、_drawCz の常設ルール行が
@@ -1315,36 +1418,48 @@ export class LcdView {
       this._ambient(instruction, { matchCategory: false });
     }
 
-    if (!textActive) {
-      ctx.font = `700 12px ${FONT}`;
-      ctx.fillStyle = 'rgba(255,255,255,0.7)';
-      /*
-       * 待たされている理由をここだけで説明する(2026-08-14 検証指摘 V21-04)。
-       * 旧文言「停止ボタンを押すだけで揃います」は、**小役が成立したゲームは揃わない**
-       * (game/modes/bonusready.js の reelTargetFor は flag==='LOSE' のときだけ
-       *  ボーナス図柄を狙う)という肝心のルールを伝えていなかったため、
-       * 小役が続いた回で「揃えたのに入賞しない = 進行が止まった」と読まれていた。
-       */
-      ctx.fillText(
-        `${state?.shortName ?? 'BONUS'} — 小役が成立しないゲームで自動的に揃います  (${state?.games ?? 0}G目)`,
-        this.w / 2, 234,
-      );
-    }
+    /*
+     * 待たされている理由(2026-08-14 検証指摘 V21-04)。
+     *
+     * ── 2026-08-16 検証指摘 V80-15 で置き場所を変えた ────────────────────
+     * 旧: y234 に素の小文字で1行。**ルナ(足元 y282)の胴体の真上**だったため
+     *     文末の「(0G目)」がキャラの絵に埋もれて読めなかった。さらにボーナス名を
+     *     頭に付けていたので、ヘッダの名前と合わせて名乗りが2回出ていた。
+     * 新: 常設ルール行(y266〜300)へ移す。この行は **キャラより後に描かれ、
+     *     自前の下敷きを持つ** ので、誰が立っていても必ず読める。
+     *     名前はヘッダに任せて落とし、待ちゲーム数はサブ行で「n ゲーム目」と書く
+     *     (0のときは出さない。「(0G目)」は数え始める前の値で意味を持たないため)。
+     */
+    const waited = Math.max(0, Math.round(state?.games ?? 0));
+    this._drawRuleLine(ctx, '小役が成立しないゲームで自動的に揃います', {
+      color: 'rgba(255,255,255,0.82)',
+      sub: waited > 0 ? `入賞待ち ${waited} ゲーム目` : '',
+    });
   }
 
   /**
    * ボーナス消化中の盤面。
    *
-   * ══ 2026-08-14 検証指摘 V21-01(major)══════════════════════════
-   * 「大ロゴ GHOST BONUS が 獲得枚数 / 残りG / ベル揃いで+15枚 の3行と重なって
-   *   数値が読めない」。犯人は盤面のタイトルではなく **演出のテキスト帯**:
-   *   テキスト帯は液晶の中央 +44px(y≒194)に下敷きごと出るので、
-   *   1行+サブ行の告知でも **y152〜236 を占有** する。
-   *   旧レイアウトの3行(174 / 200 / 220)はその真下にあり、全部隠れていた。
+   * ══ 2026-08-16 検証指摘 V80-1 / V80-7 / V80-11 / V80-16 で全面整理 ═══════
    *
-   * 対策は「帯が出ている間は数値を帯の外(上)へ逃がす」。
-   * 数値を消してしまうと消化中の主役情報が無くなるので、**縮めて上へ寄せる**
-   * (lcd-cz-extra.js の各CZ盤面が textActive で位置を詰めているのと同じ作法)。
+   * 【それまでの造り】大ロゴ(常設・y79〜125 / 46px)を画面の主役に置き、
+   * 獲得枚数・残りG・ベル説明・SET を **その真下(162〜238)へ素の文字で** 並べていた。
+   * 帯・豆知識カードが出るたびに逃がし先を切り替える分岐が3種類あり、
+   *   ・大ロゴと数値が近すぎて重なって見える(V80-1)
+   *   ・カード(y38〜146)の下端と「+n 枚」(162)が接触する(V80-11)
+   *   ・ヘッダの和名とロゴの英字が同じことを2回名乗る(V80-7)
+   * が同時に起きていた。逃がし先を増やすほど組み合わせが増えて破綻する形。
+   *
+   * 【新しい造り】**座席を1つに固定して、動かすのをやめる**。
+   *   ヘッダ(y0〜34)   … ボーナス名(英字)。state.headerName で常設(V80-7)
+   *   大ロゴ            … 突入直後 BONUS_LOGO_MS だけの「登場」演出。以後は出さない
+   *   カード帯(y38〜146)… 豆知識カード専用。盤面は文字を置かない
+   *   ポップアップ(152〜236)… 演出テキスト帯。盤面は文字を置かない
+   *   **数値プレート(y238〜292)** … 獲得枚数 / 残りG / ベル説明 / SET の常設席。
+   *       下敷き付きなので背景が何でも読める。**どの演出が出ても動かさない**
+   *       = 「数値エリアは常時可読」を座席で保証する。
+   *
+   * キャラ(ルナ)は UI より先に描かれるので、プレートは必ずルナの上に出る。
    * @param {CanvasRenderingContext2D} ctx
    * @param {object} state
    * @param {boolean} textActive 演出のテキスト帯が出ているか
@@ -1353,142 +1468,99 @@ export class LcdView {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     const title = state?.title ?? 'BONUS';
-    const pulse = 1 + Math.sin(this.t * 6) * 0.03;
 
     /*
-     * ── AWS豆知識カードと同居する(2026-08-15 ユーザー指示 U64-8)────────────
-     * カード(staging/anims/lcdanims-extra.js の TRIVIA_CARD)は y38〜146 を占める。
-     * 大ロゴ(y79〜125)はその真下に潜って重なっていたので、
-     * **カードが出ている間だけロゴをヘッダ帯(y0〜34)へ縮めて逃がす**。
-     * これで ロゴ / カード / 獲得枚数(162)/ 残りG(190)/ ベル説明(214)/ SET(238)
-     * の6つが1画面に全部並ぶ。カードが消えれば大ロゴへ戻る。
+     * 突入(とセット継続)から何秒たったか。
+     * ボーナスIDかセット数が変わった瞬間を「登場」とみなしてタイマーを張り直す。
+     */
+    const introKey = `${state?.bonusId ?? ''}|${state?.setCount ?? 1}`;
+    if (introKey !== this._bonusIntroKey) {
+      this._bonusIntroKey = introKey;
+      this._bonusIntroAt = this.t;
+    }
+    /*
+     * 登場ロゴを出さない場面:
+     *   ・豆知識カード(y38〜146)が出ている … 座席が重なる
+     *   ・ポップアップが出ている           … 突入演出が「GHOST SP」等の名前を
+     *                                        自分で名乗るので、同じ名前が2つ並ぶ(U8)
      */
     const cardActive = this.anims?.isPlaying?.('aws_trivia_card') === true;
+    const introLeft = BONUS_LOGO_MS / 1000 - (this.t - this._bonusIntroAt);
+    const showBigLogo = introLeft > 0 && !cardActive && !textActive;
 
-    // テキスト帯が出ている間は、盤面を丸ごと帯の上(y<TEXT_BAND_TOP)へ収める
-    let titleY = textActive ? 62 : 102;
-    let titleSize = textActive ? 30 : 46;
-    if (cardActive) {
-      // ヘッダ帯の中。左のステージ名・右のカウントダウンとは重ならない中央に置く
-      titleY = 17;
-      titleSize = 16;
+    if (showBigLogo) {
+      /*
+       * 登場の大ロゴ。最後の 0.4秒でフェードアウトして、以降はヘッダが名前を持つ。
+       * y110(46px)の下端は 133 で、カード帯(〜146)にもポップアップ帯(152〜)にも
+       * 数値プレート(238〜)にも触れない。
+       */
+      const pulse = 1 + Math.sin(this.t * 6) * 0.03;
+      const size = 46;
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, introLeft / 0.4);
+      ctx.translate(this.w / 2, 110);
+      ctx.scale(pulse, pulse);
+      ctx.font = `900 ${size}px ${FONT_HEAVY}`;
+      ctx.lineWidth = size * 0.17;
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = '#3a0a00';
+      ctx.strokeText(title, 0, 0, this.w - 24);
+      const grad = ctx.createLinearGradient(0, -size * 0.56, 0, size * 0.56);
+      grad.addColorStop(0, '#fff3a0');
+      grad.addColorStop(0.5, '#ffb400');
+      grad.addColorStop(1, '#ff5a00');
+      ctx.fillStyle = grad;
+      ctx.fillText(title, 0, 0, this.w - 24);
+      ctx.restore();
     }
-
-    ctx.save();
-    ctx.translate(this.w / 2, titleY);
-    ctx.scale(pulse, pulse);
-    ctx.font = `900 ${titleSize}px ${FONT_HEAVY}`;
-    ctx.lineWidth = titleSize * 0.17;
-    ctx.lineJoin = 'round';
-    ctx.strokeStyle = '#3a0a00';
-    ctx.strokeText(title, 0, 0, this.w - 24);
-    const grad = ctx.createLinearGradient(0, -titleSize * 0.56, 0, titleSize * 0.56);
-    grad.addColorStop(0, '#fff3a0');
-    grad.addColorStop(0.5, '#ffb400');
-    grad.addColorStop(1, '#ff5a00');
-    ctx.fillStyle = grad;
-    ctx.fillText(title, 0, 0, this.w - 24);
-    ctx.restore();
-    // ボーナス名は常設で大きく出ているので、テキスト帯に同じ告知を出させない
+    /*
+     * ボーナス名はヘッダが常設で名乗っているので、
+     * 大ロゴを出していない間もテキスト帯に同じ告知を積ませない(U8)。
+     */
     this._ambient(title);
 
-    /*
-     * カードが出ている間は、帯が無ければ下3行(162 / 190 / 214 / 238)をそのまま使う。
-     * カードの下端は 146 なので重ならない(座標を動かすときは
-     * lcdanims-extra.js の TRIVIA_CARD と必ず突き合わせること)。
-     */
-
+    /* ══ 数値プレート(常設・不動)═══════════════════════════════════ */
     const remaining = state?.remaining ?? 0;
     const total = state?.total ?? 0;
     const gained = `+${Math.floor(state?.gained ?? 0)} 枚`;
     const left = `残り ${remaining} / ${total} G`;
     const leftColor = remaining <= 3 ? '#ff8a8a' : '#ffffff';
+    const isSet = Boolean(state?.isSet);
 
-    if (textActive && cardActive) {
-      /*
-       * ── 帯 + カードが同時に出ている(U64-8)──────────────────────────
-       * 上(y38〜146)はカード、中(y151〜237)は帯で埋まっているので、
-       * 数値は **帯の下・テロップ帯(y266〜)の上** の空き(y240〜262)へ1行で逃がす。
-       * ここでも消えるのはロゴだけ(ヘッダに縮小版が出ている)。
-       */
-      const y = 252;
-      ctx.font = `900 18px ${FONT_HEAVY}`;
-      ctx.fillStyle = '#ffe066';
-      ctx.fillText(gained, 96, y);
-      ctx.font = `900 15px ${FONT_HEAVY}`;
-      ctx.fillStyle = leftColor;
-      ctx.fillText(left, 244, y);
-      if (state?.isSet) {
-        ctx.font = `900 13px ${FONT_HEAVY}`;
-        ctx.fillStyle = state?.onDemand ? '#7bf7d0' : 'rgba(255,255,255,0.8)';
-        ctx.fillText(`SET ${state?.setCount ?? 1}`, 382, y);
-      }
-      return;
-    }
+    const px = 14;
+    const pw = this.w - px * 2;
+    roundRect(ctx, px, BONUS_PANEL_Y, pw, BONUS_PANEL_H, 10);
+    ctx.fillStyle = 'rgba(6,4,16,0.72)';
+    ctx.fill();
+    ctx.lineWidth = 1.4;
+    ctx.strokeStyle = 'rgba(255,214,102,0.55)';
+    ctx.stroke();
 
-    if (textActive) {
-      /* ── 帯が出ている間: 獲得枚数と残りGを1行にまとめて上へ逃がす ── */
-      const y = 104;
-      ctx.font = `900 22px ${FONT_HEAVY}`;
-      ctx.fillStyle = '#ffe066';
-      ctx.fillText(gained, this.w / 2 - 82, y);
-      ctx.font = `900 18px ${FONT_HEAVY}`;
-      ctx.fillStyle = leftColor;
-      ctx.fillText(left, this.w / 2 + 78, y);
-      if (state?.isSet) {
-        ctx.font = `900 15px ${FONT_HEAVY}`;
-        ctx.fillStyle = state?.onDemand ? '#7bf7d0' : 'rgba(255,255,255,0.8)';
-        ctx.fillText(`SET ${state?.setCount ?? 1}`, this.w / 2, 130);
-      }
-      return;
-    }
-
-    /*
-     * ── ボーナス名の日本語表記は出さない(2026-08-15 検証指摘 Q2 / U8)──────
-     * ここには state.name(「ゴーストボーナスSP」)を 15px で出していたが、
-     * すぐ上の大ロゴが state.title(「GHOST BONUS SP」)= **同じものの英語表記** で、
-     * 同じ情報が2行並んでいた(実質の二重表示)。
-     * U8 の「同じことは1か所」に合わせ、**盤面の主役である大ロゴ側に寄せて**
-     * こちらを落とす。日本語名が要る場面(残存価値の明細など)は
-     * game/modes/bonus.js が state.name をそのまま使えるので情報は失われない。
-     */
-
-    /*
-     * Q2 で日本語名の行(y142)を落としたぶん、下の3行を 12px 詰めて
-     * 大ロゴとの間が空きすぎないようにする(174/200/220 → 162/190/214)。
-     * 帯が出ているときは上の textActive 分岐が別レイアウトを持つので影響しない。
-     */
-    // 獲得枚数(純増ベース)。ベルが揃うたびに一気に伸びる
+    // 1段目: 獲得枚数(左)と 残りG(右)。SET があれば右端へ小さく添える
+    const rowY = BONUS_PANEL_Y + 20;
     ctx.font = `900 24px ${FONT_HEAVY}`;
     ctx.fillStyle = '#ffe066';
-    ctx.fillText(gained, this.w / 2, 162);
+    ctx.textAlign = 'left';
+    ctx.fillText(gained, px + 14, rowY);
 
-    // 残ゲーム数(15G / 6G と短いので、消化中はここが主役になる)
     ctx.font = `900 20px ${FONT_HEAVY}`;
     ctx.fillStyle = leftColor;
-    ctx.fillText(left, this.w / 2, 190);
+    ctx.textAlign = isSet ? 'center' : 'right';
+    ctx.fillText(left, isSet ? this.w / 2 + 42 : this.w - px - 14, rowY);
 
-    // ベルで増えるという遊び方の説明(2026-08-13 の仕様変更ぶん)
-    ctx.font = `700 12px ${FONT}`;
-    ctx.fillStyle = 'rgba(255,255,255,0.75)';
-    ctx.fillText('ベル揃いで +15 枚', this.w / 2, 214);
-
-    /*
-     * セット継続型(DynamoDB BIG)は「いま何セット目か」だけを常設で出す。
-     *
-     * 2026-08-14 ユーザー指摘 U1 / U8:
-     *   旧表示の「ON-DEMAND」は継続を表す社内語で意味が伝わらなかった。
-     *   かといって「SET 3 継続中!!」と書くと、継続の瞬間に出るポップアップ
-     *   (data/scenarios/bonus.js の「ボーナス継続!!」)とテロップと合わせて
-     *   同じことが3か所に並ぶ。ここは常設=状態表示の担当なので数字だけ持つ。
-     *   継続したという「瞬間」はポップアップの担当。
-     */
-    if (state?.isSet) {
-      ctx.font = `900 17px ${FONT_HEAVY}`;
+    if (isSet) {
+      ctx.font = `900 16px ${FONT_HEAVY}`;
       // オンデマンド(継続確定の内部フラグ)は色の明るさだけで匂わせる
-      ctx.fillStyle = state?.onDemand ? '#7bf7d0' : 'rgba(255,255,255,0.8)';
-      ctx.fillText(`SET ${state?.setCount ?? 1}`, this.w / 2, 238);
+      ctx.fillStyle = state?.onDemand ? '#7bf7d0' : 'rgba(255,255,255,0.82)';
+      ctx.textAlign = 'right';
+      ctx.fillText(`SET ${state?.setCount ?? 1}`, this.w - px - 14, rowY);
     }
+
+    // 2段目: 遊び方(ベルで増える)。常設のルール文なのでいちばん小さく
+    ctx.textAlign = 'center';
+    ctx.font = `700 12px ${FONT}`;
+    ctx.fillStyle = 'rgba(255,255,255,0.72)';
+    ctx.fillText('ベル揃いで +15 枚', this.w / 2, BONUS_PANEL_Y + 42);
   }
 
   _drawStandby(ctx, state, textActive = false) {

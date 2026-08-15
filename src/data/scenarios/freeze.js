@@ -28,7 +28,7 @@
  *      筐体・リール・HOW TO PLAY プレートは明るいまま(render/overlay.js の draw)。
  *      V21-06 で足したページ全体の暗転(#page-blackout)は撤去済み。
  *   2. 問答を **AWS 障害のエスカレーション** に差し替え。
- *      「AZ障害なのか…?」→「リージョン障害なのか…?」→「激アツアプデなのか…?」
+ *      「AZ障害なのか…?」→「リージョン障害なのか…?」→「re:Invent の新発表なのか…?」
  *      と規模を上げていき、どれでもない答えとして「ボーナス確定!!」が落ちてくる。
  *      (問いはすべて疑問形 = 何も断定していない。断定するのは最後の1行だけ)
  *   3. 結末の尺を **大幅に延長**(1.3s → 4.2s)。溜めの構成(10.8秒)はそのまま、
@@ -37,21 +37,40 @@
  *      (staging/director.js の clearAllOverlayLines)、
  *      余韻が次の画面へ食い込むことはない。
  *
+ * ══ U74(2026-08-15): 「問答がすぐ消えて読めなかった」════════════════
+ *
+ * ユーザー指摘。実測すると1行あたり 1.48s / 1.48s / **0.69s** しか出ておらず、
+ * 日本語を読み切る時間が無かった(特に3つ目)。
+ *   1. 問答の3行を **2.6秒ずつ**、否定の2行を **1.7秒ずつ** に揃えた。
+ *      「表示 → 静寂の間 → 次の行」のリズムは維持し、
+ *      **2行が同時に画面へ出ることは一度も無い**(overlay.text は1行しか持てず、
+ *      次の showLine が前の行を即座に置き換えるため、
+ *      次のキューは必ず「前の行の ms が満了したあと」に置くこと)。
+ *      いまの間合いは 問い→否定 = 0.4秒 / 否定→次の問い = 0.6秒。
+ *   2. 否定の文言を **「否!!!」** へ(ユーザー指定)。size 30/32 → **46/50** の
+ *      一拍で出す大文字にして、低い一撃(freeze_hit を絞ったもの)を重ねた。
+ *   3. 溜めが 10.75s → **17.6s** に伸びたので、
+ *      **data/freeze.js の durationMs(17660)/ blackout の holdMs(17360)/
+ *      render/overlay.js の BLACKOUT_MAX_HOLD_MS(19000)** を全部追従させた。
+ *      溜め17.6秒 : 爆発〜余韻4.56秒 ≒ **8割 : 2割** の配分は維持。
+ *   ※ 尺の内訳は「問答5行 = 2.6×3 + 1.7×2 = 11.0秒」が本体で、ここは短くできない
+ *      (削ると今回の指摘に逆戻りする)。縮めたいときは行数を減らすこと。
+ *
  *   0.0s  音を奪う(BGMフェード)+ **液晶だけ**を暗転(alpha 0.97)+ 筐体消灯
  *   0.3s  低音を1発
  *   1.1s  極小の地鳴り(gain 0.16)… 「固まっていない」だけを伝える合図(F15)
- *   2.2s  「…」                     ← この無音は絶対に削らない
- *   3.8s  問い1「AZ障害なのか…?」
- *   5.5s  否定1「── まだ足りない。」
- *   7.1s  問い2「リージョン障害なのか…?」(赤く・大きく)
- *   8.7s  否定2「── まだ足りない。」
- *   9.35s 問い3「激アツアプデなのか…?」(金文字)+ 低い地鳴りと微振動
- *  10.05s **完全静止の一拍**(音ゼロ・動きゼロ・文字ゼロ)
- *  10.75s 「ドーン」= 爆発音 + 白フラッシュ + 強シェイク + 明転
- *  10.85s サメ噛みつきカットイン
- *  11.1s  結末「ボーナス確定!!」(カットインの上・**4.2秒たっぷり**)
- *  11.4s  シナリオ終了。ここで exclusive 枠を明け渡し、
- *         直後(最速11.68s)のボーナス入賞待ちの入場告知に道を空ける
+ *   2.2s  「…」(1.0秒)             ← この無音は絶対に削らない
+ *   3.7s  問い1「AZ障害なのか…?」(2.6秒)
+ *   6.7s  否定1「否!!!」(1.7秒)
+ *   9.0s  問い2「リージョン障害なのか…?」(2.6秒・赤く・大きく)
+ *  12.0s  否定2「否!!!」(1.7秒・赤く・さらに大きく)
+ *  14.3s  問い3「re:Invent の新発表なのか…?」(2.6秒・金文字)+ 低い地鳴りと微振動
+ *  16.9s  **完全静止の一拍**(音ゼロ・動きゼロ・文字ゼロ)
+ *  17.6s  「ドーン」= 爆発音 + 白フラッシュ + 強シェイク + 明転
+ *  17.71s サメ噛みつきカットイン
+ *  17.96s 結末「ボーナス確定!!」(カットインの上・**4.2秒たっぷり**)
+ *  18.26s シナリオ終了。ここで exclusive 枠を明け渡し、
+ *         直後(最速 +11.68s)のボーナス入賞待ちの入場告知に道を空ける
  *         (結末の文字はシナリオより長生きする。下の【尺】を参照)
  *
  * ■ 文字を lcd.text ではなく overlay.text で出している理由
@@ -79,7 +98,7 @@
  *
  * ■ 結論を出してよい唯一の理由 / ガセフリーズは作らない
  *   フリーズは **発生した時点でボーナス確定**(data/freeze.js の reward)。
- *   「── まだ足りない。」は期待度を上げるための否定であって、
+ *   「否!!!」は期待度を上げるための否定であって、
  *   **外れるための否定ではない**。当選しないフリーズを後から足してはいけない。
  *
  * ■ 文言(U25 の3条件)
@@ -107,16 +126,21 @@ export default [
     exclusive: true,
     weight: { default: 10000 },
     /**
-     * 尺(U49 で 8600 → 11400。U60 でも **11400 のまま据え置き**)。
+     * 尺(U49 で 8600 → 11400 → U74 で **18260**)。
      *
      * exclusive は **走っている間ずっと他の画面演出を通さない**。
-     * ゲーム側のフリーズ(data/freeze.js の durationMs = 10800)が明けて
-     * リールが回り出すのが 10.8秒、そこから最速で **11.68秒後には BONUS_READY**
+     * ゲーム側のフリーズ(data/freeze.js の durationMs = 17660)が明けて
+     * リールが回り出すのが 17.66秒、そこから最速で **11.68秒後には BONUS_READY**
      * へ入る(ヘッドレスで停止即押しの実測)。尺がそれを越えると、入場演出
      * 「BONUS 確定 → ゴースト7を揃えろ!」が exclusive で弾かれて
-     * **フリーズの結末が告知されない**。最後のキューを 11.33秒に寄せ、
-     * 11.4秒で枠を明け渡す(余裕 約0.28秒)。
+     * **フリーズの結末が告知されない**。最後のキューを 18.19秒に寄せ、
+     * 18.26秒で枠を明け渡す(余裕 約0.07秒 + リールが回り出してからの 11.68秒)。
      * **data/freeze.js の durationMs とセットで動かすこと。**
+     *
+     * ── 2026-08-16(V80-6)で 18260 → 19800 へ ────────────────────────
+     * 結末の文字をカットインの後ろ(19.56秒)へずらしたぶんだけ伸ばした。
+     * 上限は「リールが回り出す 17.66秒 + 最速 11.68秒 = 29.34秒」なので、
+     * 19.8秒はまだ十分手前(入場告知を弾かない)。
      *
      * ── U60「結末をたっぷり見せたい」をどう実装したか ────────────────
      * 結末の余韻は **duration ではなく overlay.text の ms で伸ばす**。
@@ -125,7 +149,7 @@ export default [
      * 明け渡した後も、文字だけが画面に残り続ける。
      * duration を伸ばして余韻を作ると、上のとおり **入場告知を弾いてしまう**。
      */
-    duration: 11400,
+    duration: 19800,
     cues: [
       /* ══ 1. 音を奪う + 暗転(溜めの本体)═══════════════════════ */
       // BGM を止める(bgm:null = engine/audio.js の changeBgm(null) と同じ「無音へ」)。
@@ -137,17 +161,17 @@ export default [
        * 筐体・リール・打ち方プレートは明るいまま = 「台の画面が落ちた」画になる。
        * 塗る範囲を持っているのは render/overlay.js の draw(engine/layers.js の lcd 矩形)。
        *
-       * holdMs は **解除キュー(at:10760)と同じところで切れる** 10500 にしてある
-       * (fadeIn 260 + hold 10500 = 10760 から自然に明け始める)。
+       * holdMs は **解除キュー(at:17620)と同じところで切れる** 17360 にしてある
+       * (fadeIn 260 + hold 17360 = 17620 から自然に明け始める)。
        * 通常は解除キューが先に効くので見た目は変わらないが、
        * 何かの理由で解除キューに届かなかった場合でも
-       * **10.96秒で必ず明るくなる**(ゲーム側のフリーズは 10.8秒)。
+       * **17.82秒で必ず明るくなる**(ゲーム側のフリーズは 17.66秒)。
        * 暗転は時間でしか消えないので、この保険が無いと画面が真っ暗のまま残る。
-       * ※ render/overlay.js の BLACKOUT_MAX_HOLD_MS(12秒)がこれより短いと
-       *   途中で勝手に明転する。あちらのコメントにも同じ申し送りがある。
+       * ※ render/overlay.js の BLACKOUT_MAX_HOLD_MS(U74 で 19秒へ)がこれより短いと
+       *   **問答の途中で勝手に明転する**。あちらのコメントにも同じ申し送りがある。
        */
       { at: 0,    layer: 'overlay', action: 'blackout',
-        params: { alpha: 0.97, fadeInMs: 260, holdMs: 10500, fadeOutMs: 200 } },
+        params: { alpha: 0.97, fadeInMs: 260, holdMs: 17360, fadeOutMs: 200 } },
       // 低音を1発だけ。以降しばらく音を入れないことで「無音」を作る
       { at: 300,  layer: 'sfx',     action: 'synth',   params: { preset: 'freeze_hit', gain: 0.5 } },
       /*
@@ -165,74 +189,118 @@ export default [
 
       /* ══ 2. 神の声(問答ステップアップ)═══════════════════════
        * U49: ここのテンポが速すぎて溜めになっていなかった。
-       * 「…」までの2.2秒と、否定 → 次の問いまでの1.6秒は **絶対に削らない**。
+       * 「…」までの2.2秒は **絶対に削らない**。
        *
        * U60: 問答を **障害のエスカレーション** に差し替えた。
        *   AZ(1データセンター群)→ リージョン(その上)→ 大型アップデート
        * と規模が上がっていき、そのどれでもない答えとして結末が落ちてくる構成。
-       * すべて疑問形なので、この時点では何も断定していない。 */
-      { at: 2200, layer: 'overlay', action: 'text',
-        params: { text: '…', color: VOICE_WHITE, size: 34, ms: 1300 } },
+       * すべて疑問形なので、この時点では何も断定していない。
+       *
+       * ── U74: 1行あたりの表示時間(読める時間)を最優先で確保した ────────
+       * overlay.text は **1行しか持てない**(render/overlay.js の lineEntry)。
+       * 次の showLine が来た瞬間に前の行は消えるので、
+       *   「前の行の at + ms」 < 「次の行の at」
+       * を必ず満たすこと。ここが逆転すると、U74 以前の3つ目の問い
+       * (at 9350 / ms 700 なのに前の否定が 9500 まで生きていた)のように
+       * **指定した ms より短く消える**。
+       *   問い  … ms 2600(実測 2.60秒)
+       *   否定  … ms 1700(実測 1.68秒)
+       *   間合い… 問い→否定 0.4秒 / 否定→次の問い 0.6秒(静寂は残す)
+       * 実測は `node scripts/text-hold-probe.mjs freeze`(1行ずつ秒で出る)。 */
+      { at: 2200,  layer: 'overlay', action: 'text',
+        params: { text: '…', color: VOICE_WHITE, size: 34, ms: 1000 } },
 
-      { at: 3800, layer: 'overlay', action: 'text',
-        params: { text: 'AZ障害なのか…?', color: VOICE_WHITE, size: 32, ms: 1500 } },
-      { at: 4700, layer: 'sfx',     action: 'synth',
+      { at: 3700,  layer: 'overlay', action: 'text',
+        params: { text: 'AZ障害なのか…?', color: VOICE_WHITE, size: 32, ms: 2600 } },
+      { at: 4900,  layer: 'sfx',     action: 'synth',
         params: { preset: 'countdown_tick', gain: 0.35, rate: 0.6 } },
 
-      { at: 5500, layer: 'overlay', action: 'text',
-        params: { text: '── まだ足りない。', color: VOICE_WHITE, size: 30, ms: 900 } },
+      /*
+       * 否定は **一拍で出す大文字**(U74 でユーザー指定の文言へ)。
+       * 文字を大きくするだけだと「静かに出て静かに消える」ので、
+       * 絞った低音の一撃(freeze_hit)を同じ瞬間に置いて打点を作る。
+       * 直後の静寂の間(0.6秒)は U49 の芯なので残すこと。
+       */
+      { at: 6700,  layer: 'sfx',     action: 'synth',
+        params: { preset: 'freeze_hit', gain: 0.28 } },
+      { at: 6700,  layer: 'overlay', action: 'text',
+        params: { text: '否!!!', color: VOICE_WHITE, size: 46, ms: 1700 } },
 
-      { at: 7100, layer: 'overlay', action: 'text',
-        params: { text: 'リージョン障害なのか…?', color: VOICE_RED, size: 34, ms: 1500 } },
-      { at: 8000, layer: 'sfx',     action: 'synth',
+      { at: 9000,  layer: 'overlay', action: 'text',
+        params: { text: 'リージョン障害なのか…?', color: VOICE_RED, size: 34, ms: 2600 } },
+      { at: 9900,  layer: 'sfx',     action: 'synth',
         params: { preset: 'countdown_tick', gain: 0.55, rate: 0.9 } },
-      { at: 8350, layer: 'sfx',     action: 'synth',
+      { at: 10500, layer: 'sfx',     action: 'synth',
         params: { preset: 'countdown_tick', gain: 0.55, rate: 0.9 } },
 
-      { at: 8700, layer: 'overlay', action: 'text',
-        params: { text: '── まだ足りない。', color: VOICE_RED, size: 32, ms: 800 } },
+      { at: 12000, layer: 'sfx',     action: 'synth',
+        params: { preset: 'freeze_hit', gain: 0.38 } },
+      { at: 12000, layer: 'overlay', action: 'text',
+        params: { text: '否!!!', color: VOICE_RED, size: 50, ms: 1700 } },
 
       /* ══ 3. 最後の問い → 完全静止の一拍 → 解放 ═══════════════
-       * 3つ目の問いは 9.35〜10.05秒。地鳴り(graviton_hum)と微振動をぴったり重ねて、
-       * **10.05秒で全部いっぺんに止める**。
+       * 3つ目の問いは 14.3〜16.9秒。地鳴り(graviton_hum)と微振動をぴったり重ねて、
+       * **16.9秒で全部いっぺんに止める**(U74: 0.7秒しか出ていなかった
+       * = いちばん読めなかった行なので、他の問いと同じ 2.6秒へ揃えた。
+       * 微振動の ms も表示に合わせて 700 → 2600 に伸ばす)。
        *
        * U60: ここは以前「【全リージョン同時停止】」という **答え** だったが、
        * 答えを2回出す形(ここと結末)になっていた。問いを3つ並べて
        * 答えは最後の1回だけにする = 「結果の画は当落確定イベントのみ」に近づく。
-       * 「激アツアプデ」は AWS の大型アップデート発表を指す言い回しで、
+       * 3つ目は AWS の大型アップデート発表(re:Invent)で、
        * 障害より上に置くことで「悪いことではなかった」への転調にもなっている。
+       * ※ U78 で「激アツアプデ」という口語の略から言い換えた(下のキューを参照)。
        *
-       * ── 10.05〜10.75秒は「完全静止」。ここにキューを置かないこと ──────
+       * ── 16.9〜17.6秒は「完全静止」。ここにキューを置かないこと ──────
        * 音ゼロ・動きゼロ・文字ゼロの0.7秒を作ってから「ドーン」を落とす。
        * ここを埋めると溜めが抜けて、ただの連続演出に戻ってしまう(U49 の芯)。 */
-      { at: 9350, layer: 'sfx',     action: 'synth',
+      { at: 14300, layer: 'sfx',     action: 'synth',
         params: { preset: 'graviton_hum', gain: 0.7 } },
-      { at: 9350, layer: 'overlay', action: 'shake',   params: { power: 5, ms: 700 } },
-      { at: 9350, layer: 'overlay', action: 'text',
+      { at: 14300, layer: 'overlay', action: 'shake',   params: { power: 5, ms: 2600 } },
+      /*
+       * サブ行は否定の文言に合わせて「それでも、否」へ(U74)。
+       * 直前の2行が「否!!!」になったので、ここだけ旧文言(まだ足りない)が
+       * 残ると呼応が切れる。意味は同じ「これでも答えではない」。
+       */
+      /*
+       * U78: 旧「激アツアプデなのか…?」は
+       *   ・「アプデ」がネット口語の略で、何のアップデートか分からない
+       *   ・AWS を名指ししていない(パチスロ語の「激アツ」しか手がかりが無い)
+       * ので、AWS の一番大きな発表の場である **re:Invent の新発表** へ言い換えた。
+       * 障害 → 障害 → 良い知らせ、という転調の役割はそのまま。
+       */
+      /*
+       * size は 32 → **26**(2026-08-16 検証指摘 V80-5)。
+       * 3つ目の問いだけ文字数が多く(9文字 + 英字9文字)、32px では
+       * 液晶の左右の端まで文字が届いて窮屈だった。
+       * 1つ目(32px / 8文字)・2つ目(34px / 11文字)と **画面に占める幅** を
+       * 揃えると 26px。文言・尺・色は据え置き(問答のリズムは触らない)。
+       */
+      { at: 14300, layer: 'overlay', action: 'text',
         params: {
-          text: '激アツアプデなのか…?', sub: 'それでも、まだ足りない',
-          color: VOICE_GOLD, size: 32, ms: 700,
+          text: 're:Invent の新発表なのか…?', sub: 'それでも、否',
+          color: VOICE_GOLD, size: 26, ms: 2600,
         } },
 
       /* ══ 4. ドーン(解放)═══════════════════════════════════
        * 静止の直後に、音・光・揺れを **同じ瞬間に** 叩き込む。
        * 爆発音は freeze_hit を 1.25倍で重ね、シェイクも 24 → 34 に上げてある。 */
-      { at: 10740, layer: 'sfx',     action: 'synth',   params: { preset: 'freeze_hit', gain: 1.25 } },
-      { at: 10750, layer: 'overlay', action: 'flash',   params: { color: '#ffffff', ms: 420 } },
-      { at: 10755, layer: 'overlay', action: 'shake',   params: { power: 34, ms: 900 } },
+      { at: 17600, layer: 'sfx',     action: 'synth',   params: { preset: 'freeze_hit', gain: 1.25 } },
+      { at: 17610, layer: 'overlay', action: 'flash',   params: { color: '#ffffff', ms: 420 } },
+      { at: 17615, layer: 'overlay', action: 'shake',   params: { power: 34, ms: 900 } },
       // 暗転を解除(明転)。ここから爆発パート
-      { at: 10760, layer: 'overlay', action: 'blackout', params: { release: true, fadeOutMs: 120 } },
+      { at: 17620, layer: 'overlay', action: 'blackout', params: { release: true, fadeOutMs: 120 } },
 
       /* ══ 5. 爆発(既存資産の流用)═══════════════════════════ */
-      { at: 10780, layer: 'lamp',    action: 'pattern', params: { pattern: 'bonus' } },
-      { at: 10800, layer: 'sfx',     action: 'synth',   params: { preset: 'shark_bite' } },
-      { at: 10850, layer: 'overlay', action: 'cutin',   params: { id: 'shark_bite_bar' } },
-      { at: 10880, layer: 'char',    action: 'show',    params: { char: 'kiro', pose: 'premium' } },
-      { at: 10920, layer: 'char',    action: 'motion',  params: { char: 'kiro', motion: 'zoom' } },
-      { at: 11000, layer: 'overlay', action: 'particles',
+      { at: 17640, layer: 'lamp',    action: 'pattern', params: { pattern: 'bonus' } },
+      { at: 17660, layer: 'sfx',     action: 'synth',   params: { preset: 'shark_bite' } },
+      { at: 17710, layer: 'overlay', action: 'cutin',   params: { id: 'shark_bite_bar' } },
+      { at: 17740, layer: 'char',    action: 'show',    params: { char: 'kiro', pose: 'premium' } },
+      { at: 17780, layer: 'char',    action: 'motion',  params: { char: 'kiro', motion: 'zoom' } },
+      { at: 17860, layer: 'overlay', action: 'particles',
         params: { preset: 'rainbow', x: 360, y: 400, count: 40 } },
-      { at: 11020, layer: 'sfx',     action: 'synth',   params: { preset: 'fanfare_big' } },
-      { at: 11060, layer: 'lcd',     action: 'particles',
+      { at: 17880, layer: 'sfx',     action: 'synth',   params: { preset: 'fanfare_big' } },
+      { at: 17920, layer: 'lcd',     action: 'particles',
         params: { preset: 'rainbow', x: 220, y: 150, count: 26 } },
       /*
        * ── 最大の見せ場の文字を lcd.text から overlay.text へ移した ──────────
@@ -247,32 +315,43 @@ export default [
        *
        * ── U60: 結末の文言と尺 ──────────────────────────────────
        * 文言は 'FREEZE!!' → **「ボーナス確定!!」**。
-       *   ・3つの問い(AZ / リージョン / 激アツアプデ)への **答え** なので、
+       *   ・3つの問い(AZ / リージョン / re:Invent の新発表)への **答え** なので、
        *     答えの側が英語の効果音的な語だと問答が完結しない。
        *   ・「ボーナス」の語を含むことで U8 の申告(render/overlay.js の noteHeadline /
        *     registerAmbient)が効き、テロップと入賞待ちのポップアップが自動で黙る。
-       * 尺は 1300 → **4200**(たっぷりの余韻)。シナリオの duration(11400)より
+       * 尺は 1300 → **4200**(たっぷりの余韻)。シナリオの duration(18260)より
        * 長いが、overlay.text はシナリオとは独立に生きるので問題ない。
        * 次のゲームのレバーONで必ず消える(staging/director.js の clearAllOverlayLines)。
+       * U74 で溜めを伸ばしたが、**この 4200 は指示どおり据え置き**。
        */
-      { at: 11100, layer: 'overlay', action: 'text',
+      /*
+       * ── 2026-08-16 検証指摘 V80-6「同時3枚」───────────────────────────
+       * 17.71秒から始まるカットイン shark_bite_bar は ms 1800(= 19.51秒まで)で、
+       * その中に **BARプレート・ルナ・大文字「BONUS!!」** の3つが入っている。
+       * そこへ 17.96秒でこの「ボーナス確定!!」が重なるので、
+       * 画面には告知が3つ同時に載っていた。
+       * 見せる順番を **カットイン(絵)→ 結論(文字)** に分け、
+       * カットインが引ききった 19.56秒から結論を出す(1枚ずつ読める)。
+       * duration もこのキューより後ろへ伸ばしてある(下の 19800 を参照)。
+       */
+      { at: 19560, layer: 'overlay', action: 'text',
         params: {
           text: 'ボーナス確定!!', sub: 'ゴーストボーナスSP + RUSH 確定',
           color: '#ffe066', size: 44, ms: 4200,
         } },
       /*
        * ルナの第一声(U68)。**爆発と同時**に驚かせる。
-       *   ・溜め(0〜10.7秒)の無音は絶対に汚さないので、ここまで一切喋らない
+       *   ・溜め(0〜17.6秒)の無音は絶対に汚さないので、ここまで一切喋らない
        *   ・結末の断定(「ボーナス確定っ!」)は次の画面 = 入賞待ちの入場演出
        *     (data/scenarios/bonus.js の bonus_ready_*)が担当する。
        *     ここで両方鳴らすと1本目が途中で差し替わって切れる(同時発話は1つ)。
        */
-      { at: 10870, layer: 'voice',   action: 'play',    params: { key: 'luna_freeze_01', force: true } },
+      { at: 17730, layer: 'voice',   action: 'play',    params: { key: 'luna_freeze_01', force: true } },
       // ボーナスの曲へ。次のレバーONで入る BONUS 側の自動切替と同じ曲なので鳴り直さない
-      { at: 11250, layer: 'bgm',     action: 'change',  params: { bgm: 'bgm_bonus', fadeMs: 400 } },
-      // 最後のキューは duration(11400)より前に置く。ここが遅いと exclusive 枠が明かず、
+      { at: 18110, layer: 'bgm',     action: 'change',  params: { bgm: 'bgm_bonus', fadeMs: 400 } },
+      // 最後のキューは duration(18260)より前に置く。ここが遅いと exclusive 枠が明かず、
       // 直後に来るボーナス入賞待ちの入場告知を弾いてしまう
-      { at: 11330, layer: 'char',    action: 'pose',    params: { char: 'kiro', pose: 'happy' } },
+      { at: 18190, layer: 'char',    action: 'pose',    params: { char: 'kiro', pose: 'happy' } },
     ],
   },
 ];

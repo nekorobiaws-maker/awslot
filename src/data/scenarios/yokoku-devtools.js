@@ -3,14 +3,23 @@
  * DESIGN.md 6.5 / IDEAS.md 2章。ID はすべて yd_ プレフィックス。
  *
  * まだ演出に登場していない AWS サービス
- *   CodeBuild / CodeArtifact / CodeGuru / DevOps Guru / CDK / Amplify /
+ *   CodeBuild / CodeArtifact / Amazon Q Developer / DevOps Guru / CDK / Amplify /
  *   AppSync / EventBridge Scheduler / Systems Manager / AWS Config /
- *   Service Catalog / Proton / CloudShell / License Manager
+ *   Service Catalog / AWS SAM / CloudShell / License Manager
  * を題材にする(全ファイル grep 済み)。CodeDeploy / X-Ray は
  * yokoku-gimmick.js・zencho.js で、CodePipeline / CloudFormation は未使用のまま
- * 残っているが今回は対象外、Amazon Q は yokoku-ai.js の「Amazon Qチャット予告」で、
+ * 残っているが今回は対象外、
  * API Gateway は yokoku-secnet.js の「API Gatewayレート制限予告」で既出のため
- * それぞれ対象から外した(Amazon Q Developer もテーマが重複するため見送り)。
+ * それぞれ対象から外した。
+ *
+ * ■ 【題材の差し替え】提供終了サービスを画面から外した(2026-08-16 しおん指摘)
+ *   ・C. CodeGuru Reviewer → **Amazon Q Developer**(新規利用の受付が終了したため)
+ *   ・L. AWS Proton        → **AWS SAM**(新規受付が終了したため)
+ *   学習台で「もう始められないサービス」を覚えさせるのは害なので題材ごと替えた。
+ *   **id(yd_codeguru_* / yd_proton_*)は互換のため据え置き**。IDだけが旧題材の名残で、
+ *   画面に出る文言・name はすべて新しい題材に揃えてある。
+ *   Amazon Q は yokoku-ai.js のチャット予告と同名だが、あちらは「AIアシスタントに質問」、
+ *   こちらは「AI がコードをレビュー」で見せ場が別。CodeGuru Reviewer の後継でもある。
  *
  * 既存の演出語彙(lcdanims / lcdanims-extra / particles / sfx-presets /
  * キャラポーズ)の組み合わせだけで構成する。新規アニメ実装は一切不要。
@@ -20,10 +29,10 @@
  * 差し替えで使い回す(yokoku-infra.js の Outposts=reserved_sign / Braket=cw_meter_swing
  * 転用と同じ流儀):
  *   - step_up(3灯)                    … CodeBuild のビルド段階(BUILD/TEST/PACKAGE)
- *   - checklist_green(index)           … CodeGuru の指摘解消 / Systems Manager の
+ *   - checklist_green(index)           … Amazon Q Developer の指摘解消 / Systems Manager の
  *                                         Run Command 実行状況 / Service Catalog の
  *                                         プロビジョニング項目
- *   - pillar_raise(index,count)        … Proton の環境テンプレート(スタック)展開
+ *   - pillar_raise(index,count)        … AWS SAM のスタック配備(リソースが1つずつ立つ)
  *   - cw_meter_swing(label/sub可変)    … Amplify push の進捗ゲージ / License Manager
  *                                         のライセンス使用率ゲージ
  *   - health_check(label可変)          … AppSync のサブスクリプション接続確認
@@ -36,7 +45,7 @@
  *   にそのまま流用すると「デプロイ完了」という別サービスの断言が混ざるため、
  *   本ファイルでは避け、進捗はすべて lcd.text の独自パーセンテージ表記に統一した。
  *
- * ■ 「途中経過まで」に留めたサービス(CodeBuild / Amplify / Service Catalog / Proton)
+ * ■ 「途中経過まで」に留めたサービス(CodeBuild / Amplify / Service Catalog / AWS SAM)
  *   ユーザー指示どおり、ビルド/デプロイ系のプログレスは常に「PROGRESS 表示のまま
  *   終わる」形にしてある(結末を出すと当落断言になるため)。結末を出すには前兆の
  *   当落確定イベント(zencho_end ENTRY/MISS)に新しい pattern 値で紐付ける必要があるが、
@@ -75,7 +84,7 @@ export default [
       { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'BUILD STARTED', sub: 'CodeBuildが起動した', color: '#8ad4ff', ms: 500 } },
       { at: 30,  layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick', gain: 0.5 } },
       { waitFor: 'stop3', layer: 'lcd', action: 'anim',  params: { anim: 'step_up', step: 1 } },
-      { waitFor: 'stop3', after: 250, layer: 'lcd', action: 'text',  params: { text: 'COMPILING 38%', sub: 'コンパイル中…', color: '#8ad4ff', ms: 600 } },
+      { waitFor: 'stop3', after: 250, layer: 'lcd', action: 'text',  params: { text: 'COMPILING 38%', sub: 'AWS CodeBuild — コンパイルの途中で止まった', color: '#8ad4ff', ms: 800 } },
     ],
   },
   {
@@ -93,7 +102,7 @@ export default [
       { waitFor: 'stop2', layer: 'sfx', action: 'synth', params: { preset: 'checklist_ok' } },
       { waitFor: 'stop3', layer: 'lcd', action: 'anim', params: { anim: 'step_up', step: 3, ms: 1300 } },
       { waitFor: 'stop3', after: 150, layer: 'lcd', action: 'text',
-        params: { text: 'COMPILING 92%', sub: 'テスト直前まで進んだ', color: '#ffe066', ms: 1000 } },
+        params: { text: 'COMPILING 92%', sub: 'AWS CodeBuild — テスト直前まで進んだ', color: '#ffe066', ms: 1000 } },
     ],
   },
 
@@ -106,9 +115,9 @@ export default [
     chance: 0.35,
     duration: 1000,
     cues: [
-      { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'PUBLISHING…', sub: 'パッケージを公開中', color: '#8ad4ff', ms: 550 } },
+      { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'PUBLISHING…', sub: 'AWS CodeArtifact — パッケージを公開中', color: '#8ad4ff', ms: 550 } },
       { at: 30,  layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.5 } },
-      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: 'PACKAGE ×1', sub: '1件だけ公開された', color: '#8ad4ff', ms: 500 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: 'PACKAGE ×1', sub: 'AWS CodeArtifact — パッケージは1件だけ公開された', color: '#8ad4ff', ms: 800 } },
     ],
   },
   {
@@ -119,43 +128,43 @@ export default [
     duration: 1700,
     cues: [
       { at: 0,   layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
-      { at: 0,   layer: 'lcd',  action: 'text',    params: { text: 'PUBLISHING…', sub: '複数パッケージを公開中', color: '#ffe066', ms: 600 } },
+      { at: 0,   layer: 'lcd',  action: 'text',    params: { text: 'PUBLISHING…', sub: 'AWS CodeArtifact — 複数パッケージを公開中', color: '#ffe066', ms: 600 } },
       { at: 40,  layer: 'sfx',  action: 'synth',   params: { preset: 'announce' } },
       { waitFor: 'stop3', layer: 'lcd',  action: 'particles', params: { preset: 'stream', x: 200, y: 200, count: 12 } },
       { waitFor: 'stop3', after: 20, layer: 'sfx',  action: 'synth',   params: { preset: 'upgrade_chime' } },
-      { waitFor: 'stop3', after: 200, layer: 'lcd',  action: 'text',    params: { text: 'PACKAGE ×5', sub: '依存関係もすべて解決', color: '#ffe066', ms: 1000 } },
+      { waitFor: 'stop3', after: 200, layer: 'lcd',  action: 'text',    params: { text: 'PACKAGE ×5', sub: 'AWS CodeArtifact — 依存関係もすべて解決した', color: '#ffe066', ms: 1000 } },
     ],
   },
 
-  // ── C. CodeGuru コードレビュー指摘予告 ────────────────────────────
+  // ── C. Amazon Q Developer コードレビュー予告(id は旧 CodeGuru のまま据え置き)──
   {
     id: 'yd_codeguru_review_weak',
-    name: '【弱】CodeGuruコードレビュー予告(軽微な指摘が残る)',
+    name: '【弱】Amazon Q Developerコードレビュー予告(軽微な指摘が残る)',
     when: { event: 'leverOn', flag: ['LOSE', 'BELL'], mode: ['FREE_TIER'], match: { 'modeState.zenchoActive': [false] } },
     weight: { FREE_TIER: 55, default: 0 },
     chance: 0.35,
     duration: 1100,
     cues: [
-      { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'REVIEWING…', sub: 'コードレビュー中', color: '#8ad4ff', ms: 600 } },
+      { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'REVIEWING…', sub: 'Amazon Q Developer — AI がコードをレビュー中', color: '#8ad4ff', ms: 600 } },
       { at: 30,  layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick', gain: 0.5 } },
-      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: 'FINDING ×1', sub: '軽微な指摘が残った', color: '#8ad4ff', ms: 500 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: 'FINDING ×1', sub: 'Amazon Q Developer — 軽微な指摘が1件残った', color: '#8ad4ff', ms: 800 } },
     ],
   },
   {
     id: 'yd_codeguru_review_mid',
-    name: '【中】CodeGuruコードレビュー予告(指摘がすべて解消)',
+    name: '【中】Amazon Q Developerコードレビュー予告(指摘がすべて解消)',
     when: { event: 'leverOn', rare: true, mode: ['FREE_TIER'] },
     weight: { FREE_TIER: 50, default: 0 },
     duration: 1900,
     cues: [
       { at: 0,    layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
-      { at: 0,    layer: 'lcd',  action: 'text',    params: { text: 'REVIEWING…', sub: 'コードレビュー中', color: '#ffe066', ms: 600 } },
+      { at: 0,    layer: 'lcd',  action: 'text',    params: { text: 'REVIEWING…', sub: 'Amazon Q Developer — AI がコードをレビュー中', color: '#ffe066', ms: 600 } },
       { at: 40,   layer: 'sfx',  action: 'synth',   params: { preset: 'countdown_tick' } },
       { waitFor: 'stop3',  layer: 'lcd',  action: 'anim',    params: { anim: 'checklist_green', index: 1 } },
       { waitFor: 'stop3', after: 40,  layer: 'sfx',  action: 'synth',   params: { preset: 'checklist_ok' } },
       { waitFor: 'stop3', after: 200,  layer: 'lcd',  action: 'anim',    params: { anim: 'checklist_green', index: 2 } },
       { waitFor: 'stop3', after: 240,  layer: 'sfx',  action: 'synth',   params: { preset: 'checklist_ok' } },
-      { waitFor: 'stop3', after: 400, layer: 'lcd',  action: 'text',    params: { text: 'ALL RESOLVED', sub: '指摘がすべて解消した', color: '#ffe066', ms: 1000 } },
+      { waitFor: 'stop3', after: 400, layer: 'lcd',  action: 'text',    params: { text: 'ALL RESOLVED', sub: 'Amazon Q Developer — 指摘がすべて解消した', color: '#ffe066', ms: 1000 } },
     ],
   },
 
@@ -176,7 +185,7 @@ export default [
       { waitFor: 'stop3', after: 150, layer: 'overlay', action: 'flash', params: { color: '#ff8a00', ms: 220 } },
       { waitFor: 'stop3', after: 200, layer: 'char',    action: 'pose',  params: { char: 'kiro', pose: 'happy' } },
       { waitFor: 'stop3', after: 260, layer: 'lcd',     action: 'text',
-        params: { text: 'SEVERITY: HIGH', sub: 'これは見過ごせない規模', color: '#ff8a00', ms: 1200 } },
+        params: { text: 'SEVERITY: HIGH', sub: 'Amazon DevOps Guru — 見過ごせない規模の異常', color: '#ff8a00', ms: 1200 } },
     ],
   },
   {
@@ -191,7 +200,7 @@ export default [
       { at: 60,  layer: 'lcd', action: 'text',  params: { text: 'INSIGHT DETECTED', sub: 'DevOps Guruが異常を検知', color: '#8ad4ff', ms: 650 } },
       { waitFor: 'stop3', after: 150, layer: 'sfx', action: 'synth', params: { preset: 'checklist_ok' } },
       { waitFor: 'stop3', after: 200, layer: 'lcd', action: 'text',
-        params: { text: 'SEVERITY: LOW', sub: '自動で解消された', color: '#8ad4ff', ms: 1000 } },
+        params: { text: 'SEVERITY: LOW', sub: 'Amazon DevOps Guru — 異常は自動で解消された', color: '#8ad4ff', ms: 1000 } },
     ],
   },
 
@@ -211,7 +220,7 @@ export default [
       { waitFor: 'stop3', layer: 'overlay', action: 'shake',  params: { power: 12, ms: 320 } },
       { waitFor: 'stop3', after: 80,  layer: 'overlay', action: 'flash', params: { color: '#ff8a00', ms: 240 } },
       { waitFor: 'stop3', after: 140, layer: 'lcd',     action: 'text',
-        params: { text: '+42 resources 差分', sub: 'かつてない規模の変更', color: '#ff8a00', ms: 1200 } },
+        params: { text: '+42 resources 差分', sub: 'AWS CDK — かつてない規模の構成変更', color: '#ff8a00', ms: 1200 } },
     ],
   },
   {
@@ -226,7 +235,7 @@ export default [
       { at: 60, layer: 'lcd', action: 'text',  params: { text: 'cdk diff 実行中…', sub: 'スタックを比較しています', color: '#8ad4ff', ms: 600 } },
       { waitFor: 'stop3', after: 150, layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.6 } },
       { waitFor: 'stop3', after: 200, layer: 'lcd', action: 'text',
-        params: { text: 'There were no differences', sub: '差分はなかった', color: '#8ad4ff', ms: 900 } },
+        params: { text: 'There were no differences', sub: 'AWS CDK — 構成に差分はなかった', color: '#8ad4ff', ms: 900 } },
     ],
   },
 
@@ -242,7 +251,7 @@ export default [
       { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'amplify push', sub: 'デプロイを開始した', color: '#8ad4ff', ms: 550 } },
       { at: 30,  layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.5 } },
       { waitFor: 'stop1', layer: 'lcd', action: 'anim',  params: { anim: 'cw_meter_swing', to: 0.32, over: false, label: 'PUSH PROGRESS', sub: 'HOSTING', ms: 900 } },
-      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: 'PUSHING 32%', sub: 'まだ途中…', color: '#8ad4ff', ms: 500 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: 'PUSHING 32%', sub: 'AWS Amplify — 反映はまだ途中', color: '#8ad4ff', ms: 800 } },
     ],
   },
   {
@@ -256,7 +265,7 @@ export default [
       { at: 0,    layer: 'lcd',  action: 'text',    params: { text: 'amplify push', sub: 'ホスティングを更新中', color: '#ffe066', ms: 600 } },
       { at: 40,   layer: 'sfx',  action: 'synth',   params: { preset: 'dynamo_scale' } },
       { waitFor: 'stop1',  layer: 'lcd',  action: 'anim',    params: { anim: 'cw_meter_swing', to: 0.81, over: false, label: 'PUSH PROGRESS', sub: 'HOSTING', ms: 1600 } },
-      { waitFor: 'stop3', layer: 'lcd',  action: 'text',    params: { text: 'PUSHING 81%', sub: 'あと少しで反映', color: '#ffe066', ms: 900 } },
+      { waitFor: 'stop3', layer: 'lcd',  action: 'text',    params: { text: 'PUSHING 81%', sub: 'AWS Amplify — あと少しで反映される', color: '#ffe066', ms: 900 } },
     ],
   },
 
@@ -271,7 +280,7 @@ export default [
     cues: [
       { at: 0,   layer: 'lcd', action: 'anim',  params: { anim: 'health_check', ok: false, label: 'SUBSCRIBING' } },
       { at: 30,  layer: 'sfx', action: 'synth', params: { preset: 'health_check', gain: 0.5 } },
-      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: 'PENDING', sub: 'まだ接続できていない', color: '#8ad4ff', ms: 500 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: 'PENDING', sub: 'AWS AppSync — まだ接続できていない', color: '#8ad4ff', ms: 800 } },
     ],
   },
   {
@@ -297,9 +306,9 @@ export default [
     chance: 0.35,
     duration: 1300,
     cues: [
-      { at: 0,    layer: 'lcd', action: 'text',  params: { text: 'SCHEDULE 5秒前', sub: '次の実行を待機中', color: '#8ad4ff', ms: 500 } },
+      { at: 0,    layer: 'lcd', action: 'text',  params: { text: 'SCHEDULE 5秒前', sub: 'EventBridge Scheduler — 次の実行を待機中', color: '#8ad4ff', ms: 500 } },
       { at: 30,   layer: 'sfx', action: 'synth', params: { preset: 'ttl_tick', gain: 0.5 } },
-      { waitFor: 'stop1',  layer: 'lcd', action: 'text',  params: { text: 'SCHEDULE 3秒前', sub: 'カウントダウン中', color: '#8ad4ff', ms: 500 } },
+      { waitFor: 'stop1',  layer: 'lcd', action: 'text',  params: { text: 'SCHEDULE 3秒前', sub: 'EventBridge Scheduler — カウントダウン中', color: '#8ad4ff', ms: 500 } },
       { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: '延期', sub: 'EventBridge Scheduler — 今回は実行されず', color: '#8ad4ff', ms: 500 } },
     ],
   },
@@ -312,12 +321,12 @@ export default [
     cues: [
       { at: 0,    layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
       { at: 0,    layer: 'sfx',  action: 'synth',   params: { preset: 'ttl_tick' } },
-      { at: 0,    layer: 'lcd',  action: 'text',    params: { text: 'SCHEDULE 3秒前', sub: 'カウントダウン中', color: '#ffe066', ms: 500 } },
+      { at: 0,    layer: 'lcd',  action: 'text',    params: { text: 'SCHEDULE 3秒前', sub: 'EventBridge Scheduler — カウントダウン中', color: '#ffe066', ms: 500 } },
       { waitFor: 'stop1',  layer: 'sfx',  action: 'synth',   params: { preset: 'ttl_tick' } },
-      { waitFor: 'stop1',  layer: 'lcd',  action: 'text',    params: { text: 'SCHEDULE 1秒前', sub: 'まもなく実行', color: '#ffe066', ms: 500 } },
+      { waitFor: 'stop1',  layer: 'lcd',  action: 'text',    params: { text: 'SCHEDULE 1秒前', sub: 'EventBridge Scheduler — まもなく実行', color: '#ffe066', ms: 500 } },
       { waitFor: 'stop2', layer: 'lcd',  action: 'anim',    params: { anim: 'ttl_zero', ms: 1000 } },
       { waitFor: 'stop2', after: 20, layer: 'sfx',  action: 'synth',   params: { preset: 'ttl_zero' } },
-      { waitFor: 'stop3', layer: 'lcd',  action: 'text',    params: { text: 'SCHEDULE FIRED', sub: 'スケジュールが実行された', color: '#ffe066', ms: 1000 } },
+      { waitFor: 'stop3', layer: 'lcd',  action: 'text',    params: { text: 'SCHEDULE FIRED', sub: 'EventBridge Scheduler — 予定どおり実行された', color: '#ffe066', ms: 1000 } },
     ],
   },
 
@@ -397,7 +406,7 @@ export default [
       { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'PRODUCT 起動中', sub: 'カタログから起動を要求', color: '#8ad4ff', ms: 550 } },
       { at: 30,  layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.5 } },
       { waitFor: 'stop3', layer: 'lcd', action: 'anim',  params: { anim: 'checklist_green', index: 1 } },
-      { waitFor: 'stop3', after: 100, layer: 'lcd', action: 'text',  params: { text: 'PROVISIONING 1/4', sub: 'まだ途中で止まっている', color: '#8ad4ff', ms: 500 } },
+      { waitFor: 'stop3', after: 100, layer: 'lcd', action: 'text',  params: { text: 'PROVISIONING 1/4', sub: 'AWS Service Catalog — 起動は途中で止まっている', color: '#8ad4ff', ms: 800 } },
     ],
   },
   {
@@ -414,40 +423,40 @@ export default [
       { waitFor: 'stop2', layer: 'lcd', action: 'anim', params: { anim: 'checklist_green', index: 2 } },
       { waitFor: 'stop3', layer: 'lcd', action: 'anim', params: { anim: 'checklist_green', index: 3, ms: 1300 } },
       { waitFor: 'stop3', after: 150, layer: 'lcd', action: 'text',
-        params: { text: 'PROVISIONING 3/4', sub: 'あと1項目まで進んだ', color: '#ffe066', ms: 1000 } },
+        params: { text: 'PROVISIONING 3/4', sub: 'AWS Service Catalog — あと1項目まで進んだ', color: '#ffe066', ms: 1000 } },
     ],
   },
 
-  // ── L. Proton 環境テンプレート展開予告(途中経過のみ) ─────────────
+  // ── L. AWS SAM サーバーレス配備予告(途中経過のみ / id は旧 Proton のまま据え置き)──
   {
     id: 'yd_proton_deploy_weak',
-    name: '【弱】Proton環境テンプレート予告(1/4で止まる)',
+    name: '【弱】AWS SAM配備予告(1/4で止まる)',
     when: { event: 'leverOn', flag: ['LOSE', 'BELL'], mode: ['FREE_TIER'], match: { 'modeState.zenchoActive': [false] } },
     weight: { FREE_TIER: 45, default: 0 },
     chance: 0.35,
     duration: 1200,
     cues: [
-      { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'ENV TEMPLATE適用中', sub: '環境テンプレートを展開', color: '#8ad4ff', ms: 600 } },
+      { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'SAM DEPLOY 中', sub: 'AWS SAM — 短いテンプレートでサーバーレスを配備', color: '#8ad4ff', ms: 600 } },
       { at: 30,  layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.5 } },
       { waitFor: 'stop3', layer: 'lcd', action: 'anim',  params: { anim: 'pillar_raise', index: 1, count: 4 } },
-      { waitFor: 'stop3', after: 100, layer: 'lcd', action: 'text',  params: { text: 'STACK 1/4', sub: 'まだ途中で止まっている', color: '#8ad4ff', ms: 500 } },
+      { waitFor: 'stop3', after: 100, layer: 'lcd', action: 'text',  params: { text: 'STACK 1/4', sub: 'AWS SAM — 配備は途中で止まっている', color: '#8ad4ff', ms: 800 } },
     ],
   },
   {
     id: 'yd_proton_deploy_mid',
-    name: '【中】Proton環境テンプレート予告(3/4まで一気に展開)',
+    name: '【中】AWS SAM配備予告(3/4まで一気に配備)',
     when: { event: 'leverOn', rare: true, mode: ['FREE_TIER'] },
     weight: { FREE_TIER: 45, default: 0 },
     duration: 1900,
     cues: [
       { at: 0,  layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
-      { at: 0,  layer: 'lcd',  action: 'text',    params: { text: 'ENV TEMPLATE適用中', sub: '環境テンプレートを展開', color: '#ffe066', ms: 600 } },
+      { at: 0,  layer: 'lcd',  action: 'text',    params: { text: 'SAM DEPLOY 中', sub: 'AWS SAM — 短いテンプレートでサーバーレスを配備', color: '#ffe066', ms: 600 } },
       { at: 40, layer: 'sfx',  action: 'synth',   params: { preset: 'dynamo_scale' } },
       { waitFor: 'stop1', layer: 'lcd', action: 'anim', params: { anim: 'pillar_raise', index: 1, count: 4 } },
       { waitFor: 'stop2', layer: 'lcd', action: 'anim', params: { anim: 'pillar_raise', index: 2, count: 4 } },
       { waitFor: 'stop3', layer: 'lcd', action: 'anim', params: { anim: 'pillar_raise', index: 3, count: 4, ms: 1300 } },
       { waitFor: 'stop3', after: 150, layer: 'lcd', action: 'text',
-        params: { text: 'STACK 3/4', sub: 'あと1つで展開完了', color: '#ffe066', ms: 1000 } },
+        params: { text: 'STACK 3/4', sub: 'AWS SAM — あと1つで配備完了', color: '#ffe066', ms: 1000 } },
     ],
   },
 
@@ -462,7 +471,7 @@ export default [
     cues: [
       { at: 0,   layer: 'lcd', action: 'text',  params: { text: '$ aws s3 ls', color: '#8ad4ff', ms: 500 } },
       { at: 30,  layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.4 } },
-      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: '$ echo ok', sub: '当たり障りのない操作', color: '#8ad4ff', ms: 500 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: '$ echo ok', sub: 'AWS CloudShell — 当たり障りのない操作で終わった', color: '#8ad4ff', ms: 800 } },
     ],
   },
   {
@@ -477,7 +486,7 @@ export default [
       { at: 40,   layer: 'sfx',  action: 'synth',   params: { preset: 'ui_select' } },
       { waitFor: 'stop1',  layer: 'lcd',  action: 'text',    params: { text: '$ aws autoscaling set-desired-capacity --desired-capacity 8', sub: '台数を増やす気配がする', color: '#ffe066', ms: 900 } },
       { waitFor: 'stop3', layer: 'sfx',  action: 'synth',   params: { preset: 'charge_up', gain: 0.6 } },
-      { waitFor: 'stop3', after: 50, layer: 'lcd',  action: 'text',    params: { text: 'Enterキー待ち…', sub: '実行するかはまだ分からない', color: '#ffe066', ms: 900 } },
+      { waitFor: 'stop3', after: 50, layer: 'lcd',  action: 'text',    params: { text: 'Enterキー待ち…', sub: 'AWS CloudShell — 実行するかはまだ分からない', color: '#ffe066', ms: 900 } },
     ],
   },
 

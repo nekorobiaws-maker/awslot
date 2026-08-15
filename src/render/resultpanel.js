@@ -385,7 +385,14 @@ export class ResultPanel {
         const detail = b.games != null && b.perGame != null
           ? `${b.games}G × ${Math.round(b.perGame * 10) / 10}枚`
           : '';
-        rows.push([`買い取り: ${b.label}${detail ? `(${detail})` : ''}`, `+${Math.round(b.coins ?? 0)} 枚`]);
+        /*
+         * 2026-08-16 検証指摘 V80-21⑩「二重カッコ」:
+         * ラベル側が既に括弧を持つ明細(「AS RUSH 残り(EC2 5台)」
+         * 「AURORA RUSH 残り(ACU 30)」)に、ここでもう1組の括弧を足していたので
+         * 「… 残り(EC2 5台)(5G × 15枚)」と括弧が2つ並んでいた。
+         * 内訳はダッシュでつないで、括弧はラベルの持ち物だけにする。
+         */
+        rows.push([`買い取り: ${b.label}${detail ? ` — ${detail}` : ''}`, `+${Math.round(b.coins ?? 0)} 枚`]);
       }
       rows.push(['買い取り合計(消化しきれなかったぶんの枚数換算)', `+${Math.round(state.buyout)} 枚`]);
     }

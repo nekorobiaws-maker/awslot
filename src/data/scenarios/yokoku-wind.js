@@ -191,7 +191,7 @@ const DC_HITS = [
     flags: ['WEAK_CHERRY', 'STRONG_CHERRY'],
     /** 色は data/rolecolors.js が唯一の正(U62)。ここには16進を書かない */
     role: 'WEAK_CHERRY',
-    sub: '専用線が開通 — IAM の権限が通った',
+    sub: '専用線が開通 — インターネットを通らない道',
     /** チェリー(1/24.2 + 1/86.4)の leverOn プールから約5%を取る */
     weight: 320,
   },
@@ -206,7 +206,7 @@ const DC_HITS = [
     key: 'chance',
     flags: ['CHANCE'],
     role: 'CHANCE',
-    sub: '専用線が開通 — Lambda が呼ばれた',
+    sub: '専用線が開通 — 混雑に左右されない帯域',
     weight: 320,
   },
   {
@@ -241,7 +241,7 @@ function dcMissScenario() {
       { waitFor: 'stop3', after: 120, layer: 'sfx', action: 'synth', params: { preset: 'error_buzz', gain: 0.7 } },
       // U57/U62: 結論は stop3 + sticky、ハズレなので色は白(役色が付かない = 何も成立していない)
       conclusionCue({
-        flag: 'LOSE', text: '接続できなかった…', sub: 'リンクが上がらないまま終わった', ms: 1300,
+        flag: 'LOSE', text: '接続できなかった…', sub: 'Direct Connect — 専用線のリンクが上がらないまま終わった', ms: 1300,
       }),
     ],
   };
@@ -366,8 +366,10 @@ export default applyForce([
       { at: 900, layer: 'sfx',  action: 'synth', params: { preset: 'edge_hit' } },
       // U62: 運ばれた絵柄 = 成立役なので、結論行はチェリー(IAM)の赤。
       // 以前は金文字で「色 = 成立役」の対応が崩れていた
+      // U78: サブの「金の風が」は **風の色**の話で、絵を見ていないと伝わらない。
+      //      風がどこから吹いてくるか(CloudFront のエッジ)を書く形へ差し替えた
       conclusionCue({
-        flag: 'WEAK_CHERRY', text: 'IAM 到着', sub: '金の風がアクセスキーを運んできた',
+        flag: 'WEAK_CHERRY', text: 'IAM 到着', sub: 'CloudFront のエッジで署名付きURLが検証された',
         after: 80, ms: 1000,
       }),
     ],
@@ -386,8 +388,9 @@ export default applyForce([
         params: { anim: 'edge_wind_carry', symbol: 'MELON', count: 1, strength: 1, dir: -1, ms: 1900 } },
       { at: 900, layer: 'sfx',  action: 'synth', params: { preset: 'edge_hit' } },
       // U9: S3(スイカ)対応の示唆なので緑。tone は付けない(信頼度の赤帯とは別レイヤー)
+      // U78: 「風が運んできた」だけでは何の話か分からないので、届いた先を書く
       conclusionCue({
-        flag: 'MELON', text: 'S3 到着', sub: '風がオブジェクトを運んできた', after: 80, ms: 1000,
+        flag: 'MELON', text: 'S3 到着', sub: 'エッジ経由で S3 のオブジェクトが届いた', after: 80, ms: 1000,
       }),
     ],
   },
@@ -405,8 +408,9 @@ export default applyForce([
         params: { anim: 'edge_wind_carry', symbol: 'LAMBDA', count: 1, strength: 1, dir: -1, ms: 1900 } },
       { at: 900, layer: 'sfx',  action: 'synth', params: { preset: 'edge_hit' } },
       // U62: チャンス目(Lambda)は黄。金(#ffe066)とは別の色にして役と1対1にする
+      // U78: 「関数が運ばれてきた」→ どこから来たのかを足して絵なしでも通るようにする
       conclusionCue({
-        flag: 'CHANCE', text: 'Lambda 到着', sub: '関数が運ばれてきた', after: 80, ms: 1000,
+        flag: 'CHANCE', text: 'Lambda 到着', sub: 'エッジ経由で Lambda 関数が届いた', after: 80, ms: 1000,
       }),
     ],
   },
@@ -424,9 +428,15 @@ export default applyForce([
         params: { anim: 'edge_wind_carry', symbol: 'SHARKBAR', count: 1, strength: 2, dir: -1, ms: 2200 } },
       { at: 1000, layer: 'overlay', action: 'flash', params: { color: '#ffe066', ms: 220 } },
       { at: 1040, layer: 'sfx',     action: 'synth', params: { preset: 'shark_swim' } },
-      // 「何が運ばれてきたか」までで止める。当落は判定側の演出が語る。色はサメの水色(U62)
+      /*
+       * 「何が運ばれてきたか」までで止める。当落は判定側の演出が語る。色はサメの水色(U62)
+       * U78:
+       *   ・「BAR」だけでは何の絵柄か分からないので **サメBAR**(symbols.js の name)に揃える
+       *   ・「虹の風が」は風の色 = 絵の説明なので落とし、CloudFront のエッジから来たことを書く
+       */
       conclusionCue({
-        flag: 'SHARK', text: 'BAR 到着', sub: '虹の風がエッジから運んできた', after: 80, ms: 1200,
+        flag: 'SHARK', text: 'サメBAR 到着', sub: 'CloudFront のエッジが最上位の絵柄を届けた',
+        after: 80, ms: 1200,
       }),
     ],
   },
@@ -456,8 +466,15 @@ export default applyForce([
        * 以前は at:950 = **第3停止より前** に出ることがあり、
        * 「結果の画は当落確定イベントのみ」を踏み越えていた。
        */
+      /*
+       * U78: 旧「風だけが通り過ぎた」/「キャッシュには何も残らなかった」は
+       *   ・「風」= 液晶を吹き抜けるアニメの説明で、絵を見ていないと通じない
+       *   ・AWS のサービス名がどこにも無い
+       * ので、CloudFront のエッジから何も届かなかった、と言い切る形にした。
+       */
       conclusionCue({
-        flag: 'LOSE', text: '風だけが通り過ぎた', sub: 'キャッシュには何も残らなかった', ms: 900,
+        flag: 'LOSE', text: '何も届かないまま終わった',
+        sub: 'Amazon CloudFront — エッジからは何も飛んでこなかった', ms: 900,
       }),
     ],
   },

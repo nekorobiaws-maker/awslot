@@ -2825,16 +2825,34 @@ export const LCD_ANIMS_EXTRA = {
           parts.push(`正解は ${PICK_LABELS[answerIndex]}「${round.choices[answerIndex] ?? ''}」`);
         }
         if (!win) parts.push('役は不成立…');
-        const detail = parts.join(' — ');
-        if (detail) {
+        /*
+         * ── 2026-08-16 検証指摘 V80-14 ───────────────────────────────
+         * 「正解は 中「DynamoDB」— 役は不成立…」を1本の中央寄せで描いていたが、
+         * fitFont は下限(実効11px)より小さくしない約束なので、長い問題では
+         * **縮めきれずに右端が切れて**いた(「…」まで読めない)。
+         * 2つの情報は独立した文なので、**左右に振り分けて1行に収める**:
+         *   左 … 正解の場所(学び)      / 右 … 役の当落
+         * 1つしか無いときは今までどおり中央に置く。
+         */
+        const alphaD = alpha * clamp01((verdictP - 0.3) / 0.3);
+        const style = { color: 'rgba(230,240,255,0.95)', edge: 'rgba(0,10,30,0.95)', heavy: false };
+        const minSize = pickMinFont(PICK_MIN_FONT_PX, compact);
+        if (parts.length >= 2) {
+          const half = (w - 44) / 2;
           ctx.save();
-          ctx.globalAlpha = alpha * clamp01((verdictP - 0.3) / 0.3);
-          const dSize = fitFont(ctx, detail, w - 36, {
-            max: LY.detailSize, min: pickMinFont(PICK_MIN_FONT_PX, compact), heavy: false,
+          ctx.globalAlpha = alphaD;
+          const s0 = fitFont(ctx, parts[0], half, { max: LY.detailSize, min: minSize, heavy: false });
+          strokedText(ctx, parts[0], 16, LY.detailY, { ...style, size: s0, align: 'left' });
+          const s1 = fitFont(ctx, parts[1], half, { max: LY.detailSize, min: minSize, heavy: false });
+          strokedText(ctx, parts[1], w - 16, LY.detailY, { ...style, size: s1, align: 'right' });
+          ctx.restore();
+        } else if (parts.length === 1) {
+          ctx.save();
+          ctx.globalAlpha = alphaD;
+          const dSize = fitFont(ctx, parts[0], w - 36, {
+            max: LY.detailSize, min: minSize, heavy: false,
           });
-          strokedText(ctx, detail, w / 2, LY.detailY, {
-            size: dSize, color: 'rgba(230,240,255,0.95)', edge: 'rgba(0,10,30,0.95)', heavy: false,
-          });
+          strokedText(ctx, parts[0], w / 2, LY.detailY, { ...style, size: dSize });
           ctx.restore();
         }
       }
@@ -3253,16 +3271,25 @@ export const LCD_ANIMS_EXTRA = {
       ctx.lineWidth = 2.2;
       ctx.strokeRect(3, 3, w - 6, h - 6);
 
-      // ── 1段目: ヘルスチェック ──
-      strokedText(ctx, 'HEALTH CHECK', w / 2, 30, {
+      /* ── 1段目: ヘルスチェック ──
+       * 2026-08-16 検証指摘 V80-21⑦「前の画面の HEALTH CHECK が残って見える」:
+       * 結論(継続 / 終了)が出たあともこの見出しだけ最後まで濃いまま残るので、
+       * アニメの消えぎわに **次のセットの盤面の上へ文字だけが浮いて** 見えていた。
+       * 2段目(CAPACITY CHECK)と同じく、結論が出たら役目を終えて沈む。 */
+      ctx.save();
+      ctx.globalAlpha = alpha * (1 - verdictP);
+      strokedText(ctx, 'HEALTH CHECK', w / 2, 26, {
         size: 12, color: 'rgba(190,225,255,0.9)', edge: 'rgba(0,10,30,0.9)', heavy: false,
       });
+      ctx.restore();
       {
-        const baseY = 66;
+        const baseY = 58;
         const x0 = 26;
         const x1 = w - 26;
         const span = x1 - x0;
         ctx.save();
+        // 見出しと同じく、結論が出たら1段目は役目を終えて沈む(V80-21⑦)
+        ctx.globalAlpha = alpha * (1 - verdictP);
         ctx.strokeStyle = stampP > 0 ? '#4ce0a0' : '#8ad4ff';
         ctx.lineWidth = 2.2;
         ctx.lineJoin = 'round';
@@ -3282,8 +3309,9 @@ export const LCD_ANIMS_EXTRA = {
       }
       if (stampP > 0) {
         ctx.save();
+        ctx.globalAlpha = alpha * (1 - verdictP);
         const ss = easeOutBack(stampP);
-        ctx.translate(w - 74, 66);
+        ctx.translate(w - 74, 58);
         ctx.rotate(-0.12);
         ctx.scale(ss, ss);
         roundRect(ctx, -46, -14, 92, 28, 8);
@@ -3300,17 +3328,23 @@ export const LCD_ANIMS_EXTRA = {
 
       // ── 2段目: キャパシティチェック ──
       // 結論が出たらゲージは役目を終えるので、判定の文字と場所を譲る(薄く沈める)
+      /* ── 2段目: キャパシティチェック ──
+       * V80-16「上下が窮屈」: 結論の大文字(y118)がゲージ(y122〜142)と
+       * 継続ライン(y158)の上に重なって出ていたため、3つが団子になっていた。
+       * ゲージは結論が出れば役目を終えるので **完全に沈めて場所を明け渡す**
+       * (以前は 20% 残していたので、その残りが大文字の裏に透けていた)。
+       * ゲージ本体も 18px 上げて、結論の大文字がのびのび置ける高さを作る。 */
       if (capP > 0) {
         ctx.save();
-        ctx.globalAlpha = alpha * (1 - verdictP * 0.8);
-        strokedText(ctx, `CAPACITY CHECK — ${label}`, w / 2, 104, {
+        ctx.globalAlpha = alpha * (1 - verdictP);
+        strokedText(ctx, `CAPACITY CHECK — ${label}`, w / 2, 90, {
           size: 12, color: 'rgba(255,224,102,0.9)', edge: 'rgba(20,14,0,0.9)', heavy: false,
         });
 
         // ゲージ。ok なら threshold を越え、不足ならその手前で止まる
         const gx = 44;
         const gw = w - 88;
-        const gy = 122;
+        const gy = 106;
         const gh = 20;
         const threshold = 0.72;
         const target = ok ? 0.96 : 0.54;
@@ -3352,30 +3386,30 @@ export const LCD_ANIMS_EXTRA = {
       if (verdictP > 0) {
         if (ok) {
           // 継続: 大きくドン + 光が弾ける(そのまま次セットの告知へ繋ぐ)
-          slamHeadline(ctx, 'キャパシティ確保 — 継続!!', w / 2, 118, verdictP, {
+          slamHeadline(ctx, 'キャパシティ確保 — 継続!!', w / 2, 106, verdictP, {
             maxWidth: w - 40, size: 30, colors: ['#ffffff', '#7bf7d0'], edge: 'rgba(0,26,18,0.95)',
           });
           if (addGames > 0) {
-            strokedText(ctx, `+${addGames}G`, w / 2, 156, {
+            strokedText(ctx, `+${addGames}G`, w / 2, 140, {
               size: 22, color: '#ffe066', edge: 'rgba(30,20,0,0.95)',
             });
           }
           ctx.save();
           ctx.globalCompositeOperation = 'lighter';
           const r = 24 + easeOutCubic(verdictP) * 240;
-          const g2 = ctx.createRadialGradient(w / 2, 118, 4, w / 2, 118, r);
+          const g2 = ctx.createRadialGradient(w / 2, 106, 4, w / 2, 106, r);
           g2.addColorStop(0, `rgba(123,247,208,${0.45 * (1 - verdictP)})`);
           g2.addColorStop(1, 'rgba(123,247,208,0)');
           ctx.fillStyle = g2;
           ctx.beginPath();
-          ctx.arc(w / 2, 118, r, 0, Math.PI * 2);
+          ctx.arc(w / 2, 106, r, 0, Math.PI * 2);
           ctx.fill();
           ctx.restore();
         } else {
           // 終了: 光らせない・跳ねさせない。静かに沈めて終わる
           ctx.save();
           ctx.globalAlpha = alpha * verdictP;
-          strokedText(ctx, 'キャパシティ不足 — ここまで', w / 2, 118, {
+          strokedText(ctx, 'キャパシティ不足 — ここまで', w / 2, 106, {
             size: 20, color: '#ffb3b3', edge: 'rgba(24,4,4,0.95)',
           });
           ctx.fillStyle = `rgba(2,4,10,${0.35 * verdictP})`;

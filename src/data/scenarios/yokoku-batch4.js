@@ -180,7 +180,7 @@ export default [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.45 } },
       { at: 0,   layer: 'lcd', action: 'anim',  params: { anim: 'checklist_green', index: 1 } },
       conclusionCue({
-        flag: 'LOSE', text: 'PUSHING…', sub: 'イメージのレイヤーを送っている', ms: 800,
+        flag: 'LOSE', text: 'PUSHING…', sub: 'Amazon ECR — イメージのレイヤーを送っている途中', ms: 800,
       }),
     ],
   },

@@ -54,6 +54,7 @@ import {
 import { NORMAL_SUBSTATES, CZ_ENTRY } from '../../data/modes.js';
 import {
   ZENCHO, ZENCHO_PATTERN_BY_ID, ZENCHO_WIN_RANK, CHAIN_SPEC_BY_PATTERN,
+  ZENCHO_HOT_PATTERNS,
 } from '../../data/zencho.js';
 // FLAG_BY_ID の import は U64-4(成立役テロップの廃止)で不要になったため外した
 import { isRareRole } from '../../data/rareroles.js';
@@ -590,8 +591,121 @@ function drawNumber(rng, dist) {
   return Number(drawWeightedFixed(rng, dist, Object.keys(dist)[0]));
 }
 
+/* ══ 予兆パターンの偏り対策(U79 / 2026-08-16 ユーザー指摘)═══════════════
+ *
+ * 「前兆で同じ演出ばかり出る」への対応。設計の理由と実測は
+ * data/zencho.js の ZENCHO.variety のコメントに全部書いてあるので先に読むこと。
+ * ここは **抽選の重みを書き換えず、抽選の直前に倍率を掛けるだけ** の実装。
+ *
+ * 【絶対に守る3つ】(壊すと当落・期待度が動く)
+ *   1. 擬似連(deepracer / codepipeline)には倍率を掛けない …… 初当りが動くため
+ *   2. クラスごとの重み合計を掛けたあとに元へ戻す …… 赤文字予兆の割合を据え置くため
+ *   3. RNG の消費数は1回のまま …… drawWeightedFixed を必ず1回通す(下の drawPattern)
+ */
+
+/**
+ * 直近に出した演出パターン(先頭が直前)。ZENCHO.variety.recentPenalty の長さぶん持つ。
+ *
+ * ■ なぜモジュール変数(= セッションをまたいで残る)なのか
+ *   前兆は 2.5回/セッションしか起きないので、100回転ごとに履歴を捨てると
+ *   「覚えている」状態にほとんどならず、偏りが元に戻ってしまう。
+ *   プレイヤーは同じ台を続けて打つ以上、記憶も続いているほうが体感に合う。
+ *
+ * ■ ここに状態を置いても出目は変わらない(重要)
+ *   影響するのは **どの絵を見せるか** だけで、
+ *   前兆の発生量・長さ・強度・擬似連の発生率・当落には一切関与しない。
+ *   RNG の消費数も変わらないので、同じシードなら出目もスコアも完全に同じになる。
+ * @type {string[]}
+ */
+const RECENT_PATTERNS = [];
+
+/**
+ * 露出平準化の倍率(パターンID → 倍率)。
+ * 重みは実行中に変わらないので、起動時に1度だけ作って使い回す。
+ * 「重みの合計が大きいパターンほど小さい倍率」= よく出るものほど控えめにする。
+ * @type {Record<string, number>}
+ */
+const FLATTEN_BY_PATTERN = Object.fromEntries(ZENCHO.patterns.map((p) => {
+  const total = (p.weight.real ?? 0) + (p.weight.fake ?? 0);
+  return [p.id, total > 0 ? total ** -ZENCHO.variety.flatten : 1];
+}));
+
+/**
+ * 合計を据え置く単位(クラス)。この単位でだけ取り分を配り直す。
+ *   chain … 擬似連。当選を生むので触らない(倍率も掛けない)
+ *   hot   … 赤文字予兆を持つパターン(data/zencho.js の ZENCHO_HOT_PATTERNS)
+ *   plain … それ以外
+ * @param {string} id
+ * @returns {'chain'|'hot'|'plain'}
+ */
+function varietyClassOf(id) {
+  if (CHAIN_SPEC_BY_PATTERN[id]) return 'chain';
+  return ZENCHO_HOT_PATTERNS.has(id) ? 'hot' : 'plain';
+}
+
+/** 直近履歴による倍率(履歴に無ければ 1) */
+function recentPenaltyOf(id) {
+  const i = RECENT_PATTERNS.indexOf(id);
+  return i < 0 ? 1 : (ZENCHO.variety.recentPenalty[i] ?? 1);
+}
+
+/**
+ * 重み表へ「露出の平準化 + 直近履歴」の倍率を掛け、クラス合計を元へ戻した表を返す。
+ * 本前兆用の表にもガセ用の表にも **同じ倍率** が乗るので、
+ * パターンごとの信頼度(real:fake 比)は完全に保たれる。
+ * @param {Record<string, number>} table 素の重み表
+ * @returns {Record<string, number>}
+ */
+function buildVarietyTable(table) {
+  /** クラス → 掛ける前の合計 / 掛けたあとの合計 */
+  const before = {};
+  const after = {};
+  const scaled = {};
+  for (const [id, w] of Object.entries(table)) {
+    const cls = varietyClassOf(id);
+    const mul = cls === 'chain' ? 1 : FLATTEN_BY_PATTERN[id] * recentPenaltyOf(id);
+    scaled[id] = w * mul;
+    before[cls] = (before[cls] ?? 0) + w;
+    after[cls] = (after[cls] ?? 0) + w * mul;
+  }
+  const out = {};
+  for (const [id, w] of Object.entries(scaled)) {
+    const cls = varietyClassOf(id);
+    // after が 0 になるのは倍率が全部 0 のときだけ(現状は起こらない)。素の重みへ戻す
+    out[id] = after[cls] > 0 ? w * (before[cls] / after[cls]) : table[id];
+  }
+  return out;
+}
+
+/**
+ * 出したパターンを履歴へ積む。
+ * 擬似連は倍率の対象外なので積まない(積むと他の絵の記憶枠を無駄に潰す)。
+ * @param {string} id
+ */
+function rememberPattern(id) {
+  if (varietyClassOf(id) === 'chain') return;
+  const i = RECENT_PATTERNS.indexOf(id);
+  if (i >= 0) RECENT_PATTERNS.splice(i, 1);
+  RECENT_PATTERNS.unshift(id);
+  const keep = ZENCHO.variety.recentPenalty.length;
+  if (RECENT_PATTERNS.length > keep) RECENT_PATTERNS.length = keep;
+}
+
+/** 直近パターン履歴の読み出し口(検証・デバッグ用。新しい順) */
+export function inspectRecentPatterns() {
+  return [...RECENT_PATTERNS];
+}
+
+/** 直近パターン履歴を消す(検証・プローブ用。ゲーム進行からは呼ばない) */
+export function resetRecentPatterns() {
+  RECENT_PATTERNS.length = 0;
+}
+
 /**
  * 演出パターンを引く。強度で候補を絞ってから本/ガセ別の重みで抽選する。
+ *
+ * U79: 抽選の直前に buildVarietyTable を通して「同じ絵ばかり出る」のを均す。
+ * 重み表を差し替えるだけなので **RNG の消費は今までどおり1回**(出目は不変)。
  * @param {'real'|'fake'} kind
  */
 function drawPattern(rng, strength, kind) {
@@ -601,7 +715,7 @@ function drawPattern(rng, strength, kind) {
     const w = p.weight[kind] ?? 0;
     if (w > 0) table[p.id] = w;
   }
-  const picked = drawWeightedFixed(rng, table, ZENCHO.patterns[0].id);
+  const picked = drawWeightedFixed(rng, buildVarietyTable(table), ZENCHO.patterns[0].id);
   /*
    * デバッグ固定(?pattern= / window.AWSLOT.setZenchoPattern)。
    * **必ず drawWeightedFixed を通してRNGを1回消費したあと** に上書きする。
@@ -611,8 +725,14 @@ function drawPattern(rng, strength, kind) {
   if (DEBUG_PATTERN) {
     const p = ZENCHO_PATTERN_BY_ID[DEBUG_PATTERN];
     // 強度が足りない(minStrength を満たさない)パターンは固定しても出せない
-    if (p && p.minStrength <= strength) return DEBUG_PATTERN;
+    if (p && p.minStrength <= strength) {
+      // 履歴は「実際に見せた絵」で積む(固定中は同じIDが積まれ続けるが、
+      // 固定は必ずこの後で上書きされるので抽選結果には影響しない)
+      rememberPattern(DEBUG_PATTERN);
+      return DEBUG_PATTERN;
+    }
   }
+  rememberPattern(picked);
   return picked;
 }
 

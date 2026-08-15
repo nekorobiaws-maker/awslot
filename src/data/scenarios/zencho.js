@@ -185,7 +185,7 @@ export default [
       { at: 200, layer: 'lcd', action: 'particles', params: { preset: 'stream', x: 200, y: 252, count: 10 } },
       { at: 400, layer: 'lcd', action: 'particles', params: { preset: 'stream', x: 360, y: 254, count: 10 } },
       { at: 460, layer: 'lcd', action: 'text',
-        params: { text: 'MAP RUN ${step}', sub: '子の実行が並列に走り出している', color: '#8ad4ff', ms: 900 } },
+        params: { text: 'MAP RUN ${step}', sub: 'Step Functions 分散マップ — 並列処理が走り出している', color: '#8ad4ff', ms: 900 } },
     ],
   },
 
@@ -301,7 +301,7 @@ export default [
       { at: 200, layer: 'lcd',     action: 'anim',  params: { anim: 'step_up', step: '$level' } },
       { at: 240, layer: 'lcd',     action: 'anim',  params: { anim: 'lcd_flash', color: '#ff9f43', strength: 0.6 } },
       { at: 300, layer: 'lcd',     action: 'text',
-        params: { text: 'FINDING ×${step}', sub: 'GuardDuty: UnauthorizedAccess', color: '#ff9f43', ms: 1200 } },
+        params: { text: 'FINDING ×${step}', sub: 'GuardDuty — 想定外のアクセスを検知した', color: '#ff9f43', ms: 1200 } },
       { at: 820, layer: 'overlay', action: 'flash', params: { color: '#ff9f43', ms: 160 } },
     ],
   },
@@ -381,19 +381,30 @@ export default [
 
   {
     id: 'zn_chatops_incident',
-    name: '【前兆・中】Slack に #incident チャンネルが立つ',
+    /*
+     * U78(2026-08-15): 題材を Slack から **AWS Systems Manager Incident Manager** へ寄せた。
+     * 【指摘】「AWSに関係ないものは修正して」
+     * 【旧】名前もテキストも Slack の #incident チャンネルの話で、
+     *       AWS のサービスも実態もどこにも出てこなかった(基準②)。
+     * 【新】同じ「対応メンバーが集まってくる」画を、AWS 側の同じ機能である
+     *       Incident Manager の **エスカレーションプランによる招集** に読み替える。
+     *       起きていることは変わらないので、絵(通知が積み上がる)はそのまま使える。
+     * 【内部IDは据え置き】パターンID 'chatops_incident' は data/zencho.js と
+     *       when.match で結ばれた契約キーなので改名しない(表示文言だけを直す)。
+     */
+    name: '【前兆・中】Incident Manager が対応メンバーを招集する',
     when: { event: 'paramChange', mode: ['FREE_TIER'], match: { param: ['zencho'], pattern: ['chatops_incident'] } },
     weight: { FREE_TIER: 100, default: 0 },
     duration: 2100,
     cues: [
       { at: 0,   layer: 'sfx',  action: 'synth', params: { preset: 'announce' } },
       { at: 0,   layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
-      // 書き込みが積み上がっていく画。SQS のキューカードを Slack のメッセージに見立てる
+      // 通知が積み上がっていく画。SQS のキューカードを招集通知に見立てる
       { at: 60,  layer: 'lcd',  action: 'anim',
         params: { anim: 'sqs_queue_hold', count: '$step', level: '$level', x: 12, baseY: 150 } },
       { at: 240, layer: 'char', action: 'show', params: { char: 'kiro', pose: 'surprised' } },
       { at: 320, layer: 'lcd',  action: 'text',
-        params: { text: '#incident (${step})', sub: '対応メンバーが集まってきた', color: '#ffd166', ms: 1200 } },
+        params: { text: 'INCIDENT ×${step}', sub: 'Incident Manager — 対応メンバーが呼び出された', color: '#ffd166', ms: 1200 } },
       { at: 1800, layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'normal' } },
     ],
   },
@@ -454,8 +465,10 @@ export default [
       { at: 0,    layer: 'sfx',     action: 'synth', params: { preset: 'stage_change' } },
       { at: 0,    layer: 'overlay', action: 'flash', params: { color: '#7b5cff', ms: 260 } },
       { at: 140,  layer: 'overlay', action: 'particles', params: { preset: 'spark', x: 360, y: 260, count: 18 } },
+      // U78: 旧サブ「会場の熱気がまだ残っている」だけでは何の会場か分からず、
+      //      AWS の話にもなっていなかった。会場名(re:Invent)を明示する
       { at: 240,  layer: 'lcd',     action: 'text',
-        params: { text: 'ENCORE', sub: '会場の熱気がまだ残っている', color: '#a78bfa', ms: 1500 } },
+        params: { text: 'ENCORE', sub: 're:Invent — 会場の熱気がまだ残っている', color: '#a78bfa', ms: 1500 } },
       { at: 300,  layer: 'char',    action: 'show',   params: { char: 'kiro', pose: 'happy' } },
       { at: 340,  layer: 'char',    action: 'motion', params: { char: 'kiro', motion: 'zoom' } },
       { at: 1000, layer: 'lcd',     action: 'particles', params: { preset: 'spark', x: 200, y: 180, count: 12 } },
@@ -554,7 +567,7 @@ export default [
       { at: 0,   layer: 'overlay', action: 'flash', params: { color: '#7bf7d0', ms: 260 } },
       { at: 60,  layer: 'overlay', action: 'shake', params: { power: 10, ms: 400 } },
       { at: 140, layer: 'lcd',     action: 'text',
-        params: { text: 'ESCALATE', sub: '調査を開始します', color: '#7bf7d0', ms: 800 } },
+        params: { text: 'ESCALATE', sub: 'インシデントの調査を開始します', color: '#7bf7d0', ms: 800 } },
       { at: 200, layer: 'char',    action: 'show',  params: { char: 'kiro', pose: 'happy' } },
     ],
   },
@@ -638,7 +651,7 @@ export default [
       { at: 980,  layer: 'char',    action: 'show',  params: { char: 'kiro', pose: 'panic' } },
       // 「突入」を含むので可読性エンジンが自動で sticky にする
       { at: 1040, layer: 'lcd',     action: 'text',
-        params: { text: '個人情報を発見! CZ突入', sub: 'SENSITIVE DATA FOUND', color: '#ff8a00', ms: 2000 } },
+        params: { text: '個人情報を発見! CZ突入', sub: 'Amazon Macie が S3 から見つけ出した', color: '#ff8a00', ms: 2000 } },
       { at: 1300, layer: 'sfx',     action: 'synth', params: { preset: 'fanfare_reg' } },
     ],
   },
@@ -698,7 +711,7 @@ export default [
       { at: 60,  layer: 'lcd', action: 'anim',
         params: { anim: 'distmap_race', step: 1, cars: '$cars', ms: 2000 } },
       { at: 300, layer: 'lcd', action: 'text',
-        params: { text: 'MAP RUN 1', sub: '子の実行が1本だけ走り出した', color: '#8ad4ff', ms: 1000 } },
+        params: { text: 'MAP RUN 1', sub: 'Step Functions 分散マップ — 並列処理が1本だけ走り出した', color: '#8ad4ff', ms: 1000 } },
     ],
   },
   {
@@ -716,7 +729,7 @@ export default [
       { at: 60,  layer: 'lcd',     action: 'anim',
         params: { anim: 'distmap_race', step: 2, cars: '$cars', label: '×2', ms: 2200 } },
       { at: 1100, layer: 'lcd',    action: 'text',
-        params: { text: 'MAP RUN 2', sub: '2本目の実行が並んで走り出した', color: '#7bf7d0', ms: 1000 } },
+        params: { text: 'MAP RUN 2', sub: '分散マップ — 並列処理が2本に増えた', color: '#7bf7d0', ms: 1000 } },
     ],
   },
   {
@@ -737,7 +750,7 @@ export default [
       { at: 900,  layer: 'char',    action: 'show', params: { char: 'kiro', pose: 'surprised' } },
       { at: 1400, layer: 'sfx',     action: 'synth', params: { preset: 'countdown_tick' } },
       { at: 1500, layer: 'lcd',     action: 'text',
-        params: { text: 'MAP RUN 3', sub: '4本が同時に走っている', color: '#ffd166', ms: 1100 } },
+        params: { text: 'MAP RUN 3', sub: '分散マップ — 並列処理が4本に増えた', color: '#ffd166', ms: 1100 } },
     ],
   },
   {
@@ -762,7 +775,7 @@ export default [
       { at: 1200, layer: 'overlay', action: 'particles', params: { preset: 'rainbow', x: 360, y: 380, count: 26 } },
       // 結論は出さない。ここは「大量に走ってきた」画までで、当落は result 側が告げる
       { at: 1600, layer: 'lcd',     action: 'text',
-        params: { text: 'MAX CONCURRENCY', sub: '子の実行が一斉に立ち上がった', color: '#ffe066', ms: 1400 } },
+        params: { text: 'MAX CONCURRENCY', sub: '分散マップ — 並列処理が一斉に立ち上がった', color: '#ffe066', ms: 1400 } },
     ],
   },
 
@@ -785,7 +798,7 @@ export default [
       { at: 960,  layer: 'sfx',     action: 'synth', params: { preset: 'upgrade_chime' } },
       { at: 1000, layer: 'char',    action: 'show', params: { char: 'kiro', pose: 'happy' } },
       { at: 1060, layer: 'lcd',     action: 'text',
-        params: { text: '全実行 SUCCEEDED — CZ突入', sub: '子の実行が全部そろって返ってきた!', color: '#7bf7d0', ms: 1900 } },
+        params: { text: '全実行 SUCCEEDED — CZ突入', sub: '分散マップ — 並列処理が全部そろって返ってきた!', color: '#7bf7d0', ms: 1900 } },
       { at: 1300, layer: 'sfx',     action: 'synth', params: { preset: 'fanfare_reg' } },
     ],
   },
@@ -810,7 +823,7 @@ export default [
       { at: 980,  layer: 'char',    action: 'motion', params: { char: 'kiro', motion: 'zoom' } },
       // 「確定」を含むので可読性エンジンが自動で sticky にする
       { at: 1060, layer: 'lcd',     action: 'text',
-        params: { text: 'BONUS 確定!!', sub: '1万並列まで振り切った', color: '#ffe066', ms: 2200 } },
+        params: { text: 'BONUS 確定!!', sub: '分散マップの並列数が一気に跳ね上がった', color: '#ffe066', ms: 2200 } },
       { at: 1400, layer: 'overlay', action: 'particles', params: { preset: 'rainbow', x: 360, y: 400, count: 34 } },
     ],
   },
@@ -830,7 +843,7 @@ export default [
       { at: 800, layer: 'sfx',  action: 'synth', params: { preset: 'error_buzz', gain: 0.6 } },
       { at: 860, layer: 'char', action: 'show', params: { char: 'kiro', pose: 'normal' } },
       { at: 900, layer: 'lcd',  action: 'text',
-        params: { text: 'FAILED', sub: '子の実行が途中で落ちた…', color: '#8aa0b4', ms: 1200 } },
+        params: { text: 'FAILED', sub: 'Step Functions 分散マップ — 並列処理が途中で落ちた…', color: '#8aa0b4', ms: 1200 } },
       { at: 1200, layer: 'lamp', action: 'pattern', params: { pattern: 'idle' } },
     ],
   },
@@ -862,7 +875,7 @@ export default [
       { at: 60,  layer: 'lcd', action: 'anim',
         params: { anim: 'deploy_progress', stage: 1, ms: 2000 } },
       { at: 300, layer: 'lcd', action: 'text',
-        params: { text: 'STAGE: ${stage}', sub: 'ソースを取得した', color: '#8ad4ff', ms: 1000 } },
+        params: { text: 'STAGE: ${stage}', sub: 'CodePipeline — リポジトリからソースを取得した', color: '#8ad4ff', ms: 1000 } },
     ],
   },
   {
@@ -880,7 +893,7 @@ export default [
       { at: 60,   layer: 'lcd',     action: 'anim',
         params: { anim: 'deploy_progress', stage: 2, ms: 2200 } },
       { at: 1100, layer: 'lcd',     action: 'text',
-        params: { text: 'STAGE: ${stage}', sub: 'ビルドが走り出した', color: '#7bf7d0', ms: 1000 } },
+        params: { text: 'STAGE: ${stage}', sub: 'CodePipeline — ビルドが走り出した', color: '#7bf7d0', ms: 1000 } },
     ],
   },
   {
@@ -901,7 +914,7 @@ export default [
       { at: 900,  layer: 'char',    action: 'show', params: { char: 'kiro', pose: 'surprised' } },
       { at: 1400, layer: 'sfx',     action: 'synth', params: { preset: 'countdown_tick' } },
       { at: 1500, layer: 'lcd',     action: 'text',
-        params: { text: 'STAGE: ${stage}', sub: 'テストを通過した', color: '#ffd166', ms: 1100 } },
+        params: { text: 'STAGE: ${stage}', sub: 'CodePipeline — テストを通過した', color: '#ffd166', ms: 1100 } },
     ],
   },
   {
@@ -926,7 +939,7 @@ export default [
       { at: 1200, layer: 'overlay', action: 'particles', params: { preset: 'rainbow', x: 360, y: 380, count: 26 } },
       // 結論は出さない。「本番反映の直前まで来た」画までで、当落は result 側が告げる
       { at: 1600, layer: 'lcd',     action: 'text',
-        params: { text: 'STAGE: ${stage}', sub: '本番環境へ流れ込む', color: '#ffe066', ms: 1400 } },
+        params: { text: 'STAGE: ${stage}', sub: 'CodePipeline — 本番環境へデプロイが流れ込む', color: '#ffe066', ms: 1400 } },
     ],
   },
 
@@ -1099,7 +1112,7 @@ export default [
       { at: 140, layer: 'reelfx', action: 'highlight', params: { ms: 560, color: '#ff3b30' } },
       { at: 220, layer: 'lcd',    action: 'anim',  params: { anim: 'step_up', step: '$level' } },
       { at: 300, layer: 'lcd',    action: 'text',
-        params: { text: 'TRACE 5xx ×${step}', sub: '赤いトレースが止まらない', tone: 'hot', color: '#ff3b30', ms: 1300 } },
+        params: { text: 'TRACE 5xx ×${step}', sub: 'AWS X-Ray — 赤いトレースが止まらない', tone: 'hot', color: '#ff3b30', ms: 1300 } },
     ],
   },
   {
@@ -1118,7 +1131,7 @@ export default [
       { at: 80,  layer: 'char',   action: 'show',  params: { char: 'kiro', pose: 'panic' } },
       { at: 120, layer: 'lcd',    action: 'anim',  params: { anim: 'step_up', step: '$level' } },
       { at: 260, layer: 'lcd',    action: 'text',
-        params: { text: 'CRITICAL ×${step}', sub: '影響範囲が広がり続けている', tone: 'hot', color: '#ff3b30', ms: 1400 } },
+        params: { text: 'CRITICAL ×${step}', sub: 'AWS Health Dashboard — 影響範囲が広がり続けている', tone: 'hot', color: '#ff3b30', ms: 1400 } },
       { at: 1700, layer: 'char',  action: 'pose',  params: { char: 'kiro', pose: 'surprised' } },
     ],
   },
@@ -1138,7 +1151,7 @@ export default [
       { at: 120, layer: 'lcd',     action: 'anim',  params: { anim: 'step_up', step: '$level' } },
       { at: 180, layer: 'lcd',     action: 'anim',  params: { anim: 'lcd_flash', color: '#ff3b30', strength: 0.6 } },
       { at: 300, layer: 'lcd',     action: 'text',
-        params: { text: 'FINDING ×${step}', sub: '検知が止まらない', tone: 'hot', color: '#ff3b30', ms: 1300 } },
+        params: { text: 'FINDING ×${step}', sub: 'GuardDuty — 不審なアクセスの検知が止まらない', tone: 'hot', color: '#ff3b30', ms: 1300 } },
     ],
   },
   {
@@ -1169,7 +1182,7 @@ export default [
       { at: 200, layer: 'lcd',     action: 'anim',  params: { anim: 'step_up', step: '$level' } },
       // 信頼度示唆の赤。tone:'hot' + #ff3b30 のセットで「赤帯」になる(U9 の色ルール)
       { at: 300, layer: 'lcd',     action: 'text',
-        params: { text: 'EVACUATE ×${step}', sub: '退避先が次々に切り替わる', tone: 'hot', color: '#ff3b30', ms: 1400 } },
+        params: { text: 'EVACUATE ×${step}', sub: '退避先のリージョンが次々に切り替わる', tone: 'hot', color: '#ff3b30', ms: 1400 } },
       { at: 360, layer: 'char',    action: 'show', params: { char: 'kiro', pose: 'panic' } },
     ],
   },
@@ -1190,7 +1203,7 @@ export default [
       { at: 300, layer: 'sfx',     action: 'synth', params: { preset: 'error_buzz' } },
       { at: 340, layer: 'overlay', action: 'shake', params: { power: 10, ms: 420 } },
       { at: 380, layer: 'lcd',     action: 'text',
-        params: { text: 'Root Login ×${step}', sub: '誰かが入り続けている', tone: 'hot', color: '#ff3b30', ms: 1500 } },
+        params: { text: 'Root Login ×${step}', sub: 'CloudTrail — 誰が入ったかが記録され続けている', tone: 'hot', color: '#ff3b30', ms: 1500 } },
       { at: 420, layer: 'char',    action: 'show', params: { char: 'kiro', pose: 'panic' } },
     ],
   },
@@ -1216,7 +1229,7 @@ export default [
      * data/zencho.js の ec2_mac.telop も同じ言い回しに揃えてある。
      */
     text: 'MAC 実機を確保',
-    sub: 'Mac の実機を借りた — 返却できるのは24時間後',
+    sub: 'EC2 Mac — 実機を借りた。返却できるのは24時間後',
     color: C.WEAK,
   }),
   zenchoBeat({
@@ -1224,7 +1237,7 @@ export default [
     name: '【前兆・弱】Device Farm の実機ラックが一斉に点灯する',
     pattern: 'device_farm',
     text: 'DEVICES ×${step}',
-    sub: '実機のスマホが一斉に画面点灯した',
+    sub: 'AWS Device Farm — 実機のスマホが一斉に画面点灯した',
     color: C.WEAK,
     sfx: 'ui_select',
     particles: 'spark',
@@ -1243,7 +1256,7 @@ export default [
     name: '【前兆・弱】CloudWatch Logs Insights が数件だけ返す',
     pattern: 'logs_insights',
     text: 'HITS ${step}',
-    sub: '大量のログをなめて数件だけ返ってきた',
+    sub: 'CloudWatch Logs Insights — ログを絞り込んで数件に',
     color: C.WEAK,
     sfx: 'countdown_tick',
     gain: 0.5,
@@ -1253,7 +1266,7 @@ export default [
     name: '【前兆・弱】DataSync が夜間にファイルを渡している',
     pattern: 'datasync_night',
     text: 'SYNC ${step}/5',
-    sub: 'オンプレのファイルが少しずつ渡っている',
+    sub: 'AWS DataSync — オンプレのファイルを S3 へ運んでいる',
     // 着地先は S3。スイカ対応なので緑
     color: C.MELON,
     sfx: 'stream_flow',
@@ -1265,7 +1278,7 @@ export default [
     name: '【前兆・弱】Transfer Family の SFTP がまだ1本つながっている',
     pattern: 'transfer_sftp',
     text: 'SFTP ${step}',
-    sub: '昔ながらの経路で S3 へ出し入れしている',
+    sub: 'AWS Transfer Family — SFTP のまま S3 へ出し入れできる',
     color: C.MELON,
     sfx: 'stream_flow',
     gain: 0.45,
@@ -1275,7 +1288,7 @@ export default [
     name: '【前兆・弱】Route 53 Resolver の名前解決が外を向く',
     pattern: 'route53_resolver',
     text: 'RESOLVE ${step}',
-    sub: 'VPC の中の名前解決が1回だけ外を向いた',
+    sub: 'Route 53 Resolver — VPC とオンプレで名前を引き合える',
     color: C.WEAK,
   }),
   zenchoBeat({
@@ -1283,7 +1296,7 @@ export default [
     name: '【前兆・弱】Cost Anomaly Detection が違和感を覚える',
     pattern: 'cost_anomaly',
     text: 'ANOMALY ${step}',
-    sub: '今月の使い方が普段と違うらしい',
+    sub: 'Cost Anomaly Detection — 機械学習が請求のズレを検知',
     color: C.WEAK,
     sfx: 'alarm_beep',
     gain: 0.45,
@@ -1295,7 +1308,7 @@ export default [
     name: '【前兆・中】VPC Lattice がサービス同士を名前で結線する',
     pattern: 'vpc_lattice',
     text: 'LINKED ×${step}',
-    sub: 'サービス同士が名前だけで結線された',
+    sub: 'Amazon VPC Lattice — IP も LB も意識せず繋がった',
     color: C.MID,
     sfx: 'announce',
     lamp: true,
@@ -1305,7 +1318,7 @@ export default [
     name: '【赤】VPC Lattice の結線が増え続ける',
     pattern: 'vpc_lattice',
     text: 'LINKED ×${step}',
-    sub: '結線が次々に増えていく',
+    sub: 'Amazon VPC Lattice — 名前だけで繋がるサービスが増える',
     sfx: 'announce',
   }),
 
@@ -1314,7 +1327,7 @@ export default [
     name: '【前兆・中】Clean Rooms が重なりだけを見つける',
     pattern: 'clean_rooms',
     text: 'OVERLAP ${step}',
-    sub: '相手の生データを見ずに重なりが分かった',
+    sub: 'AWS Clean Rooms — 生データを見ずに重なりが分かった',
     color: C.MID,
     sfx: 'checklist_ok',
     lamp: true,
@@ -1324,7 +1337,7 @@ export default [
     name: '【赤】Clean Rooms の重なりが広がり続ける',
     pattern: 'clean_rooms',
     text: 'OVERLAP ×${step}',
-    sub: '重なりがどんどん見えてきた',
+    sub: 'AWS Clean Rooms — 重なりがどんどん見えてきた',
     sfx: 'charge_up',
   }),
 
@@ -1344,7 +1357,7 @@ export default [
     name: '【赤】Entity Resolution の一致が止まらない',
     pattern: 'entity_resolution',
     text: 'MATCHED ×${step}',
-    sub: '同一人物が次々に見つかる',
+    sub: 'AWS Entity Resolution — 同一人物が次々に見つかる',
     sfx: 'charge_up',
   }),
 
@@ -1365,7 +1378,7 @@ export default [
     name: '【赤】Resource Access Manager の共有先が増え続ける',
     pattern: 'ram_share',
     text: 'SHARED ×${step}',
-    sub: '共有先が増え続けている',
+    sub: 'Resource Access Manager — 共有先が増え続けている',
     sfx: 'contract_sign',
   }),
 
@@ -1384,7 +1397,7 @@ export default [
     name: '【赤】Bedrock Knowledge Bases の根拠が次々に出てくる',
     pattern: 'kb_citation',
     text: 'CITATION ×${step}',
-    sub: '根拠が次々に引かれてくる',
+    sub: 'Bedrock Knowledge Bases — 根拠が次々に引かれてくる',
     sfx: 'announce',
   }),
 
@@ -1393,7 +1406,7 @@ export default [
     name: '【前兆・中】MWAA の DAG が依存を解いて走り出す',
     pattern: 'mwaa_dag',
     text: 'DAG ${step}',
-    sub: '依存が解けてタスクが走り出した',
+    sub: 'Amazon MWAA — 前の工程が終わって次が動き出した',
     color: C.MID,
     sfx: 'dynamo_scale',
     lamp: true,
@@ -1403,7 +1416,7 @@ export default [
     name: '【赤】MWAA のタスクが止まらない',
     pattern: 'mwaa_dag',
     text: 'DAG ×${step}',
-    sub: '走り出したタスクが止まらない',
+    sub: 'Amazon MWAA — 次の工程が次々に走り出す',
     sfx: 'dynamo_scale',
   }),
 
@@ -1412,7 +1425,7 @@ export default [
     name: '【前兆・中】Local Zones へ処理が寄っていく',
     pattern: 'local_zones',
     text: 'LOCAL ZONE ${step}',
-    sub: '大都市の出島側へ処理が寄っていった',
+    sub: 'AWS Local Zones — 大都市の近くで処理して遅延を縮めた',
     color: C.MID,
     sfx: 'region_light',
     lamp: true,
@@ -1423,7 +1436,7 @@ export default [
     name: '【赤】Local Zones 側へ処理が全部寄っていく',
     pattern: 'local_zones',
     text: 'LOCAL ×${step}',
-    sub: '処理が全部エッジ側へ寄っていく',
+    sub: 'AWS Local Zones — 大都市側の拠点へ処理が寄り続ける',
     sfx: 'region_light',
   }),
 
@@ -1443,7 +1456,7 @@ export default [
     name: '【赤】注入した障害が広がり続ける(強度3専用)',
     pattern: 'fis_az_down',
     text: 'AZ DOWN ×${step}',
-    sub: '注入した障害が広がり続けている',
+    sub: 'AWS FIS — わざと起こした障害が広がり続ける',
     sfx: 'error_buzz',
   }),
 
@@ -1463,7 +1476,7 @@ export default [
     name: '【赤】Trainium のクラスタが次々に立ち上がる(強度3専用)',
     pattern: 'trainium_cluster',
     text: 'TRN ×${step}',
-    sub: 'クラスタが次々に立ち上がる',
+    sub: 'AWS Trainium — 学習用チップが次々に立ち上がる',
     sfx: 'charge_up',
   }),
 
@@ -1483,7 +1496,7 @@ export default [
     name: '【赤】Data Transfer Terminal の吸い上げが止まらない(強度3専用)',
     pattern: 'dtt_ingest',
     text: 'INGEST ×${step}',
-    sub: '吸い上げが止まらない',
+    sub: 'Data Transfer Terminal — ディスクの吸い上げが止まらない',
     sfx: 'stream_flow',
   }),
 ];

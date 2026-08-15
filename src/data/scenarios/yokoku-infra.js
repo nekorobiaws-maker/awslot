@@ -85,18 +85,19 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.5 } },
       { at: 0,   layer: 'lcd', action: 'anim',
-        params: { anim: 'cw_meter_swing', to: 0.4, over: false, label: 'QUBIT P(1)', sub: '重ね合わせ中' } },
+        params: { anim: 'cw_meter_swing', to: 0.4, over: false, label: '量子ビット', sub: '0と1が重なった状態' } },
       /*
        * 【U57 で見つかった sticky 残置】
        * サブ行の「まだ確定していない」が lcdanims.js の STICKY_KEYWORDS の
        * 「確定」を踏むため、**弱予告なのに次のレバーONまで残る告知** になっていた
        * (isStickyText はメイン行だけでなくサブ行の判定にも使われる経路がある)。
        * 弱予告は結論を出さない煽りなので、sticky:false を明示して打ち消す。
-       * 文言側も「確定」を避けて「収束していない」(量子の言い回し)に直した。
+       * 文言側も「確定」を避けてある(2026-08-16 しおん指摘で、量子用語の
+       * 「収束」もやめ、Braket が何のサービスかを名乗る形へ差し替えた)。
        */
       { waitFor: 'stop3', layer: 'lcd', action: 'text',
         params: {
-          text: '未観測', sub: 'Amazon Braket — 量子ビットはまだ収束していない',
+          text: '答えは出ず', sub: 'Amazon Braket — 量子コンピュータをクラウドで試せる',
           color: '#8ad4ff', ms: 700, sticky: false,
         } },
     ],
@@ -111,13 +112,13 @@ export default [
       { at: 0,   layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
       { at: 0,   layer: 'sfx',  action: 'synth', params: { preset: 'charge_up' } },
       { at: 40,  layer: 'lcd',  action: 'anim',
-        params: { anim: 'cw_meter_swing', to: 0.6, over: false, label: 'QUBIT P(1)', sub: '確率が揺れている' } },
+        params: { anim: 'cw_meter_swing', to: 0.6, over: false, label: '量子ビット', sub: '0か1かが揺れている' } },
       { waitFor: 'stop2', layer: 'lcd', action: 'anim',
-        params: { anim: 'cw_meter_swing', to: 0.9, over: true, label: 'QUBIT P(1)', sub: '収束間近', ms: 1600 } },
+        params: { anim: 'cw_meter_swing', to: 0.9, over: true, label: '量子ビット', sub: 'もうすぐ1つに決まる', ms: 1600 } },
       { waitFor: 'stop3', layer: 'sfx', action: 'synth', params: { preset: 'upgrade_chime' } },
       { waitFor: 'stop3', after: 100, layer: 'overlay', action: 'flash', params: { color: '#c8b0ff', ms: 220 } },
       { waitFor: 'stop3', after: 150, layer: 'lcd', action: 'text',
-        params: { text: '観測完了', sub: 'Amazon Braket — 状態が収束した', color: '#ffe066', ms: 1300 } },
+        params: { text: '観測完了', sub: 'Amazon Braket — 実機の量子コンピュータで計算した', color: '#ffe066', ms: 1300 } },
     ],
   },
   {
@@ -129,13 +130,13 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'charge_up' } },
       { at: 0,   layer: 'lcd', action: 'anim',
-        params: { anim: 'cw_meter_swing', to: 0.55, over: false, label: 'QUBIT P(1)', sub: '重ね合わせ中' } },
+        params: { anim: 'cw_meter_swing', to: 0.55, over: false, label: '量子ビット', sub: '0と1が重なった状態' } },
       { waitFor: 'stop3', layer: 'sfx', action: 'synth', params: { preset: 'alarm_beep' } },
       { waitFor: 'stop3', layer: 'lcd', action: 'anim',
-        params: { anim: 'cw_meter_swing', to: 0.95, over: true, label: 'QUBIT P(1)', sub: '観測: 収束', ms: 2000 } },
+        params: { anim: 'cw_meter_swing', to: 0.95, over: true, label: '量子ビット', sub: '観測して1つに決まる', ms: 2000 } },
       { waitFor: 'stop3', after: 700, layer: 'overlay', action: 'flash', params: { color: '#c8b0ff', ms: 240 } },
       { waitFor: 'stop3', after: 900, layer: 'lcd', action: 'text',
-        params: { text: 'COLLAPSED', sub: '波動関数が収束した', color: '#ffe066', ms: 1200 } },
+        params: { text: '答えが1つに!!', sub: 'Amazon Braket — 量子コンピュータが答えを出した', color: '#ffe066', ms: 1200 } },
     ],
   },
 
@@ -171,7 +172,7 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'ui_select' } },
       { at: 0,   layer: 'lcd', action: 'anim',  params: { anim: 'step_up', step: 2 } },
-      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: 'RACK 搬入', sub: 'まだ設置はこれから…', color: '#8ad4ff', ms: 700 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: 'RACK 搬入', sub: 'AWS Outposts — ラックは届いたが設置はこれから', color: '#8ad4ff', ms: 800 } },
     ],
   },
   {
@@ -204,7 +205,10 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'ui_select' } },
       { at: 0,   layer: 'lcd', action: 'anim',  params: { anim: 'step_up', step: 1 } },
-      { waitFor: 'stop3', layer: 'lcd', action: 'text', params: { text: 'DEVICE ONLINE ×1', color: '#8ad4ff', ms: 600 } },
+      // U78: サブ行が無く「DEVICE ONLINE ×1」だけでは何の話か分からなかった。
+      //      サービス名 + 起きたことの日本語を足す(以下の【弱】3本も同じ理由)
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',
+        params: { text: 'DEVICE ONLINE ×1', sub: 'AWS IoT Core — つながった機器はまだ1台だけ', color: '#8ad4ff', ms: 800 } },
     ],
   },
   {
@@ -220,7 +224,7 @@ export default [
       { waitFor: 'stop3', layer: 'lcd', action: 'anim', params: { anim: 'health_check', ok: true, label: 'FLEET ONLINE' } },
       { waitFor: 'stop3', layer: 'sfx', action: 'synth', params: { preset: 'upgrade_chime' } },
       { waitFor: 'stop3', after: 200, layer: 'lcd', action: 'text',
-        params: { text: 'FLEET READY', sub: '全センサーが接続完了', color: '#ffe066', ms: 1300 } },
+        params: { text: 'FLEET READY', sub: 'AWS IoT Core — 全センサーが接続完了', color: '#ffe066', ms: 1300 } },
     ],
   },
 
@@ -236,7 +240,8 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'checklist_ok', gain: 0.6 } },
       { at: 0,   layer: 'lcd', action: 'anim',  params: { anim: 'checklist_green', index: 1 } },
-      { waitFor: 'stop3', layer: 'lcd', action: 'text', params: { text: 'CONTROL 1/3', color: '#8ad4ff', ms: 600 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',
+        params: { text: 'CONTROL 1/3', sub: 'AWS Control Tower — コントロールは1つしか通らなかった', color: '#8ad4ff', ms: 800 } },
     ],
   },
   {
@@ -258,7 +263,7 @@ export default [
     ],
   },
 
-  // ── F. AWS Budgets(今月の運勢、超過見込み) ──────────────────
+  // ── F. AWS Budgets(今月の予算を超えそう) ──────────────────
   {
     id: 'yi_budgets_weak',
     name: '【弱】Budgets予告(支出がゆるやかに増加)',
@@ -287,8 +292,10 @@ export default [
       { waitFor: 'stop3', layer: 'sfx', action: 'synth', params: { preset: 'alarm_beep' } },
       { waitFor: 'stop3', layer: 'lcd', action: 'anim', params: { anim: 'ttl_zero' } },
       { waitFor: 'stop3', after: 150, layer: 'overlay', action: 'flash', params: { color: '#ff8a00', ms: 220 } },
+      // U78: 「今月の運勢、オーバーラン」は占いの言い回しで、AWS Budgets が
+      //      何を知らせたのか分からなかった。実際の通知内容(超過予測)を書く
       { waitFor: 'stop3', after: 200, layer: 'lcd', action: 'text',
-        params: { text: '予算超過見込み', sub: 'AWS Budgets — 今月の運勢、オーバーラン', color: '#ffd166', ms: 1300 } },
+        params: { text: '予算超過見込み', sub: 'AWS Budgets — 今月の請求が予算を超えると予測された', color: '#ffd166', ms: 1300 } },
     ],
   },
 
@@ -303,7 +310,8 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.5 } },
       { at: 0,   layer: 'lcd', action: 'anim',  params: { anim: 'pillar_raise', index: 1, count: 5 } },
-      { waitFor: 'stop3', layer: 'lcd', action: 'text', params: { text: 'JOB #1 完了', color: '#8ad4ff', ms: 600 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',
+        params: { text: 'JOB #1 完了', sub: 'AWS Batch — バッチジョブが1件だけ静かに終わった', color: '#8ad4ff', ms: 800 } },
     ],
   },
   {
@@ -322,7 +330,7 @@ export default [
       { waitFor: 'stop3', layer: 'lcd', action: 'anim', params: { anim: 'burst_recover', amount: 42 } },
       { waitFor: 'stop3', layer: 'sfx', action: 'synth', params: { preset: 'upgrade_chime' } },
       { waitFor: 'stop3', after: 150, layer: 'lcd', action: 'text',
-        params: { text: 'BATCH 完了', sub: '42件を静かに処理した', color: '#ffe066', ms: 1300 } },
+        params: { text: 'BATCH 完了', sub: 'AWS Batch — 42件ぶんの計算資源を自動で確保した', color: '#ffe066', ms: 1300 } },
     ],
   },
 
@@ -337,7 +345,8 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'ui_select' } },
       { at: 0,   layer: 'lcd', action: 'anim', params: { anim: 'deploy_progress', from: 0, to: 0.4 } },
-      { waitFor: 'stop3', layer: 'lcd', action: 'text', params: { text: 'DEPLOYING…', color: '#8ad4ff', ms: 600 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',
+        params: { text: 'DEPLOYING…', sub: 'Elastic Beanstalk — 環境の構築は途中で止まっている', color: '#8ad4ff', ms: 800 } },
     ],
   },
   {
@@ -402,7 +411,7 @@ export default [
       { waitFor: 'stop3', layer: 'lcd', action: 'anim', params: { anim: 'sfn_task', result: 'running' } },
       { waitFor: 'stop3', layer: 'sfx', action: 'synth', params: { preset: 'sfn_choice' } },
       { waitFor: 'stop3', after: 150, layer: 'lcd', action: 'text',
-        params: { text: 'EXPERIMENT RUNNING', sub: '本番にわざと故障を起こして耐性を試している', color: '#ffe066', ms: 1400 } },
+        params: { text: 'EXPERIMENT RUNNING', sub: 'Fault Injection Service — 本番にわざと故障を起こす実験', color: '#ffe066', ms: 1400 } },
     ],
   },
 

@@ -24,7 +24,13 @@
  * となっており、いずれもこの原則に反しない。
  */
 
-import { getLayerRect } from '../engine/layers.js';
+import { getLayerRect, getShakeSlack } from '../engine/layers.js';
+
+/**
+ * フィットの余白が無い向きでも許す揺れ幅[CSS px](2026-08-16 V80-4)。
+ * ここまでなら筐体が画面端で切れても目に留まらない。
+ */
+const SHAKE_MIN_PX = 8;
 
 const FONT = '"Helvetica Neue", "Hiragino Sans", "Noto Sans JP", sans-serif';
 
@@ -47,12 +53,19 @@ function roundRect(ctx, x, y, w, h, r) {
  * シナリオが極端な holdMs を渡した場合や、解除キュー(release)に届かない経路で
  * 終わった場合でも、**画面が真っ暗のまま残らない** ようにここで頭打ちにする。
  *
- * いま最長の使い手は data/scenarios/freeze.js(U49 で溜めを伸ばして 10.5秒)。
+ * いま最長の使い手は data/scenarios/freeze.js
+ * (U74 で問答の表示時間を確保したため holdMs = **17.36秒**)。
  * **フリーズの暗転より短くしてはいけない**(短いと溜めの途中で勝手に明転して
  * 「ドーン」の前に画面が戻ってしまう)。data/freeze.js の durationMs を伸ばしたら
  * ここも必ず見直すこと。
+ *
+ * 12000 → **19000**(2026-08-15 U74)。フリーズの暗転(17.36秒)に
+ * 1.6秒ほどの余裕を持たせた値。ここが暗転より短いと、頭打ちのぶんだけ
+ * **問答の途中で液晶が明るくなる**(U74 以前の 12000 のままだと
+ * fadeIn 260 + 12000 = 12.26秒 = 2つ目の「否!!!」の最中に明転してしまい、
+ * 3つ目の問いと「ドーン」を明るい液晶の上でやることになる)。
  */
-export const BLACKOUT_MAX_HOLD_MS = 12000;
+export const BLACKOUT_MAX_HOLD_MS = 19000;
 
 /**
  * 生きている OverlayView の一覧(暗転・1行表示の一括解除用)。
@@ -382,12 +395,36 @@ export class OverlayView {
     ctx.restore();
   }
 
+  /**
+   * 画面揺れを CSS 変数へ書く。
+   *
+   * ── 2026-08-16 検証指摘 V80-4 ────────────────────────────────────
+   * 「フリーズ終盤のシェイクで液晶の中身が枠からズレる」。
+   * 筐体は1枚の DOM なので液晶だけがズレることはないが、**筐体そのものが
+   * ビューポートからはみ出して** 冠(JAWSLOT)や台座が切り落とされ、
+   * 液晶の位置だけが動いたように見えていた。
+   * フリーズの大揺れは power 34 で、横長ウィンドウでは上下の余白が 0px
+   * (筐体の高さがぴったり画面の高さ)なので、縦は 1px 動かしただけで切れる。
+   *
+   * 揺れは **フィットの余白(engine/layers.js の getShakeSlack)の内側** に収める。
+   * 余白がある向きは今までどおりの迫力で揺れ、無い向きは自動的に止まるので、
+   * どの画面サイズでも筐体が欠けない。
+   */
   _applyShake() {
     if (!this.shakeTarget) return;
     const p = this.shakeLeft / this.shakeDur;
     const amp = this.shakePower * p;
-    const dx = (Math.random() * 2 - 1) * amp;
-    const dy = (Math.random() * 2 - 1) * amp;
+    const slack = getShakeSlack();
+    /*
+     * 余白いっぱいまで振ると縁が画面端に触れて硬く見えるので9割まで。
+     * 余白が 0 の向き(横長ウィンドウの縦方向は筐体の高さ = 画面の高さ)でも
+     * 揺れが完全に死ぬと打感が抜けるので、SHAKE_MIN_PX までは許す
+     * (この幅なら冠や台座の欠けは目に留まらない)。
+     */
+    const ax = Math.min(amp, Math.max(SHAKE_MIN_PX, slack.x * 0.9));
+    const ay = Math.min(amp, Math.max(SHAKE_MIN_PX, slack.y * 0.9));
+    const dx = (Math.random() * 2 - 1) * ax;
+    const dy = (Math.random() * 2 - 1) * ay;
     this.shakeTarget.style.setProperty('--shake-x', `${dx.toFixed(2)}px`);
     this.shakeTarget.style.setProperty('--shake-y', `${dy.toFixed(2)}px`);
     this._shakeApplied = true;

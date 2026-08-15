@@ -42,7 +42,12 @@
  *   「RUSH中の上乗せ期待予告」セクション冒頭。
  */
 
-import { RUSH_SPEC_BY_ID, heroHitLabel } from '../rushes.js';
+/*
+ * heroHitLabel(「毎ゲーム n% で m枚」)は U76-1 でここから消えた。
+ * 当選率と枚数を出すのは **盤面(render/lcd-rush.js)だけ** という整理で、
+ * ここへ戻すと突入ポップアップと盤面 y52 が二重になる(下の hero_rush_entry を参照)。
+ */
+import { RUSH_SPEC_BY_ID } from '../rushes.js';
 
 const CF = RUSH_SPEC_BY_ID.CF_RUSH;
 const HERO = RUSH_SPEC_BY_ID.HERO_RUSH;
@@ -296,10 +301,34 @@ export default [
       { at: 1500, layer: 'char',    action: 'motion', params: { char: 'kiro', motion: 'bounce' } },
       // プレミアRUSHの突入告知(U68)。間引かない
       { at: 1650, layer: 'voice',   action: 'play',   params: { key: 'luna_rush_01', force: true } },
+      /*
+       * ── 名前と仕様は言わない(2026-08-15 ユーザー指摘 U76-1)────────────
+       *
+       * 旧:  text 'HERO RUSH 突入!!' / sub '5G限定 — 毎ゲーム 80% で 70枚'
+       * これは盤面(render/lcd-rush.js の drawHeroRush)と **二重** だった:
+       *   'HERO RUSH'          … 盤面の大ロゴ(y152)と同じ文字が、
+       *                          同じ y152〜236 の帯に重なって出ていた
+       *   '5G限定 — 毎ゲーム…' … 盤面の y52 が常設で出している同じ一文
+       * 表示原則 U8「同じことは1か所」+ Q2(GHOST BONUS SP)の流儀に合わせ、
+       * **常設側(盤面)を残してこちらを落とす**。
+       *
+       * 残すのは「いま何が起きたか」= AWS Hero に選ばれた瞬間だけ。
+       * 文言は game/modes/rushes.js の突入テロップと同じ語彙にそろえてある。
+       * sub を持たせないのは、書けることが全部盤面にあるため
+       * (5G限定・当選率と枚数は y52、レア役の +α は常設のルール行)。
+       */
+      /*
+       * ── 2026-08-16 検証指摘 V80-10 ───────────────────────────────────
+       * sticky:true は「次のレバーONまで残る」なので、突入直後にレバーを引かない
+       * (= 演出を見ている)プレイヤーの画面では **5.6秒出っぱなし** になり、
+       * 5つの枠と当落の数字を覆い続けていた。
+       * ここは「AWS Hero に選ばれた」という **瞬間の告知** なので、
+       * sticky を外して 2秒で引く(盤面の情報が主役に戻る)。
+       */
       { at: 1800, layer: 'lcd',     action: 'text',
         params: {
-          text: 'HERO RUSH 突入!!', sub: `${HERO.games}G限定 — ${heroHitLabel()}`,
-          color: '#ffd166', ms: 2400, sticky: true,
+          text: 'AWS Hero に選出!!',
+          color: '#ffd166', ms: 2000, sticky: false,
         } },
       { at: 2000, layer: 'bgm',     action: 'change', params: { bgm: 'bgm_ending' } },
       // 決めポーズのあとは待機の顔へ戻す(以降は毎ゲームの当落でリアクションする)
@@ -450,8 +479,11 @@ export default [
        * このポップアップが出ている間はモード側のテロップ
        * (ディストリビューション終了… / クラスターが縮退… など)が自動で黙る。
        */
+      // U78: 旧サブ「引き戻しに期待」はパチスロの機能語だけで、AWS のことを
+      //      1文字も言っていなかった。直前の画(ヘルスチェック失敗)と
+      //      行き先(ホットスタンバイ)を言葉でも出す
       { at: 1700, layer: 'lcd',     action: 'text',
-        params: { text: 'RUSH 終了', sub: '引き戻しに期待', color: '#ff8a8a', ms: 1500 } },
+        params: { text: 'RUSH 終了', sub: 'ヘルスチェック失敗 — ホットスタンバイで引き戻しへ', color: '#ff8a8a', ms: 1500 } },
     ],
   },
   {

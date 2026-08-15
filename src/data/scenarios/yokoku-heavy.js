@@ -458,7 +458,7 @@ export default [
       { at: 660,  layer: 'lcd',     action: 'particles', params: { preset: 'spark', x: 220, y: 150, count: 18 } },
       // 「突入」を含むので可読性エンジンが自動で sticky にする
       { at: 740,  layer: 'lcd',     action: 'text',
-        params: { text: 'ALL GREEN — 突入', sub: '6本の柱、全部立った', color: '#ffe066', ms: 1900 } },
+        params: { text: 'ALL GREEN — 突入', sub: 'Well-Architected — 6本の柱が全部立った', color: '#ffe066', ms: 1900 } },
       { at: 1000, layer: 'sfx',     action: 'synth', params: { preset: 'fanfare_reg' } },
     ],
   },
@@ -555,7 +555,7 @@ export default [
       { waitFor: 'stop2', layer: 'sfx', action: 'synth', params: { preset: 'charge_up' } },
       { waitFor: 'stop3', after: 100, layer: 'reelfx', action: 'highlight', params: { ms: 520, color: '#ff3b30' } },
       { waitFor: 'stop3', after: 200, layer: 'lcd', action: 'text',
-        params: { text: 'CRITICAL FINDING', sub: '緊急度が跳ね上がった', tone: 'hot', color: '#ff3b30', ms: 1400 } },
+        params: { text: 'CRITICAL FINDING', sub: 'Amazon GuardDuty — 緊急度が跳ね上がった', tone: 'hot', color: '#ff3b30', ms: 1400 } },
     ],
   },
   {
@@ -618,7 +618,7 @@ export default [
       { at: 40,  layer: 'overlay', action: 'flash', params: { color: '#ff3b30', ms: 200 } },
       { at: 80,  layer: 'lcd',     action: 'anim',  params: { anim: 'lcd_flash', color: '#ff3b30', strength: 0.5 } },
       { at: 200, layer: 'lcd',     action: 'text',
-        params: { text: 'ALERT', sub: '緊急アラートが鳴っている', tone: 'hot', color: '#ff3b30', ms: 1300 } },
+        params: { text: 'ALERT', sub: 'CloudWatch の緊急アラートが鳴っている', tone: 'hot', color: '#ff3b30', ms: 1300 } },
       // 結論は出さない。何も起きないまま終わるのがこのシナリオの役目
       { waitFor: 'stop3', after: 300, layer: 'lamp', action: 'pattern', params: { pattern: 'idle' } },
     ],

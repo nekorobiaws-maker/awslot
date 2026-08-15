@@ -225,7 +225,7 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'checklist_ok', gain: 0.55 } },
       { at: 0,   layer: 'lcd', action: 'anim',  params: { anim: 'checklist_green', index: 1 } },
-      conclusionCue({ flag: 'LOSE', text: 'OPTIMIZED', sub: '推奨なし — いまのままで足りている', ms: 800 }),
+      conclusionCue({ flag: 'LOSE', text: 'OPTIMIZED', sub: 'Compute Optimizer — 推奨なし。いまのままで足りている', ms: 800 }),
     ],
   },
 
@@ -265,7 +265,7 @@ export default [
       { at: 40,  layer: 'lcd',  action: 'anim', params: { anim: 'all_regions_light' } },
       { waitFor: 'stop3', layer: 'sfx', action: 'synth', params: { preset: 'edge_hit' } },
       conclusionCue({
-        flag: 'CHANCE', text: 'エニーキャストIPで直行', sub: '最寄りのエッジからAWSの網に乗った',
+        flag: 'CHANCE', text: 'エニーキャストIPで直行', sub: 'Global Accelerator — 最寄りのエッジから AWS の網に乗った',
         after: 100, ms: 1400,
       }),
     ],
@@ -299,7 +299,7 @@ export default [
       { waitFor: 'stop3', layer: 'overlay', action: 'particles', params: { preset: 'spark', x: 360, y: 300, count: 14 } },
       // レア役全般で出る = 役を1つに絞れないので中立色(U62)
       conclusionCue({
-        text: 'CREATE_COMPLETE', sub: '一式まとめて出来上がった',
+        text: 'CREATE_COMPLETE', sub: 'CloudFormation — スタックが一式まとめて出来上がった',
         color: COLOR_MID, after: 120, ms: 1300,
       }),
     ],
@@ -395,7 +395,7 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.5 } },
       { at: 0,   layer: 'lcd', action: 'anim', params: { anim: 'health_check', ok: false, label: 'CHECKER 1/3 NG' } },
-      conclusionCue({ flag: 'LOSE', text: 'まだ切り替わらない', sub: '他のチェッカーは正常のまま', ms: 800 }),
+      conclusionCue({ flag: 'LOSE', text: 'まだ切り替わらない', sub: 'Route 53 ヘルスチェック — 他のチェッカーは正常のまま', ms: 800 }),
     ],
   },
 

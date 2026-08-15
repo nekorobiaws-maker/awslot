@@ -46,8 +46,11 @@ export default [
       { at: 2500, layer: 'char',    action: 'motion', params: { char: 'kiro', motion: 'zoom' } },
       { at: 2700, layer: 'voice',   action: 'play',  params: { key: 'luna_rush_01', force: true } },
       // 「突入」を含むので自動 sticky。純増と継続率は sub 行で補足する
+      // U78: 「DC管理」は データセンター の略のつもりだったが、この台の HUD には
+      //      **別の意味の DC**(RUSH のパラメータ)が出ているので読み手が必ず混乱する。
+      //      AWS Lambda の売り文句そのまま「サーバー管理から解放された」へ。
       { at: 2900, layer: 'lcd',     action: 'text',
-        params: { text: 'SERVERLESS RUSH 突入!!', sub: `純増${SLS.payoutPerGame}枚 / 継続${Math.round(SLS.continueRate * 100)}% — DC管理から解放された`, color: '#ffb46a', ms: 2200 } },
+        params: { text: 'SERVERLESS RUSH 突入!!', sub: `純増${SLS.payoutPerGame}枚 / 継続${Math.round(SLS.continueRate * 100)}% — Lambda がサーバー管理から解放した`, color: '#ffb46a', ms: 2200 } },
       { at: 3000, layer: 'bgm',     action: 'change', params: { bgm: 'bgm_serverless' } },
       { at: 3200, layer: 'overlay', action: 'particles', params: { preset: 'coin', x: 360, y: 380, count: 30 } },
     ],
@@ -210,8 +213,10 @@ export default [
       { at: 1200, layer: 'char',    action: 'show',  params: { char: 'george', pose: 'grin' } },
       { at: 1400, layer: 'lcd',     action: 'anim',  params: { anim: 'ed_confetti' } },
       { at: 2000, layer: 'voice',   action: 'play',  params: { key: 'luna_sugoi_01', force: true } },
+      // U78: 旧サブ「完走おめでとう」はAWSのことを何も言っていなかった。
+      //      直前のカットイン(reinvent_keynote)と揃えて到達点を言葉にする
       { at: 2600, layer: 'lcd',     action: 'text',
-        params: { text: 'COMPLETE!!', sub: '完走おめでとう', color: '#ffe066', ms: 2400 } },
+        params: { text: 'COMPLETE!!', sub: 're:Invent のキーノートまで完走 — おめでとう', color: '#ffe066', ms: 2400 } },
       { at: 2800, layer: 'bgm',     action: 'change', params: { bgm: 'bgm_ending' } },
       { at: 3000, layer: 'overlay', action: 'particles', params: { preset: 'rainbow', x: 360, y: 420, count: 48 } },
     ],
@@ -282,7 +287,7 @@ export default [
       // 専用版(scenarios/normal.js の stage_up_provisioned / stage_up_warm)と同じルール
       { at: 400, layer: 'lcd',     action: 'text',
         params: {
-          text: 'STAGE UP', sub: 'コンテナが温まってきた',
+          text: 'STAGE UP', sub: 'ECS のコンテナが温まってきた',
           color: '#ffb04a', ms: 1400, sticky: true,
         } },
     ],

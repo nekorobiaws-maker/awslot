@@ -123,6 +123,9 @@ export const cfRush = {
   onEnter(state, params = {}) {
     state.rushId = CF.id;
     state.short = CF.short;
+    /* 液晶ヘッダの名前は英字ショート名へ一本化する(2026-08-16 検証指摘 V80-7 / V80-8)。
+     * 和名(state.name)と盤面の英字ロゴが別の綴りで名乗るのをやめるための共通仕様。 */
+    state.headerName = CF.short;
     state.axis = CF.axis;
     state.total = params.games ?? CF.games;
     state.remaining = state.total;
@@ -202,6 +205,9 @@ export const auroraRush = {
   onEnter(state, params = {}) {
     state.rushId = AURORA.id;
     state.short = AURORA.short;
+    /* 液晶ヘッダの名前は英字ショート名へ一本化する(2026-08-16 検証指摘 V80-7 / V80-8)。
+     * 和名(state.name)と盤面の英字ロゴが別の綴りで名乗るのをやめるための共通仕様。 */
+    state.headerName = AURORA.short;
     state.axis = AURORA.axis;
     state.total = params.games ?? AURORA.initGames;
     state.remaining = state.total;
@@ -302,6 +308,9 @@ export const heroRush = {
   onEnter(state, params = {}) {
     state.rushId = HERO.id;
     state.short = HERO.short;
+    /* 液晶ヘッダの名前は英字ショート名へ一本化する(2026-08-16 検証指摘 V80-7 / V80-8)。
+     * 和名(state.name)と盤面の英字ロゴが別の綴りで名乗るのをやめるための共通仕様。 */
+    state.headerName = HERO.short;
     state.axis = HERO.axis;
     // params.games は復帰・デバッグ起動用(通常突入は spec の 5G 固定)
     state.total = params.games ?? HERO.games;

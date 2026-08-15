@@ -59,7 +59,7 @@ export default [
     cues: [
       { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'SCANNING…', sub: 'Macieが機密データを検索中', color: '#8ad4ff', ms: 650 } },
       { at: 20,  layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick', gain: 0.5 } },
-      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: 'NO FINDING', sub: '該当データなし', color: '#8ad4ff', ms: 500 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: 'NO FINDING', sub: 'Amazon Macie — 該当する機密データは無かった', color: '#8ad4ff', ms: 800 } },
     ],
   },
   {
@@ -74,7 +74,7 @@ export default [
       { at: 40,  layer: 'sfx',  action: 'synth',   params: { preset: 'countdown_tick' } },
       { waitFor: 'stop3', layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 200, y: 200, count: 14 } },
       { waitFor: 'stop3', after: 20, layer: 'sfx',  action: 'synth',   params: { preset: 'alarm_beep' } },
-      { waitFor: 'stop3', after: 200, layer: 'lcd',  action: 'text',    params: { text: 'SENSITIVE DATA FOUND', sub: '機密情報を検出した', color: '#ff8a00', ms: 1000 } },
+      { waitFor: 'stop3', after: 200, layer: 'lcd',  action: 'text',    params: { text: 'SENSITIVE DATA FOUND', sub: 'Amazon Macie — S3 から機密情報を検出した', color: '#ff8a00', ms: 1000 } },
     ],
   },
 
@@ -108,7 +108,7 @@ export default [
       { waitFor: 'stop3', layer: 'lcd', action: 'anim', params: { anim: 'step_up', step: 3, ms: 1400 } },
       { waitFor: 'stop3', after: 160, layer: 'sfx', action: 'synth', params: { preset: 'upgrade_chime' } },
       { waitFor: 'stop3', after: 220, layer: 'lcd', action: 'text',
-        params: { text: 'SCORE 98', sub: '検出結果が一気に集約された', color: '#ffe066', ms: 1100 } },
+        params: { text: 'SCORE 98', sub: 'AWS Security Hub — 検出結果が一気に集約された', color: '#ffe066', ms: 1100 } },
     ],
   },
 
@@ -166,8 +166,10 @@ export default [
       { waitFor: 'stop1', layer: 'lcd', action: 'particles', params: { preset: 'stream', x: 200, y: 200, count: 8 } },
       { waitFor: 'stop2', layer: 'lcd', action: 'particles', params: { preset: 'stream', x: 200, y: 200, count: 8 } },
       { waitFor: 'stop3', after: 150, layer: 'sfx', action: 'synth', params: { preset: 'error_buzz', gain: 0.5 } },
+      // U78: 「手がかりの糸」は液晶に描かれる調査グラフの線を指した言い方で、
+      //      絵を見ていないと通じない。サービス名 + 何ができなかったかを書く
       { waitFor: 'stop3', after: 200, layer: 'lcd', action: 'text',
-        params: { text: 'TRACE LOST', sub: '手がかりの糸が切れた…', color: '#8ad4ff', ms: 1000 } },
+        params: { text: 'TRACE LOST', sub: 'Detective — 原因までたどり着けなかった', color: '#8ad4ff', ms: 1000 } },
     ],
   },
 
@@ -276,7 +278,7 @@ export default [
       { at: 60, layer: 'lcd', action: 'text',  params: { text: 'ESTABLISHING LINK…', sub: '専用線を敷設中', color: '#8ad4ff', ms: 600 } },
       { waitFor: 'stop3', after: 150, layer: 'sfx', action: 'synth', params: { preset: 'error_buzz' } },
       { waitFor: 'stop3', after: 200, layer: 'lcd', action: 'text',
-        params: { text: 'LINK DOWN', sub: '開通できなかった', color: '#8ad4ff', ms: 900 } },
+        params: { text: 'LINK DOWN', sub: 'AWS Direct Connect — 専用線は開通できなかった', color: '#8ad4ff', ms: 900 } },
     ],
   },
 
@@ -291,7 +293,7 @@ export default [
       { at: 0,   layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
       { at: 0,   layer: 'lcd',  action: 'anim',    params: { anim: 'health_check', ok: true, label: 'CONNECTED' } },
       { at: 40,  layer: 'sfx',  action: 'synth',   params: { preset: 'health_check' } },
-      { waitFor: 'stop3', layer: 'lcd',  action: 'text',    params: { text: 'PRIVATE接続', sub: 'インターネットを経由せず繋がった', color: '#ffe066', ms: 1000 } },
+      { waitFor: 'stop3', layer: 'lcd',  action: 'text',    params: { text: 'PRIVATE接続', sub: 'AWS PrivateLink — インターネットを経由せず繋がった', color: '#ffe066', ms: 1000 } },
     ],
   },
 
@@ -306,7 +308,7 @@ export default [
     cues: [
       { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'INSPECTING…', sub: 'パケットを検査中', color: '#8ad4ff', ms: 600 } },
       { at: 40,  layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick', gain: 0.5 } },
-      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: 'PASS', sub: '異常なし', color: '#8ad4ff', ms: 500 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: 'PASS', sub: 'AWS Network Firewall — 通信に異常なし', color: '#8ad4ff', ms: 800 } },
     ],
   },
   {

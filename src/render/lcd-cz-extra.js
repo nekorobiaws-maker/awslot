@@ -40,6 +40,26 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
+/**
+ * 障害カードの短縮名(2026-08-16 検証指摘 V80-21③)。
+ *
+ * GameDay CZ(FIS)の障害名は 5枚並ぶとカード幅が 58px しかなく、
+ * 「レイテンシ…」「インスタン…」「API スロッ…」「DB フェイル…」と
+ * **4枚が省略記号だけ** になっていた(何の障害か読めない)。
+ * Shield の波は data 側に short があるので、無いものだけここで補う。
+ * 意味を変えない範囲で「正式名 → 現場で通じる短い呼び方」へ寄せてある:
+ *   インスタンス終了     … FIS が終了させるのは EC2 インスタンス
+ *   API スロットリング   … スロットリング = 呼び出し制限
+ *   DB フェイルオーバー  … フェイルオーバー = 切替
+ */
+const FAULT_SHORT = {
+  'AZ-a 停止': 'AZ-a停止',
+  'レイテンシ注入': 'レイテンシ',
+  'インスタンス終了': 'EC2終了',
+  'API スロットリング': 'API制限',
+  'DB フェイルオーバー': 'DB切替',
+};
+
 /** 幅に収まるまで末尾を詰める */
 function fitText(ctx, text, maxW) {
   let s = String(text ?? '');
@@ -62,7 +82,15 @@ function drawSummary(ctx, view, textActive, text, color) {
   ctx.textBaseline = 'middle';
   ctx.font = `900 17px ${FONT_HEAVY}`;
   ctx.fillStyle = color;
-  ctx.fillText(text, view.w / 2, SUMMARY_Y);
+  /*
+   * 2026-08-16 検証指摘 V80-18: 結論行は横に長く(「HTTP 200 DEGRADED —
+   * HEALTHY 1/3」等)、中央寄せだと右端の常設キャラまで文字が伸びていた。
+   * CZ 盤面と同じ「キャラのレーンを空ける」約束に合わせて、
+   * 中心も最大幅もレーンの手前で閉じる。
+   */
+  const cx = view?.czBoardCx ?? view.w / 2;
+  const maxW = (view?.czBoardW ?? view.w) - 16;
+  ctx.fillText(text, cx, SUMMARY_Y, maxW);
   view?._ambient?.(text, { matchCategory: false });
 }
 
@@ -85,7 +113,7 @@ export function drawCzAlb(ctx, state, textActive, view) {
 
   // ── リスナー(適用中のルール)──
   const lw = 210;
-  const lx = (view.w - lw) / 2;
+  const lx = view.czBoardCx - lw / 2;
   const ly = textActive ? 38 : 44;
   roundRect(ctx, lx, ly, lw, 24, 12);
   ctx.fillStyle = 'rgba(0,0,0,0.42)';
@@ -95,15 +123,15 @@ export function drawCzAlb(ctx, state, textActive, view) {
   ctx.stroke();
   ctx.font = `700 12px ${FONT}`;
   ctx.fillStyle = '#8ad4ff';
-  ctx.fillText(`LISTENER  ${rule}`, view.w / 2, ly + 12);
+  ctx.fillText(`LISTENER  ${rule}`, view.czBoardCx, ly + 12);
 
   // ── ターゲットグループの3台 ──
   const top = ly + 34;
   const cardH = textActive ? 78 : 86;
   const gap = 12;
-  const cardW = Math.min(126, (view.w - 32 - gap * 2) / Math.max(1, targets.length));
+  const cardW = Math.min(112, (view.czBoardW - 24 - gap * 2) / Math.max(1, targets.length));
   const totalW = targets.length * cardW + (targets.length - 1) * gap;
-  const startX = (view.w - totalW) / 2;
+  const startX = view.czBoardCx - totalW / 2;
 
   targets.forEach((t, i) => {
     const x = startX + i * (cardW + gap);
@@ -116,7 +144,7 @@ export function drawCzAlb(ctx, state, textActive, view) {
       ctx.lineWidth = 1.6;
       ctx.setLineDash([4, 3]);
       ctx.beginPath();
-      ctx.moveTo(view.w / 2, ly + 24);
+      ctx.moveTo(view.czBoardCx, ly + 24);
       ctx.lineTo(x + cardW / 2, top);
       ctx.stroke();
       ctx.setLineDash([]);
@@ -273,12 +301,12 @@ export function drawCzBlueGreen(ctx, state, textActive, view) {
   ctx.textBaseline = 'middle';
 
   // ── Blue / Green の2枚 ──
-  const boxW = 156;
+  const boxW = 150;
   const boxH = textActive ? 56 : 64;
   const y = textActive ? 40 : 48;
   const boxes = [
-    { label: 'BLUE(現行)', pct: 100 - shift, col: '#5aa8ff', x: view.w / 2 - boxW - 10 },
-    { label: 'GREEN(新)', pct: shift, col: '#4ce0a0', x: view.w / 2 + 10 },
+    { label: 'BLUE(現行)', pct: 100 - shift, col: '#5aa8ff', x: view.czBoardCx - boxW - 8 },
+    { label: 'GREEN(新)', pct: shift, col: '#4ce0a0', x: view.czBoardCx + 8 },
   ];
   for (const b of boxes) {
     roundRect(ctx, b.x, y, boxW, boxH, 8);
@@ -315,8 +343,8 @@ export function drawCzBlueGreen(ctx, state, textActive, view) {
    *   目盛りの数字は x110〜400 にしか出ないので列が競合せず、
    *   空いた1行ぶんエラー率を上げられて盤面(〜176)にも収まる。
    */
-  const bx = 50;
-  const bw = view.w - 100;
+  const bx = 40;
+  const bw = view.czBoardW - 80;
   const by = y + boxH + 12;
   view._drawGauge(ctx, bx, by, bw, 14, shift / 100,
     rolledBack ? ['#7a1c1c', '#ff5a5a'] : ['#1c5a7a', '#4ce0a0']);
@@ -354,7 +382,7 @@ export function drawCzBlueGreen(ctx, state, textActive, view) {
     ctx.fillStyle = overThreshold ? '#ff8a8a' : 'rgba(255,255,255,0.68)';
     ctx.fillText(
       `ERROR RATE ${errorRate.toFixed(1)}%  /  ALARM しきい値 ${threshold}%`,
-      view.w / 2, by + 44,
+      view.czBoardCx, by + 44, view.czBoardW - 16,
     );
   }
 
@@ -385,21 +413,21 @@ export function drawCzFis(ctx, state, textActive, view) {
   ctx.textBaseline = 'middle';
 
   // ── エラーバジェット ──
-  const bx = 50;
-  const bw = view.w - 100;
+  const bx = 40;
+  const bw = view.czBoardW - 80;
   const by = textActive ? 42 : 50;
   view._drawGauge(ctx, bx, by, bw, 16, p,
     broken ? ['#7a1c1c', '#ff5a5a'] : p < 0.35 ? ['#7a4a1c', '#ffd166'] : ['#1c5a7a', '#4ce0a0']);
   ctx.font = `900 14px ${FONT_HEAVY}`;
   ctx.fillStyle = broken ? '#ff5a5a' : p < 0.35 ? '#ffd166' : '#7bf7d0';
-  ctx.fillText(`ERROR BUDGET ${Math.round(budget)}%`, view.w / 2, by + 32);
+  ctx.fillText(`ERROR BUDGET ${Math.round(budget)}%`, view.czBoardCx, by + 32);
 
   // ── 注入される障害 ──
   const top = by + 50;
   const gap = 8;
-  const cardW = Math.min(78, (view.w - 32 - gap * (total - 1)) / total);
+  const cardW = Math.min(78, (view.czBoardW - 24 - gap * (total - 1)) / total);
   const cardH = textActive ? 56 : 64;
-  const startX = (view.w - (total * cardW + (total - 1) * gap)) / 2;
+  const startX = view.czBoardCx - (total * cardW + (total - 1) * gap) / 2;
 
   faults.forEach((f, i) => {
     const x = startX + i * (cardW + gap);
@@ -430,10 +458,31 @@ export function drawCzFis(ctx, state, textActive, view) {
      * **カードに入りきるなら正式名、入らないなら short(短縮名)** の順で選ぶ。
      * short を持たない spec(GameDay など)は今までどおり name のまま。
      */
-    ctx.font = `700 10px ${FONT}`;
     ctx.fillStyle = st === 'pending' ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.88)';
     const full = String(f?.name ?? `fault ${i + 1}`);
-    const label = ctx.measureText(full).width <= cardW - 6 ? full : String(f?.short ?? full);
+    /*
+     * game/modes/cz.js は short を持たない spec に `short = name` を入れて渡してくる
+     * ので、「short があるか」では短縮名の有無を判定できない(V80-21③)。
+     * 名前と違うときだけ data 側の短縮名、そうでなければ表示側の表を引く。
+     */
+    const dataShort = f?.short && f.short !== full ? String(f.short) : null;
+    const short = String(dataShort ?? FAULT_SHORT[full] ?? full);
+    /*
+     * 収まり方の優先順は「正式名 > 短縮名 > 1段小さい文字」(V80-21③)。
+     * Shield は波が6枚並んでカード幅が 47px しかないので、10px 固定だと
+     * 短縮名(UDP増幅 / Slowloris)まで「…」で切れてしまう。
+     * 画面の下限 8px までは落として、切るより読ませることを優先する。
+     */
+    let nameSize = 10;
+    let label = full;
+    ctx.font = `700 ${nameSize}px ${FONT}`;
+    if (ctx.measureText(full).width > cardW - 6) {
+      label = short;
+      while (nameSize > 8 && ctx.measureText(label).width > cardW - 6) {
+        nameSize -= 1;
+        ctx.font = `700 ${nameSize}px ${FONT}`;
+      }
+    }
     ctx.fillText(fitText(ctx, label, cardW - 6), x + cardW / 2, top + 38);
 
     if (!textActive) {

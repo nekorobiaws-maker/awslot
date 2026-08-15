@@ -134,10 +134,17 @@ export const FREEZE = {
    * ユーザー指示「テンポが早すぎる。もっとためて、ドーン」。
    * 問答の間を伸ばし、解放の直前に **完全静止の一拍(0.7秒)** を入れたため、
    * 明転が 10760ms へ後ろ倒しになった。リールが回り出すのはその直後。
-   * 演出側の対応箇所は data/scenarios/freeze.js の duration(11500)と
-   * blackout の holdMs(10500)、render/overlay.js の BLACKOUT_MAX_HOLD_MS。
+   *
+   * 【2026-08-15 U74 で 10800 → 17660】
+   * ユーザー指摘「問答がすぐ消えて読めなかった」。
+   * 暗転中の5行(問い3 + 否定2)を **問い2.6秒 / 否定1.7秒** まで伸ばしたため、
+   * 明転が 17620ms へ後ろ倒しになった(+40ms でリールが回り出すのは従来どおり)。
+   * この値を縮めると **問答の途中でリールが回り出す**。
+   * 演出側の対応箇所は data/scenarios/freeze.js の duration(18260)と
+   * blackout の holdMs(17360)、render/overlay.js の BLACKOUT_MAX_HOLD_MS(19000)。
+   * 4か所は必ずセットで動かすこと。
    */
-  durationMs: 10800,
+  durationMs: 17660,
 
   /**
    * 恩恵: ゴーストボーナスSP + **RUSH確定 + プレミア振り分け**。

@@ -65,6 +65,13 @@ export const bonus = {
     state.bonusId = spec.id;
     state.name = spec.name;
     state.title = spec.shortName;      // 液晶に出す大文字(BIG BONUS / REG BONUS)
+    /*
+     * 液晶ヘッダに出す名前(2026-08-16 検証指摘 V80-7)。
+     * ヘッダが和名(state.name)、盤面が英字(state.title)で **同じものを2通りに**
+     * 名乗っていたので、ヘッダも英字へ寄せて1系統にする。
+     * 和名は残存価値の明細など文章で使う場所があるので state.name は消さない。
+     */
+    state.headerName = spec.shortName;
     state.isSet = spec.type === 'set';
     state.total = state.isSet ? spec.setGames : spec.games;
     state.remaining = state.total;

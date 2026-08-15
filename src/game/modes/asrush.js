@@ -71,6 +71,8 @@ export const asRush = {
     const units = params.units ?? params.dc ?? (ctx?.rng ? drawRushInitUnits(ctx.rng) : 3);
     state.rushId = SPEC.id;
     state.short = SPEC.short;
+    /* 液晶ヘッダの名前は英字ショート名へ一本化する(2026-08-16 検証指摘 V80-7 / V80-8) */
+    state.headerName = SPEC.short;
     state.axis = SPEC.axis;
     /** いま稼働している台数。**常に state.remaining と同じ値**(ファイル冒頭の不変条件) */
     state.units = clamp(Math.round(units), 1, SPEC.maxUnits);

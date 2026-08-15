@@ -6,7 +6,10 @@
  *   drawAuroraRush … Aurora RUSH(ACU = 純増が伸びる)
  *   drawHeroRush   … ヒーローRUSH(5G固定・毎ゲームの抽選で当選)
  *                    ※ 当選率と枚数の説明文は data/rushes.js の heroHitLabel() が正
- *                      (U40 で 100 → 50 / U50 で 1/2 → 80% × 70枚。数字を書き写さないこと)
+ *                      (U40 で 100 → 50 / U50 で 1/2 → 80% × 70枚 /
+ *                       U76 で 50% × 50枚。数字を書き写さないこと)
+ *                    ※ 「HERO RUSH」という文字を出してよいのは **この盤面だけ**(U76-1)。
+ *                      突入ポップアップは名前を言わない(data/scenarios/rushes.js)
  *
  * ── 描き分けの方針(ユーザー指示「何のゾーンで何が起きたか一目で」)──
  *   4種とも **画面の主役を「伸びる軸」そのもの** にする:
@@ -127,25 +130,30 @@ export function drawAsRush(ctx, state, textActive, view) {
   ctx.fillStyle = 'rgba(255,255,255,0.72)';
   ctx.fillText('EC2 INSTANCES  =  残りゲーム数', view.w / 2, 52);
 
-  // ── インスタンスのアイコン列(6台で折り返す)──
-  const shown = Math.min(units, iconMax);
-  const rows = Math.max(1, Math.ceil(shown / 6));
-  /*
+  /* ── インスタンスのアイコン列(最大6台/行で折り返す)──
+   *
    * 2026-08-15 検証指摘 B4: 7台目で2行に折り返した瞬間、アイコン列が下へ伸びて
    * 大きい台数表示(y150)が押し下げられ、純増ラベル(y176)と重なっていた。
    * 2行のときはアイコンを少し詰めて **大きい数字の位置を動かさない**
    * (座席割りの「盤面 y34〜176」に収める)。
+   *
+   * 2026-08-16 検証指摘 V80-21⑤「7個目が孤立して見える」:
+   * 6個ずつ詰めて折り返すと 7台のとき 6 + 1 になり、2行目の1個だけが
+   * ぽつんと中央に浮いていた。**行数を先に決めてから均等に割る**(7台なら 4 + 3)。
    */
+  const shown = Math.min(units, iconMax);
+  const rows = Math.max(1, Math.ceil(shown / 6));
+  const perRow = Math.ceil(shown / rows);
   const twoRows = rows >= 2;
   const iconW = 44;
   const iconH = twoRows ? 24 : 30;
   const gap = twoRows ? 6 : 8;
   const startY = twoRows ? 64 : 70;
   for (let i = 0; i < shown; i++) {
-    const row = Math.floor(i / 6);
-    const inRow = Math.min(6, shown - row * 6);
+    const row = Math.floor(i / perRow);
+    const inRow = Math.min(perRow, shown - row * perRow);
     const rowW = inRow * iconW + (inRow - 1) * gap;
-    const x = (view.w - rowW) / 2 + (i % 6) * (iconW + gap);
+    const x = (view.w - rowW) / 2 + (i % perRow) * (iconW + gap);
     const y = startY + row * (iconH + gap);
     // 直近のオートスケールで増えたぶん(右側)を明るく光らせる = 「増えた瞬間」が分かる
     // (累計 addedUnits で光らせると常に全台が光ってしまい意味を失う)
@@ -186,15 +194,19 @@ export function drawAsRush(ctx, state, textActive, view) {
   }
 
   const listBottom = startY + rows * (iconH + gap);
-  if (units > iconMax) {
-    // アイコンの上限を超えたぶんの注記。真下の大きい数字に食い込まない高さに置く
-    ctx.font = `900 13px ${FONT_HEAVY}`;
-    ctx.fillStyle = '#7bf7d0';
-    ctx.fillText(`× ${units} 台`, view.w / 2, listBottom + 2);
-  }
+  /*
+   * 2026-08-16 検証指摘 V80-21⑤: アイコン上限を超えたときの注記「× n 台」を
+   * listBottom+2 に出していたが、その 24px 下にある **同じ数字の大見出し「n 台」**
+   * と縁取りごとぶつかっていた。上限超えは「アイコンが 12 個で止まっている」
+   * ことと大見出しの数字で読み取れるので、注記そのものを落とす(U8)。
+   */
 
-  // ── 台数(= 残りゲーム数)の大きい数字 ──
-  const bigY = Math.max(listBottom + 22, 150);
+  /* ── 台数(= 残りゲーム数)の大きい数字 ──
+   * 帯が出ている間は CF と同じ理由(V80-21⑥)で上へ逃がす。
+   * 30px の文字は y150 だと下端 165 で、告知プレート(y151〜)へ潜ってしまう。 */
+  const bigY = textActive
+    ? Math.max(listBottom + 18, 132)
+    : Math.max(listBottom + 22, 150);
   const bigText = `${units} 台`;
   /*
    * 2026-08-15 検証指摘 B4: 脇の「最大 n 台」を固定オフセット(+46px)で置いていたため、
@@ -209,7 +221,7 @@ export function drawAsRush(ctx, state, textActive, view) {
     const peakText = `最大 ${peak} 台`;
     ctx.font = `700 11px ${FONT}`;
     const peakW = ctx.measureText?.(peakText)?.width ?? 56;
-    const pad = 10;
+    const pad = 16;
     const right = view.w / 2 + bigW / 2 + pad;      // 大きい数字の右隣
     const left = view.w / 2 - bigW / 2 - pad - peakW; // 入らなければ左隣
     ctx.fillStyle = 'rgba(155,255,216,0.75)';
@@ -264,7 +276,7 @@ export function drawCfRush(ctx, state, textActive, view) {
     const col = i % cols;
     const rowW = cols * cw + (cols - 1) * gap;
     const x = (view.w - rowW) / 2 + col * (cw + gap);
-    const y = 66 + row * (chH + gap);
+    const y = (textActive ? 58 : 66) + row * (chH + gap);
     const on = edges[i] === current;
     roundRect(ctx, x, y, cw, chH, 6);
     ctx.fillStyle = on ? 'rgba(79,123,240,0.9)' : 'rgba(255,255,255,0.08)';
@@ -277,19 +289,29 @@ export function drawCfRush(ctx, state, textActive, view) {
     ctx.fillText(edges[i], x + cw / 2, y + chH / 2 + 1);
   }
 
-  // ── 直近の払い出し(このゾーンの主役)──
+  /* ── 直近の払い出し(このゾーンの主役)──
+   *
+   * 2026-08-16 検証指摘 V80-21⑥「+50 が告知プレートに食い込む」:
+   * 大きい数字を y150(44px = y128〜172)に固定で描いていたため、
+   * 演出テキスト帯のプレート(y151〜236)へ下半分が潜っていた。
+   * 契約3のとおり **帯が出ている間は詰めて上へ逃がす**(消しはしない。
+   * このゾーンでいちばん見たい数字なので)。エッジの並びも 8px 上げて場所を作る。
+   */
+  const bigY = textActive ? 132 : 150;
   if (last > 0) {
     const pulse = 1 + Math.sin(view.t * 9) * 0.04;
     ctx.save();
-    ctx.translate(view.w / 2, 150);
+    ctx.translate(view.w / 2, bigY);
     ctx.scale(pulse, pulse);
-    heavyText(ctx, `+${last}`, 0, 0, 44, '#ffe066');
+    heavyText(ctx, `+${last}`, 0, 0, textActive ? 32 : 44, '#ffe066');
     ctx.restore();
-    ctx.font = `700 12px ${FONT}`;
-    ctx.fillStyle = '#cfe0ff';
-    ctx.fillText('CACHE HIT', view.w / 2, 176);
+    if (!textActive) {
+      ctx.font = `700 12px ${FONT}`;
+      ctx.fillStyle = '#cfe0ff';
+      ctx.fillText('CACHE HIT', view.w / 2, 176);
+    }
   } else {
-    heavyText(ctx, 'MISS', view.w / 2, 150, 30, 'rgba(255,255,255,0.5)');
+    heavyText(ctx, 'MISS', view.w / 2, bigY, textActive ? 24 : 30, 'rgba(255,255,255,0.5)');
     if (!textActive) {
       ctx.font = `700 12px ${FONT}`;
       ctx.fillStyle = 'rgba(255,255,255,0.6)';
@@ -413,8 +435,26 @@ export function drawHeroRush(ctx, state, textActive, view) {
     ctx.fillText(win ? `${HERO.hitCoin}` : (done ? '—' : '?'), x + bw / 2, by + bh / 2 + 1);
   }
 
+  /*
+   * ── ロゴは「HERO RUSH」という文字の唯一の持ち主(2026-08-15 ユーザー指摘 U76-1)──
+   *
+   * 指摘は「HERO RUSH の文字がポップアップと盤面で二重に出ている」。
+   * 現物は下の2つが **同じ座標に重なって** いた:
+   *   盤面(ここ)                     … 'HERO RUSH'(常設・y152)
+   *   突入ポップアップ(演出テキスト帯)… 'HERO RUSH 突入!!'(y152〜236 に下敷きごと)
+   * Q2(GHOST BONUS SP)と同じ流儀で **盤面の大ロゴを残し**、
+   * ポップアップ側から名前と仕様(data/scenarios/rushes.js の hero_rush_entry)を落とした。
+   *
+   * そのうえで、ここは冒頭の契約3「帯が出ている間は常設ラベルを伏せる」を守る。
+   * 帯は液晶の中心 +44px = **y152〜236 を下敷きごと占有** するので、
+   * 伏せないとロゴは帯の裏に沈んで潰れる(伏せても帯が消えれば必ず戻ってくる)。
+   * これで「HERO RUSH」は画面のどの瞬間を切り取っても **1つしか出ない**。
+   *
+   * ※ 終了系のポップアップ(rush_end_hero / _zero)はモードの締めなので名前を残してある。
+   *   その間もこのロゴは伏せられているため、二重にはならない。
+   */
   // ロゴと補足はヒーローの立ち位置(x300〜)を避けて左寄せの中心へ
-  heavyText(ctx, 'HERO RUSH', midX, 152, 27, '#ffd166');
+  if (!textActive) heavyText(ctx, 'HERO RUSH', midX, 152, 27, '#ffd166');
 
   drawFooterLeft(ctx, `HIT ${hits} / ${played} G`, '#ffd166');
   drawGained(ctx, state, view);

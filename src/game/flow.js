@@ -152,6 +152,30 @@ export class GameFlow {
       /** セッション通し番号(リスタートで増える) */
       index: 1,
     };
+
+    /**
+     * リザルト(集計結果)がプレイヤーに見えているか(U77 / 2026-08-15 ユーザー報告)。
+     *
+     * セッションの終了は最終ゲームの払出の頭(_endSession)で確定するが、
+     * リザルトパネルは終了演出を見せてから数秒遅れて開く(render/resultpanel.js の
+     * RESULT_OPEN_DELAY_MS)。その **「成績を集計しています…」の間** は
+     * 「終わっているのにリザルトも出ていない」宙ぶらりんの窓で、ここが盲点だった。
+     *
+     * 【何が起きていたか】
+     * 投入・レバーは session.ended で止まっていたが、ワンボタン操作の play()
+     * (↑キー / 筐体のワンボタン)だけは session.ended を見て **即リスタート** する。
+     * つまり集計中に押すと、リザルトを1度も見せないまま次の100回転が始まっていた
+     * (プレイヤーからは「BETを押したら次のゲームが始まった」に見える)。
+     *
+     * 【方針】
+     * 終了確定〜リザルト表示までを isSettling(集計中)として全入力を無反応にし、
+     * リスタートはリザルトが出てから(canRestart)だけ許す。
+     * 実際に出たかどうかは表示側しか知らないので、main.js が毎フレーム
+     * setResultReady() で教える(ゲーム側から表示を覗きに行かない)。
+     * なお restart() 自体は無条件のまま(ヘッドレス試行 scripts/sim.mjs が
+     * リザルトを描かずに直接呼ぶため。止めるのは入力の経路だけ)。
+     */
+    this._resultReady = false;
   }
 
   _freshStats() {
@@ -181,9 +205,33 @@ export class GameFlow {
     return this.state === FLOW.IDLE && !this.modes.awaitingChoice && !this.session.ended;
   }
   get canLever() { return this.state === FLOW.READY && !this.session.ended; }
-  get canStop() { return this.state === FLOW.SPINNING; }
+  /**
+   * 停止ボタンが効くか。
+   * セッション終了後(集計中〜リザルト)は state が SPINNING になり得ないので
+   * 実害は無いが、「終わったら一切受け付けない」を1か所で読み取れるよう明示する(U77)。
+   */
+  get canStop() { return this.state === FLOW.SPINNING && !this.session.ended; }
   /** リザルト表示中(次のセッションを待っている状態)か */
   get isResult() { return this.session.ended; }
+  /**
+   * 集計中(セッション終了確定 〜 リザルトパネル表示まで)か(U77)。
+   * この間は投入・レバー・停止・ワンボタンのすべてを無反応にする。
+   */
+  get isSettling() { return this.session.ended && !this._resultReady; }
+  /**
+   * 新しいセッションを始められるか(U77)。
+   * リザルトが出て「もう一度やる」が押せる状態になってから true。
+   */
+  get canRestart() { return this.session.ended && this._resultReady; }
+
+  /**
+   * リザルトが表示されたかを表示側から教えてもらう(U77)。
+   * 呼ぶのは main.js のフレーム処理だけ。ゲームの抽選・集計には一切影響しない。
+   * @param {boolean} ready
+   */
+  setResultReady(ready) {
+    this._resultReady = Boolean(ready);
+  }
   /** 残り回転数(液晶・HUDが常時参照する) */
   get spinsLeft() { return Math.max(0, this.session.remaining); }
 
@@ -335,6 +383,8 @@ export class GameFlow {
    * 新しいキー割当を増やさずにプレイヤー選択を実現するための兼用。
    */
   stopReel(index) {
+    // セッションが終わったら停止ボタンも(兼用の分岐選択も)受け付けない(U77)
+    if (this.session.ended) return false;
     if (!this.canStop) return this._tryChoice(index);
     const res = this.reels.requestStop(index);
     if (!res) return false;
@@ -539,6 +589,25 @@ export class GameFlow {
     }
 
     this._checkEnding();
+    /*
+     * ── 最終ゲームだけは払出を先に確定させる(2026-08-16 検証指摘 V80-20)────
+     *
+     * 【何が見えていたか】「成績を集計しています…」が出ている 2.6秒のあいだに
+     * 差枚が 53 → 55 のように動いていた。
+     *
+     * 【なぜか】払出は FLOW.PAYOUT で 1枚ずつ credit.add(1) する演出なので、
+     * 最終ゲームぶんの払出は **集計の画が出たあとに** ちびちび積まれていた。
+     * さらに _endSession() が差枚を写し取るのはその手前なので、
+     * リザルトの数字と画面のクレジットが最後まで食い違ったままだった。
+     *
+     * 【直し方】セッションが終わる回に限り、集計へ入る前に残りの払出を
+     * まとめて確定させる。**払い出す枚数も順序も同じ**(刻みを見せないだけ)で、
+     * 抽選もスコアの求め方(= credit.diff)も一切触っていない。
+     */
+    if (this.session.remaining <= 0 && !this.session.ended && this.payoutTotal > 0) {
+      this.credit.add(this.payoutTotal);
+      this.payoutShown = this.payoutTotal;
+    }
     // エンディング判定より後に置く。100回転を使い切ったらリザルトが最優先で、
     // 直前に成立したエンディングも「残存価値」として買い取り対象に入る。
     if (this.session.remaining <= 0 && !this.session.ended) this._endSession();
@@ -747,6 +816,9 @@ export class GameFlow {
       index: this.session.index + 1,
     };
 
+    // 次のリザルトはまだ出ていない(U77)。表示側が開いたら改めて true になる
+    this._resultReady = false;
+
     this.modes.atSetCount = 0;
     this.modes.start('FREE_TIER', { reset: true });
     this.telop = `${SESSION.name} — ${SESSION.totalGames}回転スタート!`;
@@ -761,13 +833,19 @@ export class GameFlow {
   /**
    * 状態に応じた「メイン操作」1つに集約したエントリポイント。
    * ↑キー(ArrowUp)や、筐体のワンボタン操作から呼ぶ想定。
-   *   リザルト中 … リスタート
+   *   リザルト表示中 … リスタート
+   *   集計中     … 何もしない(U77)
    *   BET可能   … MAX BET
    *   レバー可能 … レバーON
+   *
+   * 【U77】以前はここが `session.ended` だけを見てリスタートしていたため、
+   * 集計中(リザルトが開く前)に押すと **結果を見せないまま次の100回転が始まって**いた。
+   * リスタートはリザルトが出てから(canRestart)だけ。
    * @returns {'RESTART'|'BET'|'LEVER'|null} 実行したアクション
    */
   play() {
-    if (this.session.ended) return this.restart() ? 'RESTART' : null;
+    // 集計中は無反応(canRestart が立つのはリザルトが表示されてから)
+    if (this.session.ended) return this.canRestart && this.restart() ? 'RESTART' : null;
     if (this.canBet) return this.insertBet() ? 'BET' : null;
     if (this.canLever) return this.leverOn() ? 'LEVER' : null;
     return null;

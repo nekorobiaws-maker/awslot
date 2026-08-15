@@ -142,11 +142,19 @@ const stand = (x, feet, scale, wander) => ({
 const MODE_HOMES = {
   // 通常時。盤面に常設UIが無いので、足元をテロップ帯の手前(y260)に置いて一番大きく
   FREE_TIER:   { kiro: stand(352, 260, SIZE.full, 44), george: { x: 80, y: 240, scale: 0.50, wander: 52 } },
-  // CZ: 11種すべて盤面が y34〜176 を full幅で使う。頭を入れずに高さを稼ぐため、
-  // 足元を目標行(y266〜)の中まで下ろして右端へ立たせる(旧: x402 / scale 0.30)
-  CZ:          { kiro: stand(388, 282, SIZE.main, 12), george: { x: 40, y: 206, scale: 0.28, wander: 16 } },
-  // ボーナス: 中央にロゴと払い出し。右端で通常時と同じ背丈に揃える
-  BONUS:       { kiro: stand(384, 282, SIZE.main), george: { x: 62, y: 236, scale: 0.48 } },
+  /*
+   * CZ: 11種すべて盤面が y34〜176 を使う。
+   * 2026-08-16 検証指摘 V80-18 で **盤面のほうが右端 96px を空ける**ようにしたので
+   * (render/lcd.js の CZ_LANE_W / czBoardW)、ここはそのレーンの中央に立つ。
+   * うろうろ(wander)はレーンからはみ出さない幅に抑える。
+   */
+  CZ:          { kiro: stand(392, 282, SIZE.main, 6), george: { x: 40, y: 206, scale: 0.28, wander: 16 } },
+  /*
+   * ボーナス: 数値プレートが y238〜292 に常設で載る(render/lcd.js の BONUS_PANEL_Y)。
+   * プレートはキャラより後に描かれるので、足元を **プレートの上端すれすれ** に置いて
+   * 「プレートの後ろに立っている」画にする(体の真ん中を横切らせない = V80-17 と同じ考え)。
+   */
+  BONUS:       { kiro: stand(384, 246, SIZE.main), george: { x: 62, y: 236, scale: 0.48 } },
   // 入賞待ち: 中央に「サメBAR を揃えろ!」の指示。指示は必ずキャラの上に描かれる
   BONUS_READY: { kiro: stand(384, 282, SIZE.main), george: { x: 60, y: 238, scale: 0.46 } },
   /*
@@ -156,11 +164,26 @@ const MODE_HOMES = {
    * ただし **座布団が体のどこを横切るか** は選べるので、足元を少しだけ上げて
    * 「胸を横切る」ではなく「すねを横切る」高さにしてある(実機確認 U71)。
    */
-  AS_RUSH:     { kiro: stand(384, 274, SIZE.main, 12), george: { x: 62, y: 204, scale: 0.34, wander: 24 } },
-  CF_RUSH:     { kiro: stand(386, 274, SIZE.main, 10), george: { x: 52, y: 204, scale: 0.32, wander: 18 } },
-  AURORA_RUSH: { kiro: stand(386, 274, SIZE.main, 10), george: { x: 52, y: 204, scale: 0.32, wander: 18 } },
-  // ヒーロー: 主役は hero(右 x309〜395)。ルナは左で拍手役にまわる = ここだけ side
-  HERO_RUSH:   { kiro: stand(58, 272, SIZE.side, 10), george: { x: 44, y: 208, scale: 0.28, wander: 12 } },
+  /*
+   * ── 2026-08-16 検証指摘 V80-17 ────────────────────────────────
+   * 「+n 枚」の座布団(render/lcd-rush.js の footerPlate / y230〜258)が
+   * **キャラの胴を真横に横切って** いた。U71 は「すねを横切る高さ」を狙って
+   * 足元を y274 に置いていたが、座布団の高さ 28px に対して足元が 16px しか
+   * 下に無く、実際には腰から下が丸ごと板の裏だった。
+   * 足元を **座布団の上端(230)+8px** まで上げて、板が横切るのは靴だけにする。
+   * 頭は 122 まで上がるが、4種とも盤面の主役(アイコン列・ゲージ・大きい数字)は
+   * y116 までに収まっているので何も隠さない。
+   */
+  AS_RUSH:     { kiro: stand(384, 238, SIZE.main, 8), george: { x: 62, y: 204, scale: 0.34, wander: 24 } },
+  CF_RUSH:     { kiro: stand(386, 238, SIZE.main, 8), george: { x: 52, y: 204, scale: 0.32, wander: 18 } },
+  AURORA_RUSH: { kiro: stand(386, 238, SIZE.main, 8), george: { x: 52, y: 204, scale: 0.32, wander: 18 } },
+  /*
+   * ヒーロー: 主役は hero(右)。ルナは左で拍手役にまわる = ここだけ side。
+   * V80-12「左端で半分見切れ」→ 体の中心を x58 → x70 へ寄せ、うろうろも切る
+   * (side は箱幅 82px なので x58 + wander 10 では左端に貼り付く瞬間があった)。
+   * 足元は他のRUSHと同じく「HIT n/n G」の座布団の上端すれすれ。
+   */
+  HERO_RUSH:   { kiro: stand(70, 238, SIZE.side), george: { x: 44, y: 208, scale: 0.28, wander: 12 } },
   HOT_STANDBY: { kiro: stand(384, 284, SIZE.main), george: { x: 50, y: 246, scale: 0.38 } },
 
   // ── Phase 5 ──

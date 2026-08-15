@@ -225,7 +225,7 @@ const TOPICS = [
   // 保管の代表 S3(スイカ)の色で出す。
   {
     id: 'prod_direct',
-    intro: '本番のデータを直そう', introSub: '作業の前にやることは?',
+    intro: 'RDS の本番データを直そう', introSub: '作業の前にやることは?',
     bad: '本番環境でいきなり作業', badSub: 'Enterを押す音だけが響く',
     good: 'スナップショットを取ってから', goodSub: '戻せる状態を先に作る',
     flags: ['MELON'], color: 'MELON',

@@ -39,6 +39,22 @@ let layerViews = null;
 let activeLayers = null;
 
 /**
+ * 筐体をビューポートに収めたときの余白[CSS px](fit() が更新する)。
+ * 画面揺れ(render/overlay.js の _applyShake)は **この余白の中でしか動かせない**。
+ * 余白より大きく揺らすと筐体が画面の外へ出てしまい、上下では冠(JAWSLOT)や
+ * 台座が切り落とされて「液晶が枠からズレた」ように見える(2026-08-16 V80-4)。
+ */
+let fitSlack = { x: 0, y: 0 };
+
+/**
+ * 揺らしてよい振れ幅の上限[CSS px]。
+ * @returns {{x:number, y:number}}
+ */
+export function getShakeSlack() {
+  return { x: fitSlack.x, y: fitSlack.y };
+}
+
+/**
  * 筐体アートの窓に合わせて Canvas の表示位置・表示サイズだけを差し替える。
  * 内部の論理座標系は変わらない(描画コードは無改修)。
  * @param {Record<string, {x:number,y:number,w:number,h:number}>|null} views
@@ -147,6 +163,8 @@ export class Layers {
     this.scale = scale;
     const offsetX = Math.max(0, (vw - LOGICAL_W * scale) / 2);
     const offsetY = Math.max(0, (vh - LOGICAL_H * scale) / 2);
+    // 画面揺れが筐体を画面外へ追い出さないよう、余白を控えておく(V80-4)
+    fitSlack = { x: offsetX, y: offsetY };
     // --shake-x / --shake-y は演出システム(overlay.shake)が書き換える画面揺れ用の変数。
     // フィット計算と揺れを1つの transform で両立させる。
     this.cabinet.style.transform =

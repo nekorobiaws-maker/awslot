@@ -99,7 +99,7 @@ export default [
       { waitFor: 'stop2', layer: 'lcd', action: 'anim', params: { anim: 'step_up', step: 2 } },
       // 第3停止では上がりきらず INSUFFICIENT_DATA 止まり
       { waitFor: 'stop3', after: 150, layer: 'lcd', action: 'text',
-        params: { text: 'INSUFFICIENT_DATA', sub: 'データが足りません…', color: '#ffd166', ms: 1200 } },
+        params: { text: 'INSUFFICIENT_DATA', sub: 'CloudWatch アラーム — 判定するデータが足りません', color: '#ffd166', ms: 1200 } },
       { waitFor: 'stop3', after: 200, layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'normal' } },
     ],
   },
@@ -156,7 +156,7 @@ export default [
       { waitFor: 'stop3', after: 80,  layer: 'lcd', action: 'particles',
         params: { preset: 'stream', x: 220, y: 170, count: 12 } },
       { waitFor: 'stop3', after: 120, layer: 'lcd', action: 'text',
-        params: { text: 'RESOLVED', sub: '名前解決 — もう一回転', color: '#25a97f', ms: 900 } },
+        params: { text: 'RESOLVED', sub: 'Route 53 が名前解決 — もう一回転', color: '#25a97f', ms: 900 } },
     ],
   },
 
@@ -179,11 +179,19 @@ export default [
        * (粒が金にならない = 何も乗らなかった、が伝わらない)。
        * 結論行(conclusionCue)へ寄せて「何も起きなかった」を言い切る。
        * ハズレなので役色は白 = 何も成立していない(U62)。
+       *
+       * ── U78(2026-08-15 ユーザー指摘)で もう一度 書き直した ────────
+       * 【指摘】「『金の粒は流れてこなかった…』が意味不明」
+       * 【原因】「金の粒」は **液晶で流れている粒アニメの色** を指した言葉で、
+       *         絵を見ていない人には何のことか分からない(絵への依存)。
+       *         「青いまま」も同じで、色そのものがゲームの結果を表していない。
+       * 【対処】色の話をやめ、**このゲームで何が起きなかったか**だけを書く。
+       *         メイン=結果の言い切り / サブ=サービス名 + 起きなかったことの説明。
        */
       conclusionCue({
         flag: 'LOSE',
-        text: '金の粒は流れてこなかった…',
-        sub: 'Kinesis — データは青いまま流れていった',
+        text: 'データが流れただけで終わった',
+        sub: 'Amazon Kinesis — 拾うべきレコードは無かった',
         after: 200,
         ms: 900,
       }),

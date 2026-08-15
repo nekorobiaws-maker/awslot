@@ -458,12 +458,16 @@ body::before {
   opacity: 1;
   animation: none;
 }
+/* 2026-08-16 検証指摘 V80-21⑨「#btn-maxbet のラベルが微妙に溢れている」:
+   発光オーバーレイを inset:-4px でボタンより一回り大きく取っていたため、
+   ボタンの scrollWidth が clientWidth を 4〜8px 上回っていた
+   (見た目の光はほぼ同じなので、はみ出さない inset:0 に揃える)。 */
 #cabinet.art-cabinet .btn-maxbet::after,
 #cabinet.art-cabinet .btn-stop::after,
 #cabinet.art-cabinet .lever::after {
   content: "";
   position: absolute;
-  inset: -4px;
+  inset: 0;
   border-radius: 50%;
   opacity: 0;
   pointer-events: none;
@@ -524,7 +528,8 @@ body::before {
 #cabinet.art-cabinet .stop-1 { left: 334px; }
 #cabinet.art-cabinet .stop-2 { left: 401px; }
 #cabinet.art-cabinet .btn-stop::after {
-  inset: -7px;
+  /* V80-21⑨ と同じ理由でボタンの外へはみ出させない(発光はグラデーションの広がりで出す) */
+  inset: 0;
   background: radial-gradient(circle, rgba(255, 120, 120, 0.9), rgba(255, 40, 40, 0) 64%);
 }
 #cabinet.art-cabinet .btn-stop.is-active::after {
@@ -546,7 +551,8 @@ body::before {
 #cabinet.art-cabinet .lever .lever-rod,
 #cabinet.art-cabinet .lever .lever-ball { display: none; }
 #cabinet.art-cabinet .lever::after {
-  inset: -6px;
+  /* V80-21⑨ と同じ理由でレバーの外へはみ出させない */
+  inset: 0;
   border-radius: 50%;
   background: radial-gradient(ellipse at 50% 42%, rgba(255, 150, 150, 0.8), rgba(255, 60, 60, 0) 62%);
 }
@@ -640,7 +646,7 @@ body::before {
  *   MAX BET  中心(213, 726.4)  ヒット 168,707.4 90×42   ※絵に文字があるのでcapは隠す
  *   停止ボタン 中心(282/359/436, 801.4) ヒット 各 50×50
  *   レバー    中心(699, 687.4)  ヒット 677,665.4 43×45   ※旧絵と逆で右側
- *   下部パネル 67,827.4 585×175(幽霊パネルの絵に重なる発光とテロップの器)
+ *   下部パネル 67,827.4 585×175(絵に重なる発光とテロップの器。絵はルナ+AWS六角アイコン)
  * キーボード操作(Enter/Space/矢印)は data-action 経由なので影響なし。
  *
  * 2026-08-13 修正: render/cabinet.js の CABINET2_BANDS を「頭が切れる」不具合対応で
@@ -706,7 +712,8 @@ body::before {
 #cabinet.art-cabinet2 .lever-left::after {
   content: '';
   position: absolute;
-  inset: -6px;
+  /* V80-21⑨ と同じ理由で親の外へはみ出させない */
+  inset: 0;
   border-radius: 50%;
   background: radial-gradient(circle at 50% 40%, rgba(255, 240, 190, 0.85), rgba(255, 180, 80, 0) 68%);
   opacity: 0;
@@ -724,7 +731,10 @@ body::before {
   border-radius: 50%;
 }
 
-/* 下部パネル(幽霊パネル)。絵は #cabinet-art 側で描かれている */
+/* 下部パネル(ルナ+AWS六角アイコンの面)。絵は #cabinet-art 側で描かれている。
+   ここは発光オーバーレイとテロップの器だけなので背景は none のまま
+   (#cabinet.art-cabinet .panel 側で背景・枠・影を消してある)。
+   2026-08-15 のアート差し替えでもサイズは据え置き = ルナは隠れない */
 #cabinet.art-cabinet2 .panel {
   left: 67px;
   top: 827.4px;
@@ -1203,8 +1213,22 @@ body.debug .debug-bar { display: flex; }
  * 置くことで、JS 側の値を一切読まずに「筐体の右横」へ寄せている。
  * (幅がボトルネックになる極端な縦長ウィンドウでは右端の推定がずれるが、
  *  width の min()/max() で 0px までしか縮まないようにして重なりを防いでいる) */
+/*
+ * ── 2026-08-16 検証指摘 V80-21①「筐体が左寄り・左に 320px の空白」──────────
+ *
+ * #cabinet は engine/layers.js の fit() が **ビューポートの中央** へ置く。
+ * ところが打ち方プレートは筐体の右横に立つので、
+ *   [ 空白 306px ][ 筐体 667px ][ 18px ][ プレート 228px ][ 空白 50px ]
+ * と、画面に写るもの全体で見ると右へ大きく偏っていた(空白が左だけ広い)。
+ *
+ * 直し方は「筐体とプレートを1つの塊として中央に置く」。
+ * プレートぶんの半分(--guide-shift)だけ #viewport を左へずらし、
+ * プレートの基準位置も同じ量だけ左へ戻す。
+ * プレートを出さない幅(<1100px)では 0px なので、従来どおり筐体が中央に来る。
+ */
 :root {
-  --guide-left: calc(50vw + 33.34vh + 18px);
+  --guide-shift: 0px;
+  --guide-left: calc(50vw + 33.34vh + 18px - var(--guide-shift));
 }
 
 .controls-guide {
@@ -1224,6 +1248,9 @@ body.debug .debug-bar { display: flex; }
    それ未満・スマホでは非表示。 */
 @media (min-width: 1100px) {
   .controls-guide { display: block; }
+  /* プレート(228px)+ すき間(18px)の半分だけ、筐体ごと左へ寄せて釣り合わせる */
+  :root { --guide-shift: 123px; }
+  #viewport { transform: translateX(calc(-1 * var(--guide-shift))); }
 }
 
 /* ── プレート本体 ──────────────────────────

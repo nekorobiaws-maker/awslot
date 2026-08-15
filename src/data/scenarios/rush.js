@@ -154,7 +154,7 @@ export default [
       { at: 100,  layer: 'char',    action: 'motion', params: { char: 'kiro', motion: 'shake' } },
       { at: 250,  layer: 'char',    action: 'show',  params: { char: 'george', pose: 'normal' } },
       { at: 400,  layer: 'lcd',     action: 'text',
-        params: { text: 'SYSTEM DOWN', sub: '切り替えが完了しませんでした', color: '#ff8a8a', ms: 1900 } },
+        params: { text: 'SYSTEM DOWN', sub: 'AZ の切り替えが完了しませんでした', color: '#ff8a8a', ms: 1900 } },
       { at: 1500, layer: 'char',    action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
       // 引き戻し失敗。終わったことが伝わる短い落胆(U68)
       { at: 1600, layer: 'voice',   action: 'play',  params: { key: 'luna_lose_01', force: true } },

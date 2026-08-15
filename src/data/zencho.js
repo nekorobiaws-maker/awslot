@@ -106,6 +106,56 @@ export const ZENCHO = {
     minLeft: 2,
   },
 
+  /* ══ U79(2026-08-16 ユーザー指摘)/ 予兆の絵が偏る問題 ═══════════════
+   *
+   * 指摘は「前兆で同じ演出ばかり出る」。実測(150セッション / 377回の前兆)でも
+   *   ・上位5パターンだけで **40%** を占める
+   *   ・下位11本は **1%未満**(2.5回/セッションなので、40セッション回して1回見るか)
+   *   ・直前と同じパターンが続く割合 4.9%
+   * となっていて、32本用意した絵の半分以上が事実上プレイヤーに届いていなかった。
+   *
+   * 原因は重みの配り方そのもの。U58 で18本足したとき
+   * 「グループ合計を据え置く」ために新規は既存の隙間(real 5〜6 / fake 3〜8)へ入れたので、
+   * 既存の主力(cloudtrail real 52 など)との差が10倍前後ついたまま残っていた。
+   *
+   * 【対策】抽選の重みそのものは1つも書き換えず、抽選の直前に2つの倍率を掛ける
+   * (実装は game/modes/freetier.js の buildVarietyTable)。
+   *   1. 露出の平準化(flatten) … 重みが大きいパターンほど倍率を下げる(重み合計の -flatten 乗)
+   *   2. 直近履歴(recentPenalty) … 直近に出したものほど選ばれにくくする
+   *
+   * 【この2つで期待度を壊さない理由】── ここが肝なので必ず読むこと
+   *   倍率は **本前兆(real)とガセ(fake)へまったく同じ値を掛ける**。さらに掛けたあと
+   *   「クラス(擬似連 / 赤文字持ち / それ以外)ごとの重み合計」を元の値へ戻す。
+   *   したがって
+   *     ・パターンごとの信頼度 = real:fake 比 …… **完全に不変**
+   *       (両方に同じ倍率が乗り、正規化の分母もクラス合計固定で変わらないため)
+   *     ・擬似連が選ばれる確率 …… **完全に不変**(擬似連は倍率の対象外。初当りが動かない)
+   *     ・赤文字予兆が出る割合 …… **完全に不変**(hot 持ちクラスの合計を据え置くため)
+   *   変わるのは「どの絵が何%で回ってくるか」だけ。
+   *
+   * 【実測(30万回の抽選シミュレーション)】
+   *              上位5占有   最頻      最少     直前と同じ
+   *   対策なし     35.9%   8.3%     0.81%      4.8%
+   *   対策あり     28.2%   8.3%     1.42%      1.2%
+   *   信頼度(本/ガセ比)は cloudtrail 15倍前後 / chatops 2.9 / coldstart 0.16 のまま変化なし。
+   */
+  variety: {
+    /**
+     * 露出の平準化の強さ(0=何もしない / 1=クラス内でほぼ均等)。
+     * 0.7 は「主力パターンの顔は残しつつ、下位を1.4〜2%まで引き上げる」着地点。
+     * 上げすぎると canary や cloudtrail の "見慣れた絵" まで薄まって台の顔が消える。
+     */
+    flatten: 0.7,
+    /**
+     * 直近に出したパターンへ掛ける倍率(先頭 = 直前に出したもの)。
+     * 長さがそのまま「何回ぶん覚えておくか」になる。
+     * 先頭を 0 にしないのは、候補が少ない強度帯(強度3の熱パターンなど)で
+     * 完全に締め出すと **出せる絵が無い状況** を作りかねないため。
+     * 0.05 でも実質は出ない(直前と同じが 4.8% → 1.2%)。
+     */
+    recentPenalty: [0.05, 0.14, 0.28, 0.45, 0.65, 0.85],
+  },
+
   /**
    * 演出パターン。
    *  minStrength … この強度以上のときだけ抽選対象になる
@@ -216,7 +266,7 @@ export const ZENCHO = {
       /** U72(擬似連の復活)の直前値。初当りを厳密に戻すならここへ */
       previousWeightU63: { real: 6, fake: 25 },
       symbolHint: null,
-      telop: '子の実行が並列に走り出している',
+      telop: '分散マップの並列処理が走り出している',
     },
     {
       id: 'codepipeline',
@@ -305,14 +355,19 @@ export const ZENCHO = {
       telop: 'コールドスタートで少し待たされている',
     },
     {
+      /*
+       * 内部IDは 'chatops_incident' のまま(data/scenarios/zencho.js の when.match と
+       * 結ばれた契約キー)。U78 で **見せ方だけ** Slack → AWS Systems Manager
+       * Incident Manager へ寄せた(AWS に関係ない題材だったため)。
+       */
       id: 'chatops_incident',
-      name: '#incident チャンネル発生',
+      name: 'Incident Manager 対応メンバー招集',
       minStrength: 2,
       // U58: **据え置き**。hot 版を持たない唯一の中パターンなので、ここを削ると
       // 「赤文字予兆が出る割合」が動いてしまう(削るのは hot 持ちの3本だけ)
       weight: { real: 40, fake: 22 },
       symbolHint: null,
-      telop: 'Slack に #incident チャンネルが立った',
+      telop: 'Incident Manager が対応メンバーを呼び出した',
     },
     {
       id: 'region_evacuation',
@@ -421,7 +476,7 @@ export const ZENCHO = {
       minStrength: 1,
       weight: { real: 5, fake: 7 },
       symbolHint: null,
-      telop: '機械が今月の使い方に違和感を覚えている',
+      telop: '機械学習が普段の請求パターンとのズレを見つけた',
     },
 
     /* ── 中(minStrength 2)7本 / 合計 real 42・fake 26 ───────────────
@@ -604,10 +659,10 @@ export const DEEPRACER = {
   rareUpgradesToBonus: true,
   /** 各stepのテロップ */
   telops: {
-    1: '子の実行が1本、走り出した',
-    2: '2本目の実行が並んで走り出した',
-    3: '4本が同時に走っている!',
-    4: '大量の子の実行が一斉に走り出した!!',
+    1: '分散マップの並列処理が1本、走り出した',
+    2: '分散マップの並列処理が2本に増えた',
+    3: '分散マップの並列処理が4本に増えた!',
+    4: '分散マップの並列処理が一斉に立ち上がった!!',
   },
 };
 
@@ -664,3 +719,35 @@ export const CHAIN_SPEC_BY_PATTERN = {
 export const ZENCHO_PATTERN_BY_ID = Object.fromEntries(
   ZENCHO.patterns.map((p) => [p.id, p]),
 );
+
+/**
+ * 赤文字予兆(zn_hot_*)を持つパターンの台帳(U79 / 2026-08-16)。
+ *
+ * ■ なぜ台帳が要るのか
+ *   赤文字予兆は「強度2以上 かつ 2G目以降」で、**hot 版のシナリオを持つパターンを
+ *   引いたときだけ**出る(data/scenarios/zencho.js の zenchoHot)。
+ *   つまり「前兆が赤くなる割合」= このリストに載っているパターンが選ばれる確率、
+ *   と言い換えられる。ZENCHO.variety の倍率はこのリスト単位で合計を据え置くので、
+ *   赤の出現割合が1ミリも動かない(理由は ZENCHO.variety のコメント)。
+ *
+ * ■ 【厳守】data/scenarios/zencho.js と必ず一致させること
+ *   あちらへ zn_hot_* を1本足したら、こちらにも1行足す。
+ *   ずれても即座に壊れはしないが、**赤の割合が静かに動く**(検出しにくい事故になる)。
+ *   突き合わせ用のワンライナー:
+ *     node -e "import('./src/data/scenarios/zencho.js').then(m=>console.log([...new Set(
+ *       m.default.filter(s=>String(s.when?.match?.strength)==='2,3')
+ *        .flatMap(s=>s.when.match.pattern))].join(' ')))"
+ *
+ *   ※ 色の台帳(ZENCHO_TEXT_COLORS)と同じ考え方。演出データ側は import を書けないので、
+ *     「どちらが正か」をこちら(data/)に置いて、あちらは値を直書きする。
+ * @type {Set<string>}
+ */
+export const ZENCHO_HOT_PATTERNS = new Set([
+  // 既存5本(U58 より前からあるもの)
+  'xray', 'health', 'guardduty', 'region_evacuation', 'cloudtrail',
+  // U58 で足した中7本(全部 hot 版つき)
+  'vpc_lattice', 'clean_rooms', 'entity_resolution', 'ram_share', 'kb_citation',
+  'mwaa_dag', 'local_zones',
+  // U58 で足した熱3本(同上)
+  'fis_az_down', 'trainium_cluster', 'dtt_ingest',
+]);

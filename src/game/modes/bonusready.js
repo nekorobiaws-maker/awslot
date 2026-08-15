@@ -64,6 +64,11 @@ export const bonusReady = {
     state.name = `${spec.name} 入賞待ち`;
     state.title = 'BONUS 確定';
     state.shortName = spec.shortName;
+    /*
+     * 液晶ヘッダの名前(V80-7 / bonus.js と同じ共通仕様で英字へ寄せる)。
+     * 「入賞待ち」はこのモードの本質なので英字側にも残す。
+     */
+    state.headerName = `${spec.shortName} 入賞待ち`;
     /** 揃えるべき絵柄ID(reelctrl の引き込み目標になる) */
     state.targetSymbol = spec.entrySymbol ?? 'GHOST7';
     /** 液晶・テロップに出す絵柄の呼び名 */

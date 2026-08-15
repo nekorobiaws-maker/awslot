@@ -45,7 +45,8 @@ export default [
       { at: 0,   layer: 'lcd',  action: 'particles', params: { preset: 'scale', x: 200, y: 200, count: 16 } },
       { at: 60,  layer: 'sfx',  action: 'synth', params: { preset: 'scale_out' } },
       { waitFor: 'stop2', layer: 'lcd', action: 'particles', params: { preset: 'scale', x: 200, y: 200, count: 22 } },
-      { waitFor: 'stop3', after: 150, layer: 'lcd', action: 'text', params: { text: 'x4', sub: 'インスタンスが倍々に増えている', color: '#ffe066', ms: 1000 } },
+      // U78: サブにサービス名を入れる(弱版には入っていたが中版だけ抜けていた)
+      { waitFor: 'stop3', after: 150, layer: 'lcd', action: 'text', params: { text: 'x4', sub: 'EC2 Auto Scaling — インスタンスが倍々に増えている', color: '#ffe066', ms: 1000 } },
     ],
   },
 
@@ -73,7 +74,7 @@ export default [
       { at: 0,   layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
       { at: 0,   layer: 'lcd',  action: 'particles', params: { preset: 'scale', x: 260, y: 220, count: 18 } },
       { at: 60,  layer: 'sfx',  action: 'synth', params: { preset: 'dynamo_scale' } },
-      { waitFor: 'stop3', after: 120, layer: 'lcd', action: 'text', params: { text: 'TASK x5', sub: 'コンテナが一気に増殖中', color: '#ffe066', ms: 1000 } },
+      { waitFor: 'stop3', after: 120, layer: 'lcd', action: 'text', params: { text: 'TASK x5', sub: 'Amazon ECS — タスクが一気に増えている', color: '#ffe066', ms: 1000 } },
     ],
   },
 
@@ -114,7 +115,7 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'route53_spin' } },
       { at: 60,  layer: 'lcd', action: 'anim',  params: { anim: 'az_failover' } },
-      { waitFor: 'stop3', after: 150, layer: 'lcd', action: 'text', params: { text: 'FAILOVER', sub: '予備リージョンへ切替中…', color: '#7cf3ff', ms: 1100 } },
+      { waitFor: 'stop3', after: 150, layer: 'lcd', action: 'text', params: { text: 'FAILOVER', sub: 'Route 53 — 予備リージョンへ切替中…', color: '#7cf3ff', ms: 1100 } },
     ],
   },
 
@@ -168,7 +169,15 @@ export default [
     cues: [
       { at: 0,  layer: 'lcd', action: 'anim',  params: { anim: 'cf_edge_fly', add: 1, edge: 'left' } },
       { at: 40, layer: 'sfx', action: 'synth', params: { preset: 'edge_hit' } },
-      { waitFor: 'stop3', after: 120, layer: 'lcd', action: 'text', params: { text: 'Cache HIT', sub: 'edge: NRT51-C1', color: '#ffe066', ms: 1000 } },
+      /*
+       * U78: 旧サブ「edge: NRT51-C1」は CloudFront のエッジ拠点コードそのままで、
+       * 知らない人には英数字の羅列にしか見えなかった(初見で意味が通らない)。
+       * 「拠点名まで分かる = 中」という弱版との差は残したいので、
+       * コードは括弧に残しつつ **どこの拠点なのか**を日本語で言う。
+       * NRT は成田(東京リージョン近郊)のエッジロケーションを指す実在のコード。
+       */
+      { waitFor: 'stop3', after: 120, layer: 'lcd', action: 'text',
+        params: { text: 'Cache HIT', sub: 'CloudFront — 東京のエッジ(NRT)が返した', color: '#ffe066', ms: 1000 } },
     ],
   },
 
@@ -193,16 +202,18 @@ export default [
     duration: 1700,
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'announce' } },
-      { at: 100, layer: 'lcd', action: 'text', params: { text: 'SNAPSHOT ×1', sub: 'バックアップを作成中…', color: '#ffe066', ms: 700 } },
+      { at: 100, layer: 'lcd', action: 'text', params: { text: 'SNAPSHOT ×1', sub: 'Amazon RDS — バックアップを作成中…', color: '#ffe066', ms: 700 } },
       { waitFor: 'stop3', layer: 'sfx', action: 'synth', params: { preset: 'announce' } },
-      { waitFor: 'stop3', after: 50, layer: 'lcd', action: 'text', params: { text: 'SNAPSHOT ×2', sub: '2件連続でバックアップ完了', color: '#ffe066', ms: 900 } },
+      { waitFor: 'stop3', after: 50, layer: 'lcd', action: 'text', params: { text: 'SNAPSHOT ×2', sub: 'Amazon RDS — 2件連続でバックアップ完了', color: '#ffe066', ms: 900 } },
     ],
   },
 
-  // ── I. Well-Architected 5本柱予告(IDEAS 2-30) ───────────────────
+  // ── I. Well-Architected 6本柱予告(IDEAS 2-30) ───────────────────
+  // 母数は6本(anim の count:6 / yokoku-heavy.js の「5 / 6 本」「6本の柱」と同じ)。
+  // IDEAS.md 執筆時の「5本柱」から柱が1本増えているので、呼び名は6本で揃える。
   {
     id: 'yl_pillar_tease_weak',
-    name: '【弱】Well-Architected予告(柱1本だけ)',
+    name: '【弱】Well-Architected予告(6本中1本だけ点灯)',
     when: { event: 'leverOn', flag: ['LOSE', 'BELL'], mode: ['FREE_TIER'] },
     weight: { FREE_TIER: 55, default: 0 },
     chance: 0.35,  // 統合調律(2026-08-13): 非レア時の演出発火率30%に合わせて 0.04 → 0.35
@@ -214,7 +225,7 @@ export default [
   },
   {
     id: 'yl_pillar_tease_mid',
-    name: '【中】Well-Architected予告(柱3本まで点灯)',
+    name: '【中】Well-Architected予告(6本中3本まで点灯)',
     when: { event: 'leverOn', flag: ['STRONG_CHERRY', 'CHANCE'], mode: ['FREE_TIER'] },
     weight: { FREE_TIER: 45, default: 0 },
     duration: 1700,
@@ -280,11 +291,13 @@ export default [
     chance: 0.35,  // 統合調律(2026-08-13): 非レア時の演出発火率30%に合わせて 0.04 → 0.35
     duration: 1200,
     cues: [
-      { at: 0, layer: 'lcd', action: 'text', params: { text: 'INVOKING…', color: '#8ad4ff', ms: 500 } },
+      // U78: どちらの行にも Lambda が出ていなかった(「まだ温まっていない」だけでは
+      //      何が温まらないのか分からない)。行ごとにサービス名と実態を入れる
+      { at: 0, layer: 'lcd', action: 'text', params: { text: 'INVOKING…', sub: 'AWS Lambda を呼び出している', color: '#8ad4ff', ms: 500 } },
       { waitFor: 'stop3', layer: 'lcd', action: 'anim', params: { anim: 'sfn_task', result: 'running' } },
       { waitFor: 'stop3', after: 40, layer: 'sfx', action: 'synth', params: { preset: 'sfn_choice', gain: 0.6 } },
       { waitFor: 'stop3', after: 120, layer: 'lcd', action: 'text',
-        params: { text: 'COLD START', sub: 'まだ温まっていない', color: '#8ad4ff', ms: 900 } },
+        params: { text: 'COLD START', sub: 'AWS Lambda — 実行環境の初期化から始まった', color: '#8ad4ff', ms: 900 } },
     ],
   },
   {
@@ -298,12 +311,12 @@ export default [
     duration: 1700,
     cues: [
       { at: 0, layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
-      { at: 0, layer: 'lcd',  action: 'text', params: { text: 'INVOKING…', color: '#ffe066', ms: 600 } },
+      { at: 0, layer: 'lcd',  action: 'text', params: { text: 'INVOKING…', sub: 'AWS Lambda を呼び出している', color: '#ffe066', ms: 600 } },
       { waitFor: 'stop3', layer: 'lcd', action: 'anim', params: { anim: 'sfn_task', result: 'running' } },
       { waitFor: 'stop3', after: 40, layer: 'sfx', action: 'synth', params: { preset: 'sfn_choice' } },
       { waitFor: 'stop3', after: 80, layer: 'overlay', action: 'flash', params: { color: '#ffd166', ms: 180 } },
       { waitFor: 'stop3', after: 140, layer: 'lcd', action: 'text',
-        params: { text: 'CONCURRENCY ×3', sub: '同時実行数が伸びている', color: '#ffe066', ms: 1100 } },
+        params: { text: 'CONCURRENCY ×3', sub: 'AWS Lambda — 同時実行数が伸びている', color: '#ffe066', ms: 1100 } },
     ],
   },
 ];

@@ -66,8 +66,13 @@ export default [
       { at: 0,    layer: 'sfx',     action: 'synth', params: { preset: 'sfn_choice' } },
       { at: 0,    layer: 'overlay', action: 'flash', params: { color: '#c0c0ff', ms: 320 } },
       { at: 0,    layer: 'lamp',    action: 'pattern', params: { pattern: 'rare' } },
-      { at: 120,  layer: 'lcd',     action: 'anim',
-        params: { anim: 'sfn_arrow_step', step: 0, total: '$state.total', ok: true } },
+      /*
+       * 2026-08-16 検証指摘 V80-21④ で sfn_arrow_step を外した。
+       * このアニメは **盤面(render/lcd.js の _drawCzSfn)が常設で描いている
+       * ステートマシン図と進捗カウンタ** をもう1組 y62 / y88 に描くもので、
+       * 「丸と矢印の列が2段」「n / m States が2か所」になっていた(U8 違反)。
+       * 進行の合図は sfn_task(判定の文字)と音・光で足りる。
+       */
       { at: 200,  layer: 'char',    action: 'show',  params: { char: 'kiro', pose: 'surprised' } },
       { at: 240,  layer: 'char',    action: 'motion', params: { char: 'kiro', motion: 'bounce' } },
       { at: 450,  layer: 'lcd',     action: 'text',
@@ -120,7 +125,7 @@ export default [
       { waitFor: 'stop3', after: 120, layer: 'lcd', action: 'anim',
         params: { anim: 'cw_graph_rise', step: '$modeState.total' } },
       { waitFor: 'stop3', after: 200, layer: 'lcd', action: 'text',
-        params: { text: 'SPIKE!', sub: 'CPU使用率が跳ね上がった', color: '#ffe066', ms: 1100 } },
+        params: { text: 'SPIKE!', sub: 'CloudWatch — CPU使用率が跳ね上がった', color: '#ffe066', ms: 1100 } },
     ],
   },
 
@@ -183,8 +188,7 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx',     action: 'synth', params: { preset: 'sfn_ok' } },
       { at: 0,   layer: 'overlay', action: 'flash', params: { color: '#7bf7d0', ms: 140 } },
-      { at: 0,   layer: 'lcd',     action: 'anim',
-        params: { anim: 'sfn_arrow_step', step: '$value', total: '$total', ok: true } },
+      // V80-21④: 盤面のステートマシン図と二重になるので sfn_arrow_step は出さない
       { at: 60,  layer: 'lcd',     action: 'anim',  params: { anim: 'sfn_task', ok: true } },
       { at: 80,  layer: 'lcd',     action: 'particles', params: { preset: 'scale', x: 220, y: 62, count: 12 } },
       { at: 100, layer: 'char',    action: 'pose',  params: { char: 'kiro', pose: 'happy' } },
@@ -222,9 +226,7 @@ export default [
       { at: 0,    layer: 'overlay', action: 'flash', params: { color: '#ffffff', ms: 420 } },
       { at: 0,    layer: 'overlay', action: 'shake', params: { power: 18, ms: 640 } },
       { at: 0,    layer: 'lamp',    action: 'pattern', params: { pattern: 'bonus' } },
-      { at: 80,   layer: 'lcd',     action: 'anim',
-        // 最終ステートまで矢印が点灯しきる(step = total)
-        params: { anim: 'sfn_arrow_step', step: '$state.total', total: '$state.total', ok: true } },
+      // V80-21④: 盤面のステートマシン図が最終ステートまで点灯しきるので、ここでは描かない
       { at: 200,  layer: 'char',    action: 'pose',  params: { char: 'kiro', pose: 'happy' } },
       { at: 300,  layer: 'lcd',     action: 'text',
         // 「確定」を含むので自動 sticky = 次のレバーONまで残る
@@ -574,7 +576,14 @@ export default [
     duration: 1800,
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'stream_flow' } },
-      { at: 0,   layer: 'lcd', action: 'anim',  params: { anim: 'sqs_queue_result', result: 'ok', count: 4 } },
+      /*
+       * 2026-08-16 検証指摘 V80-21⑧「SQS の MSG チップが重なる」:
+       * sqs_queue_result は **盤面(render/lcd-cz-extra.js の drawCzDlq)が
+       * 常設で描いているメッセージ一覧と同じもの** を x12/y136〜220 にもう1組
+       * 描くアニメで、盤面のキュー箱(x24〜212 / y42〜158)と重なっていた。
+       * U8「同じことは1か所」に従い、DLQ CZ では盤面に一本化して外す。
+       * (前兆側 data/scenarios/zencho.js には盤面が無いので、あちらでは今も使う)
+       */
       { at: 80,  layer: 'lcd', action: 'particles', params: { preset: 'stream', x: 250, y: 130, count: 14 } },
       { at: 120, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'happy' } },
       { at: 1300, layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'normal' } },
@@ -591,7 +600,7 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx',     action: 'synth', params: { preset: 'stream_flow' } },
       { at: 0,   layer: 'lamp',    action: 'pattern', params: { pattern: 'bonus' } },
-      { at: 0,   layer: 'lcd',     action: 'anim',  params: { anim: 'sqs_queue_result', result: 'ok', count: 3 } },
+      // V80-21⑧: 盤面と二重になるので sqs_queue_result は出さない(上のコメント参照)
       { at: 900, layer: 'sfx',     action: 'synth', params: { preset: 'burst_start' } },
       { at: 900, layer: 'overlay', action: 'flash', params: { color: '#4ce0a0', ms: 380 } },
       { at: 900, layer: 'overlay', action: 'shake', params: { power: 14, ms: 520 } },
@@ -611,7 +620,7 @@ export default [
       { at: 0,   layer: 'lamp',    action: 'pattern', params: { pattern: 'bonus' } },
       { at: 200, layer: 'char',    action: 'pose',  params: { char: 'kiro', pose: 'happy' } },
       { at: 300, layer: 'lcd',     action: 'text',
-        params: { text: 'QUEUE EMPTY', sub: 'DLQ を空にした — ボーナス確定!!', color: '#4ce0a0', ms: 2200, sticky: true } },
+        params: { text: 'QUEUE EMPTY', sub: 'デッドレターキュー(DLQ)を空にした — ボーナス確定!!', color: '#4ce0a0', ms: 2200, sticky: true } },
       { at: 500, layer: 'overlay', action: 'particles', params: { preset: 'coin', x: 360, y: 380, count: 26 } },
       { at: 900, layer: 'voice',   action: 'play',  params: { key: 'luna_win_01', force: true } },
     ],
@@ -627,7 +636,7 @@ export default [
     cues: [
       { at: 0,    layer: 'sfx',  action: 'synth', params: { preset: 'error_buzz' } },
       { at: 0,    layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'panic' } },
-      { at: 100,  layer: 'lcd',  action: 'anim',  params: { anim: 'sqs_queue_result', result: 'dlq', count: 2 } },
+      // V80-21⑧: 盤面と二重になるので sqs_queue_result は出さない(上のコメント参照)
       { at: 1200, layer: 'overlay', action: 'flash', params: { color: '#ff4d4d', ms: 280 } },
       /*
        * U17(2026-08-14): ここにあった「BACK TO DLQ / 再処理しきれませんでした」は削除。
@@ -804,12 +813,13 @@ export default [
       { at: 0,   layer: 'sfx',     action: 'synth', params: { preset: 'burst_start', gain: 0.6 } },
       { at: 0,   layer: 'overlay', action: 'shake', params: { power: 9, ms: 320 } },
       /*
-       * label は必ず渡す(2026-08-15 検証指摘)。省略すると cw_meter_swing の
-       * 既定値 'CPU UTIL' が出て、fis 盤面上部の「ERROR BUDGET n%」と
-       * 別名の指標が同じ画面に2つ並んでしまう。ここで見せているのは残バジェット。
+       * ── 2026-08-16 検証指摘 V80-21② で cw_meter_swing を外した ─────────────
+       * このメーターは「ERROR BUDGET n%」を **盤面上部のゲージ+数字と同じ意味** で
+       * もう1つ描くもので、画面には常に同じ指標が2つ(帯のゲージと丸メーター)
+       * 並んでいた。さらに丸メーターは自分の中で数字とラベルが重なって読めない。
+       * 残バジェットは盤面(render/lcd-cz-extra.js の drawCzFis)が常設で持つので、
+       * ここは音と揺れだけで「削られた」を伝える(U8: 同じことは1か所)。
        */
-      { at: 0,   layer: 'lcd',     action: 'anim',
-        params: { anim: 'cw_meter_swing', to: '$ratio', over: false, label: 'ERROR BUDGET' } },
       { at: 120, layer: 'char',    action: 'pose',  params: { char: 'kiro', pose: 'panic' } },
       { at: 1400, layer: 'char',   action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
     ],
@@ -843,9 +853,7 @@ export default [
       { at: 0,   layer: 'sfx',     action: 'synth', params: { preset: 'error_buzz' } },
       { at: 0,   layer: 'overlay', action: 'flash', params: { color: '#ff4d4d', ms: 280 } },
       { at: 0,   layer: 'overlay', action: 'shake', params: { power: 14, ms: 460 } },
-      // label 省略は既定の 'CPU UTIL' になる(cz_fis_fault_survived のコメント参照)
-      { at: 0,   layer: 'lcd',     action: 'anim',
-        params: { anim: 'cw_meter_swing', to: 0.04, over: false, label: 'ERROR BUDGET' } },
+      // V80-21②: 盤面のゲージと二重になるので cw_meter_swing は出さない
       { at: 120, layer: 'char',    action: 'pose',  params: { char: 'kiro', pose: 'panic' } },
       { at: 500, layer: 'lcd',     action: 'text',
         params: { text: 'BUDGET EXHAUSTED', sub: '${name} に耐えられなかった', color: '#ff8a8a', ms: 1400 } },
@@ -1185,13 +1193,8 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx',     action: 'synth', params: { preset: 'burst_start', gain: 0.55 } },
       { at: 0,   layer: 'overlay', action: 'shake', params: { power: 8, ms: 300 } },
-      /*
-       * label は必ず渡す。省略すると cw_meter_swing の既定値 'CPU UTIL' が出て、
-       * 盤面上部の「ERROR BUDGET n%」と別名の指標が同じ画面に2つ並ぶ
-       * (2026-08-15 検証指摘)。ここで見せているのは残エラーバジェット。
-       */
-      { at: 0,   layer: 'lcd',     action: 'anim',
-        params: { anim: 'cw_meter_swing', to: '$ratio', over: false, label: 'ERROR BUDGET' } },
+      // V80-21②: 盤面上部の ERROR BUDGET ゲージと二重になるので出さない
+      // (理由は cz_fis_fault_survived のコメント)
       { at: 120, layer: 'char',    action: 'pose',  params: { char: 'kiro', pose: 'panic' } },
       { at: 1300, layer: 'char',   action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
     ],
@@ -1224,9 +1227,7 @@ export default [
       { at: 0,   layer: 'sfx',     action: 'synth', params: { preset: 'error_buzz' } },
       { at: 0,   layer: 'overlay', action: 'flash', params: { color: '#ff4d4d', ms: 280 } },
       { at: 0,   layer: 'overlay', action: 'shake', params: { power: 14, ms: 460 } },
-      // label 省略は既定の 'CPU UTIL' になる(cz_shield_wave_survived のコメント参照)
-      { at: 0,   layer: 'lcd',     action: 'anim',
-        params: { anim: 'cw_meter_swing', to: 0.04, over: false, label: 'ERROR BUDGET' } },
+      // V80-21②: 盤面のゲージと二重になるので cw_meter_swing は出さない
       { at: 120, layer: 'char',    action: 'pose',  params: { char: 'kiro', pose: 'panic' } },
       { at: 500, layer: 'lcd',     action: 'text',
         params: { text: 'BUDGET EXHAUSTED', sub: '${name} を捌ききれなかった', color: '#ff8a8a', ms: 1400 } },

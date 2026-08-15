@@ -141,7 +141,7 @@ export default [
       { waitFor: 'stop3', after: 80, layer: 'sfx', action: 'synth', params: { preset: 'sfn_choice' } },
       { waitFor: 'stop3', after: 160, layer: 'char', action: 'show', params: { char: 'kiro', pose: 'surprised' } },
       { waitFor: 'stop3', after: 400, layer: 'lcd', action: 'text',
-        params: { text: '4 / 5 States', sub: '最終ステートまであと1つ', color: '#ffd166', ms: 1400 } },
+        params: { text: '4 / 5 States', sub: 'Step Functions — 最終ステートまであと1つ', color: '#ffd166', ms: 1400 } },
     ],
   },
 
@@ -160,7 +160,7 @@ export default [
       { waitFor: 'stop3', layer: 'lcd', action: 'anim',
         params: { anim: 'sfn_arrow_step', step: 2, total: 5, ms: 1500 } },
       { waitFor: 'stop3', after: 260, layer: 'lcd', action: 'text',
-        params: { text: '2 / 5 States', sub: 'ワークフローは途中で止まっている', color: '#8ad4ff', ms: 1000 } },
+        params: { text: '2 / 5 States', sub: 'Step Functions — ワークフローは途中で止まっている', color: '#8ad4ff', ms: 1000 } },
     ],
   },
 
@@ -207,7 +207,7 @@ export default [
       { at: 900,  layer: 'sfx',   action: 'synth', params: { preset: 'sfn_ng' } },
       { at: 940,  layer: 'char',  action: 'show',  params: { char: 'kiro', pose: 'normal' } },
       { at: 1000, layer: 'lcd',   action: 'text',
-        params: { text: 'WAIT STATE', sub: '最終ステートへは進めなかった', color: '#8aa0b4', ms: 1200 } },
+        params: { text: 'WAIT STATE', sub: 'Step Functions — 最終ステートへは進めなかった', color: '#8aa0b4', ms: 1200 } },
       { at: 1300, layer: 'lamp',  action: 'pattern', params: { pattern: 'idle' } },
     ],
   },
@@ -369,14 +369,25 @@ export default [
       { waitFor: 'stop2', layer: 'lcd', action: 'anim',
         params: { anim: 'kinesis_color_stream', level: 0, y: 238, count: 20 } },
       { waitFor: 'stop3', layer: 'sfx', action: 'synth', params: { preset: 'stream_flow' } },
-      // caption:false … 直後に出す lcd.text('GOLD STREAM') と同じ内容なので、
+      // caption:false … 直後に出す lcd.text と役割が重なるので、
       // アニメ内蔵のキャプションは消す(重なって両方読めなくなるため)
       { waitFor: 'stop3', layer: 'lcd', action: 'anim',
         params: { anim: 'kinesis_color_stream', level: 1, y: 238, count: 24, ms: 1800, caption: false } },
       { waitFor: 'stop3', after: 120, layer: 'overlay', action: 'flash', params: { color: '#ffe066', ms: 200 } },
       { waitFor: 'stop3', after: 160, layer: 'char', action: 'show', params: { char: 'kiro', pose: 'surprised' } },
+      /*
+       * U78: 旧「GOLD STREAM」/「データ粒が金に変わった」は
+       * **液晶を流れている粒の色**の説明で、絵を見ていないと何のことか分からなかった。
+       * 色ではなく「Kinesis のストリームから拾えたもの」を書く。
+       * 役は弱チェリー(IAM)とスイカ(S3)の2通りあるので、色は役色ではなく中立色のまま
+       * (rolecolors.js の COLOR_NEUTRAL_MID と同値)。
+       */
       { waitFor: 'stop3', after: 400, layer: 'lcd', action: 'text',
-        params: { text: 'GOLD STREAM', sub: 'データ粒が金に変わった', color: '#ffe066', ms: 1200 } },
+        params: {
+          text: 'めぼしいデータが流れてきた',
+          sub: 'Amazon Kinesis — 処理すべきレコードを拾い上げた',
+          color: '#ffe066', ms: 1200,
+        } },
     ],
   },
 
@@ -555,13 +566,24 @@ export default [
       { at: 0, layer: 'lcd', action: 'anim',
         params: { anim: 'kinesis_color_stream', level: 1, y: 250, x0: 110, count: 20 } },
       { waitFor: 'stop3', layer: 'sfx', action: 'synth', params: { preset: 'upgrade_chime' } },
-      // caption:false … 直後の lcd.text('RAINBOW')と文言が重複するため内蔵表示は出さない
+      // caption:false … 直後の lcd.text と役割が重なるため内蔵表示は出さない
       { waitFor: 'stop3', layer: 'lcd', action: 'anim',
         params: { anim: 'kinesis_color_stream', level: 2, y: 250, x0: 110, count: 28, ms: 1900, caption: false } },
       { waitFor: 'stop3', after: 120, layer: 'overlay', action: 'flash', params: { color: '#ffb0f0', ms: 240 } },
       { waitFor: 'stop3', after: 160, layer: 'char', action: 'motion', params: { char: 'george', motion: 'tailWhip' } },
+      /*
+       * U78: 旧「RAINBOW」/「上乗せ濃厚」は
+       *   ・虹 = 粒の色の話で、絵を見ていないと分からない
+       *   ・AWS のことを1文字も言っていない(パチスロの機能語だけ)
+       * の二重NG。ストリームの実態(シャードが開いて流量が上がる)へ書き直し、
+       * ゲーム上の意味(上乗せ濃厚)はサブの後半に残す。
+       */
       { waitFor: 'stop3', after: 500, layer: 'lcd', action: 'text',
-        params: { text: 'RAINBOW', sub: '上乗せ濃厚', color: '#ffb0f0', ms: 1300 } },
+        params: {
+          text: '全シャードが最大まで開いた',
+          sub: 'Amazon Kinesis — 流量が跳ね上がった。上乗せ濃厚',
+          color: '#ffb0f0', ms: 1300,
+        } },
     ],
   },
 ];

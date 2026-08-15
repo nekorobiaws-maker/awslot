@@ -50,7 +50,10 @@ import { ZENCHO, ZENCHO_PATTERN_BY_ID } from './data/zencho.js';
 import { DEBUG_RUSH_KEYS } from './data/rushes.js';
 // U44: 甘スロ。判定(AMA_MODE)も遷移先URL(amaUrl)もデータ側が持つ
 import { AMA, AMA_MODE, amaUrl } from './data/ama.js';
-import { setDebugPattern, getDebugPattern, setDebugStrength } from './game/modes/freetier.js';
+import {
+  setDebugPattern, getDebugPattern, setDebugStrength,
+  inspectRecentPatterns, resetRecentPatterns,
+} from './game/modes/freetier.js';
 import { verifyStrips } from './data/reelstrips.js';
 import { SCENARIOS, validateScenarios } from './data/scenarios/index.js';
 import { MODE_BGM, FLAG_SFX } from './data/sfx-presets.js';
@@ -169,6 +172,7 @@ const HELP_CONSOLE = [
   ['AWSLOT.setZenchoPattern(id)', '前兆パターン固定(null で解除)'],
   ['AWSLOT.setZenchoStrength(n)', '前兆の強度固定(1〜3 / null で解除)'],
   ['AWSLOT.zenchoPatterns', '固定できるID一覧'],
+  ['AWSLOT.recentZenchoPatterns()', '直近に出た前兆パターン(新しい順)'],
 ];
 
 /**
@@ -627,6 +631,25 @@ async function boot() {
    */
   const stagingHoldsResult = () => lcdView.stageMasked;
 
+  /**
+   * 100回転を使い切ってから「もう一度やる」が押せるようになるまで、ゲーム入力を止める
+   * (2026-08-15 ユーザー報告 U77)。
+   *
+   * 【何が起きていたか】
+   * セッションの終了は最終ゲームの払出の頭で確定するのに、リザルトパネルは
+   * 終了演出のぶん(RESULT_OPEN_DELAY_MS)遅れて開く。その「成績を集計しています…」の
+   * 数秒間に ↑キー(ワンボタン操作)を押すと flow.play() が即リスタートしてしまい、
+   * **リザルトを1度も見ないまま次の100回転が始まって**いた
+   * (プレイヤーからは「BETを押したら次のゲームが始まった」に見える)。
+   *
+   * 【方針】
+   * 集計中(flow.isSettling)は投入・レバー・停止・ワンボタンをすべて **無反応** にする。
+   * 音も出さない(鳴らすと「押せたのに何も起きない」に見えるため)。
+   * リールは回らないので RNG も成立役も動かない = 出目にも集計にも影響しない。
+   * 判定の素は flow が持ち、リザルトが実際に出たかどうかだけを下のフレーム処理が教える。
+   */
+  const settlingResult = () => flow.isSettling;
+
   /*
    * システム通知(下部パネルの1行)。U66-5 の表示チャネル整理でここだけが残った用途。
    * ゲームの状態は一切入れない(入れると盤面・ポップアップとの三重表示になる)。
@@ -636,17 +659,20 @@ async function boot() {
   const notice = (text) => { noticeText = String(text ?? ''); noticeLeft = NOTICE_MS; };
 
   const input = new Input(cabinetEl).attach();
-  input.on('BET', () => { if (!stagingHoldsResult()) flow.insertBet(); });
-  input.on('LEVER', () => { if (!stagingHoldsResult()) flow.leverOn(); });
-  input.on('STOP0', () => flow.stopReel(0));
-  input.on('STOP1', () => flow.stopReel(1));
-  input.on('STOP2', () => flow.stopReel(2));
+  input.on('BET', () => { if (!stagingHoldsResult() && !settlingResult()) flow.insertBet(); });
+  input.on('LEVER', () => { if (!stagingHoldsResult() && !settlingResult()) flow.leverOn(); });
+  // 停止ボタンは stagingHoldsResult では止めない(回転中に保留が始まると手が止まるため)。
+  // 集計中(U77)はリールがそもそも回っていないので、こちらだけは止めてよい。
+  input.on('STOP0', () => { if (!settlingResult()) flow.stopReel(0); });
+  input.on('STOP1', () => { if (!settlingResult()) flow.stopReel(1); });
+  input.on('STOP2', () => { if (!settlingResult()) flow.stopReel(2); });
   // ↑キー / ワンボタン操作: 今の状態に合わせて BET → レバーON → リスタートを振り分ける
-  // (リザルトのリスタートも兼ねるが、保留中はそもそもリザルトに居ない)
-  input.on('PLAY', () => { if (!stagingHoldsResult()) flow.play(); });
-  // R キー: リザルト表示中に新しい100回転を始める
+  // (リザルトのリスタートも兼ねる。集計中は flow.play() 側でも無反応にしてある = U77)
+  input.on('PLAY', () => { if (!stagingHoldsResult() && !settlingResult()) flow.play(); });
+  // R キー: リザルト **表示後** に新しい100回転を始める(集計中は効かせない = U77)
   input.on('RESTART', () => {
-    if (flow.isResult) flow.restart();
+    if (flow.canRestart) flow.restart();
+    else if (flow.isResult) notice('[SCORE ATTACK] 成績を集計しています…');
     else notice(`[SCORE ATTACK] 残り ${flow.spinsLeft} 回転`);
   });
   input.on('DEBUG_CREDIT', () => {
@@ -766,6 +792,15 @@ async function boot() {
       overlayView.draw();
       // リザルトは RESULT モードに居る間だけ開く(閉じるときは null を渡す)
       resultPanel.sync(modes.currentId === 'RESULT' ? modes.state : null);
+      /*
+       * リザルトが出たことをゲーム側へ伝える(U77)。
+       * これが立つまでは flow.isSettling = 集計中で、入力を一切受け付けない。
+       * sync() の直後に置くのが肝で、パネルが開いたフレームのうちに解除される
+       * (押せるようになった見た目と、実際に押せる瞬間がズレない)。
+       * el が無い環境(#result-panel を持たない DOM)ではパネルが永久に開かず
+       * 二度と打てない台になってしまうので、その場合は解除側へ倒しておく。
+       */
+      flow.setResultReady(resultPanel.isOpen || resultPanel.el == null);
 
       cabinet.setButtonStates({
         // V31-07: 当落を伏せている間は投入・レバーを受け付けないので、
@@ -814,6 +849,11 @@ async function boot() {
            * mask が立っている間だけ 1文字出す(通常プレイでは何も増えない)。
            */
           ...(lcdView.stageMasked ? ['mask:ON'] : []),
+          /*
+           * U77 の入力ガード(集計中は投入・レバー・停止・↑を受け付けない)の目印。
+           * mask:ON と同じ流儀で、効いている間だけ1つ増える。
+           */
+          ...(flow.isSettling ? ['settling:ON'] : []),
           `seed:${rng.seed}`,
           `${loop.fps}fps`,
           /*
@@ -861,6 +901,13 @@ async function boot() {
      *   setInterval(() => AWSLOT.isInputMasked() && console.log('masked'), 16)
      */
     isInputMasked: () => Boolean(lcdView.stageMasked),
+    /**
+     * 集計中(セッション終了確定〜リザルト表示)か(U77)。
+     * この窓の間は BET / レバー / 停止 / ↑ がすべて無反応になる。
+     * 連打テストの合否をポーリングで機械的に確かめるための口。
+     *   setInterval(() => AWSLOT.isSettling() && console.log('settling'), 16)
+     */
+    isSettling: () => Boolean(flow.isSettling),
     /** 次の1レバーONを必ずフリーズにする(F キーと同じ) */
     forceFreeze: () => flow.forceFreeze(),
     /**
@@ -877,6 +924,17 @@ async function boot() {
     setZenchoStrength: (n) => setDebugStrength(n),
     /** 固定できるパターンID一覧(コンソールでの確認用) */
     zenchoPatterns: ZENCHO.patterns.map((p) => p.id),
+    /**
+     * 直近に出た前兆パターンを新しい順で返す(U79 の偏り対策の確認用)。
+     *   AWSLOT.recentZenchoPatterns()  → ['bill_shock', 'xray', ...]
+     * この並びの先頭ほど次に選ばれにくい(data/zencho.js の ZENCHO.variety)。
+     * 引数に true を渡すと履歴を消す(同じ絵を続けて出したいときの逃がし弁)。
+     */
+    recentZenchoPatterns: (clear = false) => {
+      const list = inspectRecentPatterns();
+      if (clear) resetRecentPatterns();
+      return list;
+    },
   };
 }
 

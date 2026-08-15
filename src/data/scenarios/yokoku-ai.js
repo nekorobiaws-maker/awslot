@@ -50,7 +50,14 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.6 } },
       { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'Athena: QUERY RUNNING…', color: '#8ad4ff', ms: 500 } },
-      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: 'SCAN 0.6GB — 0 HIT', color: '#8ad4ff', ms: 700 } },
+      /*
+       * U78: 結論行にサブが無かった。テキスト帯は1件ずつ順送りなので、
+       * この行が出るころには導入行(Athena: QUERY RUNNING…)は消えていて、
+       * 「SCAN 0.6GB — 0 HIT」だけでは何の話か分からなかった。
+       * **1行ごとに** サービス名か実態が入るようにサブを足す(以下の【弱】も同じ)。
+       */
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',
+        params: { text: 'SCAN 0.6GB — 0 HIT', sub: 'Athena — S3 を少し読んだだけで1件も一致しなかった', color: '#8ad4ff', ms: 700 } },
     ],
   },
   {
@@ -66,7 +73,7 @@ export default [
       { at: 50,   layer: 'lcd',  action: 'text', params: { text: 'Athena: QUERY RUNNING…', color: '#ffd166', ms: 500 } },
       { waitFor: 'stop1',  layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 220, y: 190, count: 14 } },
       { waitFor: 'stop1', after: 50,  layer: 'lcd',  action: 'text', params: { text: 'SCAN 812GB…', color: '#ffd166', ms: 600 } },
-      { waitFor: 'stop3', layer: 'lcd',  action: 'text', params: { text: '128,000 HIT !!', sub: '全件フルスキャン', color: '#ffe066', ms: 900 } },
+      { waitFor: 'stop3', layer: 'lcd',  action: 'text', params: { text: '128,000 HIT !!', sub: 'Athena — 読んだ 812GB ぶんだけ料金がかかる', color: '#ffe066', ms: 900 } },
       { waitFor: 'stop3', after: 50, layer: 'overlay', action: 'flash', params: { color: '#ffe066', ms: 200 } },
       { waitFor: 'stop3', after: 100, layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'happy' } },
     ],
@@ -82,8 +89,9 @@ export default [
     duration: 900,
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.5 } },
-      { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'Redshift: WAREHOUSE WARMING…', color: '#8ad4ff', ms: 500 } },
-      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: 'queued: 1 job', color: '#8ad4ff', ms: 500 } },
+      { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'Redshift: QUERY RECEIVED…', color: '#8ad4ff', ms: 500 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',
+        params: { text: 'queued: 1 job', sub: 'Amazon Redshift — 集計ジョブが1件だけ積まれた', color: '#8ad4ff', ms: 800 } },
     ],
   },
 
@@ -100,7 +108,8 @@ export default [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'dynamo_scale', gain: 0.5 } },
       { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'Glue: CRAWLER STARTING…', color: '#8ad4ff', ms: 500 } },
       { waitFor: 'stop3', layer: 'lcd', action: 'particles', params: { preset: 'scale', x: 210, y: 200, count: 6 } },
-      { waitFor: 'stop3', after: 50, layer: 'lcd', action: 'text',  params: { text: 'connected: 1 / 5', color: '#8ad4ff', ms: 600 } },
+      { waitFor: 'stop3', after: 50, layer: 'lcd', action: 'text',
+        params: { text: 'connected: 1 / 5', sub: 'AWS Glue — データカタログに登録できたのは1件だけ', color: '#8ad4ff', ms: 800 } },
     ],
   },
   {
@@ -135,7 +144,7 @@ export default [
       { at: 0,    layer: 'sfx',  action: 'synth', params: { preset: 'scale_out', gain: 0.7 } },
       { at: 50,   layer: 'lcd',  action: 'text', params: { text: 'EMR: CLUSTER BOOTING…', color: '#ffd166', ms: 500 } },
       { waitFor: 'stop3',  layer: 'lcd',  action: 'particles', params: { preset: 'scale', x: 220, y: 210, count: 16 } },
-      { waitFor: 'stop3', after: 50,  layer: 'lcd',  action: 'text', params: { text: 'NODES x6', sub: '並列ノードが立ち上がった', color: '#ffe066', ms: 800 } },
+      { waitFor: 'stop3', after: 50,  layer: 'lcd',  action: 'text', params: { text: 'NODES x6', sub: 'Amazon EMR — 大量データを分担処理するノードが並んだ', color: '#ffe066', ms: 800 } },
       { waitFor: 'stop3', layer: 'sfx',  action: 'synth', params: { preset: 'charge_up', gain: 0.6 } },
     ],
   },
@@ -151,7 +160,8 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.5 } },
       { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'SageMaker: TRAINING JOB…', color: '#8ad4ff', ms: 500 } },
-      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: 'epoch 3/10 acc 58%', color: '#8ad4ff', ms: 600 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',
+        params: { text: 'epoch 3/10 acc 58%', sub: 'SageMaker — 学習の精度がまだ上がりきっていない', color: '#8ad4ff', ms: 800 } },
     ],
   },
   {
@@ -166,9 +176,9 @@ export default [
       { at: 0,    layer: 'sfx',  action: 'synth', params: { preset: 'charge_up' } },
       { at: 50,   layer: 'lcd',  action: 'text', params: { text: 'SageMaker: TRAINING JOB…', color: '#ffd166', ms: 500 } },
       { waitFor: 'stop1',  layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 220, y: 200, count: 14 } },
-      { waitFor: 'stop1', after: 50,  layer: 'lcd',  action: 'text', params: { text: 'epoch 7/10 acc 88%', color: '#ffd166', ms: 600 } },
+      { waitFor: 'stop1', after: 50,  layer: 'lcd',  action: 'text', params: { text: 'epoch 7/10 acc 88%', sub: 'SageMaker — 学習の精度が上がってきた', color: '#ffd166', ms: 600 } },
       { waitFor: 'stop3', layer: 'lcd',  action: 'particles', params: { preset: 'rainbow', x: 220, y: 200, count: 20 } },
-      { waitFor: 'stop3', after: 50, layer: 'lcd',  action: 'text', params: { text: 'epoch 10/10 acc 99.2%', sub: '収束しきった', color: '#ffe066', ms: 1000 } },
+      { waitFor: 'stop3', after: 50, layer: 'lcd',  action: 'text', params: { text: 'epoch 10/10 acc 99.2%', sub: 'SageMaker — 学習が収束しきった', color: '#ffe066', ms: 1000 } },
       { waitFor: 'stop3', after: 70, layer: 'overlay', action: 'flash', params: { color: '#ffe066', ms: 220 } },
       { waitFor: 'stop3', after: 100, layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'happy' } },
     ],
@@ -187,7 +197,14 @@ export default [
       { at: 0,    layer: 'sfx',  action: 'synth', params: { preset: 'rare_flag' } },
       { at: 40,   layer: 'lcd',  action: 'text', params: { text: 'Rekognition: ANALYZING SYMBOL…', color: '#ffd166', ms: 500 } },
       { waitFor: 'stop3',  layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 220, y: 190, count: 12 } },
-      { waitFor: 'stop3', after: 50,  layer: 'lcd',  action: 'text', params: { text: 'LABEL: CHERRY (76%)', color: '#ffd166', ms: 800 } },
+      /*
+       * U78: サブ行を追加。「LABEL: CHERRY (76%)」だけだと
+       *   ・何が判定したのか(Rekognition)が分からない
+       *   ・レア役全般で出るので「チェリー確定」と誤読されうる
+       * の2点が残っていた。**信頼度が低い推定であること**を言葉でも書く。
+       */
+      { waitFor: 'stop3', after: 50,  layer: 'lcd',  action: 'text',
+        params: { text: 'LABEL: CHERRY (76%)', sub: 'Rekognition — 信頼度は控えめ。当たっているとは限らない', color: '#ffd166', ms: 800 } },
       { waitFor: 'stop3', layer: 'sfx',  action: 'synth', params: { preset: 'edge_hit', gain: 0.6 } },
     ],
   },
@@ -204,10 +221,10 @@ export default [
       { at: 0,   layer: 'sfx',  action: 'synth', params: { preset: 'charge_up' } },
       { at: 60,  layer: 'lcd',  action: 'text', params: { text: 'Rekognition: ANALYZING SYMBOL…', color: '#ffd166', ms: 600 } },
       { waitFor: 'stop3', layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 220, y: 190, count: 16 } },
-      { waitFor: 'stop3', after: 50, layer: 'lcd',  action: 'text', params: { text: 'LABEL: PHANTOM (74%)', color: '#ffd166', ms: 700 } },
+      { waitFor: 'stop3', after: 50, layer: 'lcd',  action: 'text', params: { text: 'LABEL: PHANTOM (74%)', sub: 'Amazon Rekognition — 幽霊の絵柄らしいが確信は無い', color: '#ffd166', ms: 700 } },
       { waitFor: 'stop3', after: 100, layer: 'lcd', action: 'particles', params: { preset: 'rainbow', x: 220, y: 190, count: 26 } },
       { waitFor: 'stop3', after: 150, layer: 'lcd', action: 'text',
-        params: { text: 'LABEL: PHANTOM (98%)', sub: '信頼度がほぼ振り切れた', color: '#ffe066', ms: 1400 } },
+        params: { text: 'LABEL: PHANTOM (98%)', sub: 'Amazon Rekognition — 信頼度がほぼ振り切れた', color: '#ffe066', ms: 1400 } },
       { waitFor: 'stop3', after: 200, layer: 'overlay', action: 'flash', params: { color: '#ffe066', ms: 260 } },
       { waitFor: 'stop3', after: 240, layer: 'sfx', action: 'synth', params: { preset: 'upgrade_chime' } },
       { waitFor: 'stop3', after: 280, layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'happy' } },
@@ -226,10 +243,10 @@ export default [
       { at: 0,   layer: 'sfx',  action: 'synth', params: { preset: 'charge_up' } },
       { at: 60,  layer: 'lcd',  action: 'text', params: { text: 'Rekognition: ANALYZING SYMBOL…', color: '#ffd166', ms: 600 } },
       { waitFor: 'stop3', layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 220, y: 190, count: 16 } },
-      { waitFor: 'stop3', after: 50, layer: 'lcd',  action: 'text', params: { text: 'LABEL: PHANTOM (74%)', color: '#ffd166', ms: 700 } },
+      { waitFor: 'stop3', after: 50, layer: 'lcd',  action: 'text', params: { text: 'LABEL: PHANTOM (74%)', sub: 'Amazon Rekognition — 幽霊の絵柄らしいが確信は無い', color: '#ffd166', ms: 700 } },
       { waitFor: 'stop3', after: 100, layer: 'lcd', action: 'particles', params: { preset: 'rainbow', x: 220, y: 190, count: 26 } },
       { waitFor: 'stop3', after: 150, layer: 'lcd', action: 'text',
-        params: { text: 'LABEL: PHANTOM (98%)', sub: '信頼度がほぼ振り切れた', color: '#ffe066', ms: 1400 } },
+        params: { text: 'LABEL: PHANTOM (98%)', sub: 'Amazon Rekognition — 信頼度がほぼ振り切れた', color: '#ffe066', ms: 1400 } },
       { waitFor: 'stop3', after: 200, layer: 'overlay', action: 'flash', params: { color: '#ffe066', ms: 260 } },
       { waitFor: 'stop3', after: 240, layer: 'sfx', action: 'synth', params: { preset: 'upgrade_chime' } },
       { waitFor: 'stop3', after: 280, layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'happy' } },
@@ -274,8 +291,15 @@ export default [
     duration: 1100,
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.5 } },
-      { at: 0,   layer: 'lcd', action: 'text',  params: { text: '原文: 「S3バケットを同期中」', color: '#8ad4ff', ms: 500 } },
-      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: 'EN: "Syncing S3 bucket"', color: '#8ad4ff', ms: 700 } },
+      /*
+       * U78: どちらの行にも Translate が出ておらず、
+       * 「原文」「EN:」だけでは何のサービスの画面なのか分からなかった。
+       * 導入行を他の予告(Athena: … / Glue: … )と同じ「サービス名: 」の形へ揃え、
+       * 結論行にはサブで訳した主体と結果を書く。
+       */
+      { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'Translate: 原文「S3バケットを同期中」', color: '#8ad4ff', ms: 500 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',
+        params: { text: 'EN: "Syncing S3 bucket"', sub: 'Amazon Translate — ただの直訳で終わった', color: '#8ad4ff', ms: 700 } },
     ],
   },
   {
@@ -288,9 +312,10 @@ export default [
       { at: 0,    layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
       { at: 0,    layer: 'char', action: 'show', params: { char: 'kiro', pose: 'surprised' } },
       { at: 0,    layer: 'sfx',  action: 'synth', params: { preset: 'charge_up' } },
-      { at: 50,   layer: 'lcd',  action: 'text', params: { text: '原文: 「そろそろ…来るかも」', color: '#ffd166', ms: 600 } },
+      // U78: 弱版と同じく「サービス名: 」の形へ揃え、結論行のサブにも主体を書く
+      { at: 50,   layer: 'lcd',  action: 'text', params: { text: 'Translate: 原文「そろそろ…来るかも」', color: '#ffd166', ms: 600 } },
       { waitFor: 'stop3',  layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 220, y: 200, count: 12 } },
-      { waitFor: 'stop3', after: 50,  layer: 'lcd',  action: 'text', params: { text: 'EN: "It is coming very soon"', sub: '訳文がやけに具体的', color: '#ffe066', ms: 1100 } },
+      { waitFor: 'stop3', after: 50,  layer: 'lcd',  action: 'text', params: { text: 'EN: "It is coming very soon"', sub: 'Amazon Translate — 訳文がやけに具体的', color: '#ffe066', ms: 1100 } },
       { waitFor: 'stop3', layer: 'sfx',  action: 'synth', params: { preset: 'upgrade_chime', gain: 0.7 } },
       { waitFor: 'stop3', after: 30, layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'happy' } },
     ],
@@ -309,7 +334,8 @@ export default [
       { at: 0,    layer: 'sfx',  action: 'synth', params: { preset: 'checklist_ok' } },
       { at: 40,   layer: 'lcd',  action: 'text', params: { text: 'Comprehend: ANALYZING SENTIMENT…', color: '#ffd166', ms: 500 } },
       { waitFor: 'stop3',  layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 220, y: 200, count: 12 } },
-      { waitFor: 'stop3', after: 50,  layer: 'lcd',  action: 'text', params: { text: 'POSITIVE 92%', sub: 'ポジティブ判定', color: '#ffe066', ms: 900 } },
+      // U78: サブ「ポジティブ判定」だけでは何が判定したのか分からないので主体を足す
+      { waitFor: 'stop3', after: 50,  layer: 'lcd',  action: 'text', params: { text: 'POSITIVE 92%', sub: 'Amazon Comprehend — 文章はポジティブと判定された', color: '#ffe066', ms: 900 } },
       { waitFor: 'stop3', layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'happy' } },
     ],
   },
@@ -324,7 +350,15 @@ export default [
     duration: 1000,
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.5 } },
-      { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'Textract: READING SYMBOL…', color: '#8ad4ff', ms: 500 } },
+      /*
+       * 2026-08-16 検証指摘 V80-13「泣き別れ」:
+       * 'Textract: READING SYMBOL…' は帯の幅に1行で入らず、
+       * 「Textract: READING」/「SYMBOL…」と **意味の切れ目でないところ** で
+       * 2行に折れていた(lcdanims.js の wrapText は空白で折る)。
+       * 同じ内容を1行に収まる長さへ縮める。「何を読んでいるか」は
+       * 直後の結果行(サブ「Textract — 絵柄を読み取れなかった」)が言うので情報は減らない。
+       */
+      { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'Textract 読取中…', color: '#8ad4ff', ms: 500 } },
       { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: '読取結果: ???(低信頼度)', sub: 'Textract — 絵柄を読み取れなかった', color: '#8ad4ff', ms: 600 } },
     ],
   },
@@ -340,9 +374,9 @@ export default [
       { at: 0,    layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
       { at: 0,    layer: 'char', action: 'show', params: { char: 'kiro', pose: 'surprised' } },
       { at: 0,    layer: 'sfx',  action: 'synth', params: { preset: 'announce' } },
-      { at: 50,   layer: 'lcd',  action: 'text', params: { text: 'Q: このゲーム、そろそろ来る?', sub: 'Amazon Q に質問中…', color: '#ffd166', ms: 800 } },
+      { at: 50,   layer: 'lcd',  action: 'text', params: { text: 'Q: このゲーム、そろそろ来る?', sub: 'Amazon Q — AWSのAIアシスタントに質問中', color: '#ffd166', ms: 800 } },
       { waitFor: 'stop3',  layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 220, y: 200, count: 12 } },
-      { waitFor: 'stop3', after: 50,  layer: 'lcd',  action: 'text', params: { text: 'A: 可能性は十分にあります', sub: 'Amazon Q の回答', color: '#ffe066', ms: 1000 } },
+      { waitFor: 'stop3', after: 50,  layer: 'lcd',  action: 'text', params: { text: 'A: 可能性は十分にあります', sub: 'Amazon Q — AWSに詳しいAIが答えてくれた', color: '#ffe066', ms: 1000 } },
       { waitFor: 'stop3', layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'happy' } },
       { waitFor: 'stop3', after: 20, layer: 'sfx',  action: 'synth', params: { preset: 'charge_up', gain: 0.6 } },
     ],
@@ -359,7 +393,8 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.5 } },
       { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'OpenSearch: QUERY実行中…', color: '#8ad4ff', ms: 500 } },
-      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: '0 件 HIT', color: '#8ad4ff', ms: 500 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',
+        params: { text: '0 件 HIT', sub: 'OpenSearch — 検索に一致する文書は無かった', color: '#8ad4ff', ms: 800 } },
     ],
   },
 

@@ -227,7 +227,18 @@ const RUSH_VARIANTS = {
     char: 'george',
   },
   HERO_RUSH: {
-    title1: 'AWS HERO',
+    /*
+     * ── 名乗りは「HERO RUSH」1つだけ(2026-08-16 検証指摘 V80-8 / V80-9)──────
+     * 旧: 上段 'AWS HERO' + 下段 'RUSH' の2段組。
+     *   ・2段の綴りを続けると「AWS HERO RUSH」で、盤面ロゴ(HERO RUSH)と
+     *     ヘッダ(ヒーローRUSH)と合わせて **名乗りが3通り** になっていた
+     *   ・上段は幅いっぱいまで拡大されるため、下段 RUSH と縦に重なって
+     *     どちらの文字も読めなかった(V80-9)
+     * single:true にすると下の rush_slam が **1行の「HERO RUSH」** として叩きつける。
+     * ポップアップは名前を言わず「AWS Hero に選出!!」= 出来事だけを担当する。
+     */
+    single: true,
+    title1: 'HERO',
     title2: 'RUSH',
     rgb: '255,208,90',
     grad1: ['#fffbe0', '#ff9a00'],
@@ -519,14 +530,26 @@ export const CUTINS_EXTRA = {
         ctx.restore();
       }
 
-      // ── 巨大ロゴ(2段のスラムイン)──
-      // 上段は控えめ、下段 RUSH を一番大きく叩きつける
-      drawSlamText(ctx, V.title1, cx, h * 0.48, clamp01((p - 0.26) / 0.34), V.grad1, {
-        maxWidth: 640, size: 78, shake: p > 0.5 ? 1.6 : 0,
-      });
-      drawSlamText(ctx, V.title2, cx, h * 0.62, clamp01((p - 0.40) / 0.34), V.grad2, {
-        maxWidth: 660, size: 140, shake: p > 0.62 ? 2.6 : 0,
-      });
+      /* ── 巨大ロゴ ────────────────────────────────────────────────
+       * single:true の変種は1行で叩きつける(HERO_RUSH。V80-9)。
+       * 2段組は「上段は控えめ、下段 RUSH を一番大きく」。
+       *
+       * 2026-08-16 V80-9: 上段は maxWidth 640 / size 78 だったため、
+       * lcdTextSpot の写像後に **下段 RUSH(高さ 205px)の上端へ食い込んで**いた。
+       * 上段を一回り小さくし(58px / 幅 560)、置き場所も液晶の上寄り(h*0.40 =
+       * 写像の上限)へ移して、2段が縦に必ず離れるようにしてある。 */
+      if (V.single) {
+        drawSlamText(ctx, `${V.title1} ${V.title2}`, cx, h * 0.56, clamp01((p - 0.26) / 0.4), V.grad2, {
+          maxWidth: 660, size: 120, shake: p > 0.5 ? 2.4 : 0,
+        });
+      } else {
+        drawSlamText(ctx, V.title1, cx, h * 0.40, clamp01((p - 0.26) / 0.34), V.grad1, {
+          maxWidth: 560, size: 58, shake: p > 0.5 ? 1.6 : 0,
+        });
+        drawSlamText(ctx, V.title2, cx, h * 0.62, clamp01((p - 0.40) / 0.34), V.grad2, {
+          maxWidth: 660, size: 140, shake: p > 0.62 ? 2.6 : 0,
+        });
+      }
 
       // ── 金の粒が舞う ──
       if (p > 0.5) {

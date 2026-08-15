@@ -70,7 +70,7 @@ export default [
       // 猶予(graceGames)ではなく保証の残りG数が入ることがある(液晶の T-n と揃える)。
       // 旧コメントは「最低15G保証」と書いてあったが実装値と乖離していた(椿レビュー)
       { at: 1600, layer: 'lcd',     action: 'text',
-        params: { text: '${value} GAMES LEFT', sub: '中断通知。悪く思うな', color: '#ff6b6b', ms: 1400 } },
+        params: { text: '${value} GAMES LEFT', sub: 'スポットインスタンスの中断通知。悪く思うな', color: '#ff6b6b', ms: 1400 } },
     ],
   },
   {
@@ -103,7 +103,7 @@ export default [
       { at: 100,  layer: 'char',    action: 'show',  params: { char: 'kiro', pose: 'happy' } },
       { at: 100,  layer: 'char',    action: 'motion', params: { char: 'kiro', motion: 'zoom' } },
       { at: 400,  layer: 'lcd',     action: 'text',
-        params: { text: `CPU CREDIT ${BURST.creditInit}`, sub: `使い切るまで純増${BURST.payoutPerGame}枚`, color: '#ffe066', ms: 2000 } },
+        params: { text: `CPU CREDIT ${BURST.creditInit}`, sub: `EC2 の CPU クレジットを使い切るまで純増${BURST.payoutPerGame}枚`, color: '#ffe066', ms: 2000 } },
       { at: 900,  layer: 'voice',   action: 'play',  params: { key: 'luna_kita_01', force: true } },
       { at: 1200, layer: 'bgm',     action: 'change', params: { bgm: 'bgm_burst' } },
       { at: 1400, layer: 'lcd',     action: 'particles', params: { preset: 'spark', x: 220, y: 108, count: 20 } },
@@ -263,7 +263,7 @@ export default [
       { at: 0,    layer: 'sfx',     action: 'synth', params: { preset: 'stream_flow' } },
       { at: 200,  layer: 'char',    action: 'show',  params: { char: 'kiro', pose: 'surprised' } },
       { at: 400,  layer: 'lcd',     action: 'text',
-        params: { text: 'SHARDS', sub: 'シャードの数だけ上乗せが流れる', color: '#6ee0f5', ms: 1900 } },
+        params: { text: 'SHARDS', sub: 'Amazon Kinesis — シャードの数だけ上乗せが流れる', color: '#6ee0f5', ms: 1900 } },
       { at: 800,  layer: 'lcd',     action: 'particles', params: { preset: 'stream', x: 220, y: 220, count: 24 } },
       { at: 1000, layer: 'voice',   action: 'play',  params: { key: 'luna_kita_01', force: true } },
     ],
@@ -297,7 +297,7 @@ export default [
       { at: 200,  layer: 'char',    action: 'show',  params: { char: 'kiro', pose: 'surprised' } },
       { at: 200,  layer: 'char',    action: 'show',  params: { char: 'george', pose: 'grin' } },
       { at: 500,  layer: 'lcd',     action: 'text',
-        params: { text: 'STATE MACHINE', sub: '分岐を選んで Success State へ', color: '#c0c0ff', ms: 2100 } },
+        params: { text: 'STATE MACHINE', sub: 'Step Functions — 分岐を選んで Success State へ', color: '#c0c0ff', ms: 2100 } },
       { at: 1000, layer: 'voice',   action: 'play',  params: { key: 'luna_kita_01', force: true } },
       { at: 1200, layer: 'bgm',     action: 'change', params: { bgm: 'bgm_sfn' } },
     ],
@@ -340,7 +340,7 @@ export default [
       { at: 0,   layer: 'lcd',     action: 'anim',  params: { anim: 'sfn_task', result: 'fail' } },
       { at: 100, layer: 'char',    action: 'pose',  params: { char: 'kiro', pose: 'panic' } },
       { at: 400, layer: 'lcd',     action: 'text',
-        params: { text: 'FAIL STATE', sub: 'ワークフロー終了', color: '#ff8a8a', ms: 1100 } },
+        params: { text: 'FAIL STATE', sub: 'Step Functions — ワークフローはここで終了', color: '#ff8a8a', ms: 1100 } },
     ],
   },
   {
@@ -373,8 +373,11 @@ export default [
       { at: 0,   layer: 'sfx',  action: 'synth', params: { preset: 'zone_return' } },
       { at: 0,   layer: 'lamp', action: 'pattern', params: { pattern: 'rush' } },
       { at: 0,   layer: 'lcd',  action: 'anim',  params: { anim: 'lcd_flash', color: '#7bf7d0', strength: 0.4 } },
+      // U78: 旧サブ「母体のRUSHへ戻ります」は台の内部用語(母体)だけで、
+      //      AWS のことも「何が終わったのか」も言っていなかった。
+      //      ゾーン = 臨時に足したキャパシティ、という実態を書いてから行き先を言う
       { at: 150, layer: 'lcd',  action: 'text',
-        params: { text: 'RESUME', sub: '母体のRUSHへ戻ります', color: '#7bf7d0', ms: 1000 } },
+        params: { text: 'RESUME', sub: '臨時のキャパシティを解放 — もとの RUSH へ戻る', color: '#7bf7d0', ms: 1000 } },
     ],
   },
 ];
