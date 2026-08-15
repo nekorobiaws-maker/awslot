@@ -34,11 +34,57 @@ import { GameFlow } from '../src/game/flow.js';
 import { SESSION } from '../src/data/session.js';
 import { RUSH_IDS, RUSH_SPEC_BY_ID } from '../src/data/rushes.js';
 import { BET_PER_GAME } from '../src/data/payouts.js';
+import { CZ_ENTRY, CZ_TYPES, CZ_SPEC_BY_ID, NORMAL_SUBSTATES } from '../src/data/modes.js';
+import { CHAIN_SPEC_BY_PATTERN, ZENCHO } from '../src/data/zencho.js';
+import { BONUS_FLAGS } from '../src/data/flags.js';
 
 const args = process.argv.slice(2).map(Number).filter(Number.isFinite);
 const RUNS = args[0] ?? 3000;
 const SEEDS = args.length > 1 ? args.slice(1) : [777, 555, 20260814];
 const DT = 120;
+
+/**
+ * `--preu72` … U72(チャンス目=CZ突入確定)を入れる前の値で回す(2026-08-15)。
+ *
+ * before/after を **同じ物差し** で並べるための比較モード。
+ * data/modes.js が保持している previous* から旧値を復元するだけなので、
+ * 「表を書き写した before」ではなく実測の before が出る。
+ * game/modes/freetier.js の確定役判定は CZ_ENTRY.table の cz が 1.000 かどうかを
+ * 見ているだけなので、テーブルを戻せば **告知と移行前兆の挙動も自動で旧仕様に戻る**。
+ */
+if (process.argv.includes('--preu72')) {
+  // ① CZ導線(チャンス目=確定 / ステージのおまけ化 / 突破率ラダー)
+  CZ_ENTRY.table = JSON.parse(JSON.stringify(CZ_ENTRY.previousTableU63));
+  NORMAL_SUBSTATES.czPerGame = { ...NORMAL_SUBSTATES.previousCzPerGameU63 };
+  NORMAL_SUBSTATES.bonusShareOfStageDraw = { ...NORMAL_SUBSTATES.previousBonusShareU63 };
+  for (const [id, rate] of Object.entries(CZ_TYPES.previousSuccessRateU63)) {
+    if (CZ_SPEC_BY_ID[id]) CZ_SPEC_BY_ID[id].successRate = rate;
+  }
+  // ② 擬似連の重み(U72 で本前兆側を 10 → 36 にした)
+  for (const p of ZENCHO.patterns) {
+    if (p.previousWeightU63) p.weight = { ...p.previousWeightU63 };
+  }
+  // ③ オートスケーリングRUSH(純増35枚 × 初期6.96台 × 通算22G)
+  const AS = RUSH_SPEC_BY_ID.AS_RUSH;
+  AS.payoutPerGame = AS.previousPayoutPerGame35;
+  AS.initUnitsDist = { ...AS.previousInitUnitsDistU50 };
+  AS.maxUnits = AS.previousMaxUnits22;
+  AS.maxTotalGames = AS.previousMaxTotalGames22;
+  // ④ ボーナス中のベル(U72 で 15 → 18枚)
+  const bonusBell = BONUS_FLAGS.flags.find((f) => f.id === 'BELL');
+  if (bonusBell) bonusBell.payout = BONUS_FLAGS.previousBellPayout15;
+  console.log(
+    '※ --preu72: 「チャンス目=CZ突入確定」を入れる前(U63)の値で試行します\n'
+    + '  (CZ導線 / 擬似連の重み / AS RUSH の純増と台数 / ボーナス中のベルを一括で戻します。\n'
+    + '   ただし data/payouts.js の BONUS_NET_PER_GAME は読み込み時に確定する定数なので、\n'
+    + '   買い取りの見積もりだけ U72 の値(10.60枚/G)のまま残ります。\n'
+    + '   **初当り・CZ突入・擬似連・ボーナス回数は正確に U63 を再現**しますが、\n'
+    + '   平均・中央値・機械割はこの買い取りぶんだけ高めに出ます)\n',
+  );
+}
+
+/** 擬似連の演出パターンID(data/zencho.js の CHAIN_SPEC_BY_PATTERN が正) */
+const CHAIN_PARAMS = Object.values(CHAIN_SPEC_BY_PATTERN).map((s) => s.chainParam);
 
 const fmt = (n, d = 1) => Number(n).toFixed(d);
 const pct = (n, d = 2) => `${fmt(n * 100, d)}%`;
@@ -74,8 +120,37 @@ function playSession(seed, agg) {
     }
     if (p.freeze) freeze = true;
   });
+  /*
+   * 前兆と擬似連の発生量(U72 で追加 / 2026-08-15 ユーザー指摘「擬似連が出ない」)。
+   *
+   * 擬似連(分散マップ / CodePipeline)は **前兆の演出パターンの1つ**なので、
+   * 前兆そのものが走らなくなると連動して消える = 前兆の本数と一緒に見ないと原因が読めない。
+   *   zencho    … 前兆の1step通知(擬似連以外のパターン。step=1 が前兆の開始)
+   *   chain     … 擬似連の1step通知(step=1 が開始 / step が伸びるほど連チャン)
+   *   chain2plus… 2step以上まで伸びた擬似連 = 「擬似連らしく見えた」回数
+   */
+  bus.on('paramChange', (p) => {
+    if (p.param === 'zencho' && p.step === 1) agg.zenchoStarts++;
+    if (!CHAIN_PARAMS.includes(p.param)) return;
+    if (p.step === 1) { agg.zenchoStarts++; agg.chains++; }
+    if (p.step === 2) agg.chains2plus++;
+    agg.chainSteps++;
+  });
   bus.on('modeExit', (p) => {
     if (p.id === 'CZ' && p.state?.czId) {
+      /*
+       * CZ突入の回数と入口の内訳(U72 で追加)。
+       *
+       * 「チャンス目を引いたらCZ」を主線に据えた以上、**1セッションに何回CZへ入るか**と
+       * **そのうち何割がチャンス目由来か**がバランスの一次指標になる
+       * (初当りだけ見ていると、CZが増えて突破率が下がっただけの状態に気づけない)。
+       * route は game/modes/freetier.js が付ける入口ラベル:
+       *   chance … チャンス目成立(主線)/ stage:WARM_POOL・stage:PROVISIONED … ステージの毎G抽選
+       *   direct … その他のレア役契機 / ceiling … 天井(Auto Recovery)
+       */
+      agg.czEntries++;
+      const route = (p.state.route ?? 'direct').split(':')[0];
+      agg.czRoute[route] = (agg.czRoute[route] ?? 0) + 1;
       const c = (agg.cz[p.state.czId] ??= { drawn: 0, win: 0, ceil: 0 });
       if (p.state.fromCeiling) { c.ceil++; return; }
       c.drawn++;
@@ -144,8 +219,9 @@ function playSession(seed, agg) {
 function runSeed(seed) {
   const agg = {
     normalSpins: 0, bonusEntries: 0, ceilingBonus: 0, recoveryBonus: 0,
-    freezeSessions: 0, at: 0, in: 0, out: 0,
-    cz: {}, bonus: {}, rush: {}, stage: {},
+    freezeSessions: 0, at: 0, in: 0, out: 0, czEntries: 0,
+    zenchoStarts: 0, chains: 0, chains2plus: 0, chainSteps: 0,
+    cz: {}, bonus: {}, rush: {}, stage: {}, czRoute: {},
   };
   const scores = [];
   for (let i = 0; i < RUNS; i++) scores.push(playSession(seed + i * 7919, agg));
@@ -183,6 +259,16 @@ line('抽選由来の初当り(1/95〜110)', (r) => {
   const drawn = r.agg.bonusEntries - r.agg.ceilingBonus - r.agg.recoveryBonus;
   return `1/${fmt(r.agg.normalSpins / Math.max(1, drawn))}`;
 });
+line('CZ突入/セッション(U72)', (r) => fmt(r.agg.czEntries / RUNS, 2));
+line('  内訳 チャンス目/サメ/ステージ/天井/他', (r) => {
+  const q = r.agg.czRoute;
+  const total = Math.max(1, r.agg.czEntries);
+  return ['chance', 'shark', 'stage', 'ceiling', 'direct']
+    .map((k) => fmt(((q[k] ?? 0) / total) * 100, 0)).join('/');
+});
+line('前兆/セッション(ガセ込み)', (r) => fmt(r.agg.zenchoStarts / RUNS, 2));
+line('擬似連/セッション(2step以上)', (r) => `${fmt(r.agg.chains / RUNS, 3)}(${fmt(r.agg.chains2plus / RUNS, 3)})`);
+line('  何セッションに1回', (r) => `1/${fmt(RUNS / Math.max(1, r.agg.chains), 1)}`);
 line('ボーナス回数/セッション', (r) => fmt(r.agg.bonusEntries / RUNS, 2));
 line('  うち引き戻し復帰(U32)', (r) => fmt(r.agg.recoveryBonus / RUNS, 2));
 line('RUSH突入/セッション', (r) => fmt(r.agg.at / RUNS, 2));

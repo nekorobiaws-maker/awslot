@@ -1,6 +1,15 @@
 /**
  * M01. Free Tier(通常時)。DESIGN.md 2.2 / 3.4 / 3.5
  *
+ * ── いまのCZ導線(U72 / 2026-08-15 ユーザー指示)────────────────────────
+ * **チャンス目(Lambda)を引いたらチャンスゾーン。サメ揃いも同じ。**
+ * この1行がこのモードの主線で、他のレア役はステージ昇格の担当。
+ *   1. 確定役が成立 → その場で「チャンス目 — CHANCE ZONE 確定!!」と告知
+ *   2. **2〜3Gの短い移行前兆**(擬似連を生かすための尺。下の czConfirmed を参照)
+ *   3. 前兆の最終Gで突入告知 → 次のレバーONでCZの1ゲーム目
+ * ステージの毎ゲーム抽選(NORMAL_SUBSTATES.czPerGame)と天井(78G)は残っているが、
+ * 前者は「おまけ」・後者は「救済」で、主線ではない。
+ *
  * Phase 5 で以下を実装:
  *  - 内部状態3段階(Cold Start / Warm Pool / Provisioned Concurrency)
  *    CZ抽選確率が ×1.0 / ×2.0 / ×4.0 に変動し、ステージ背景で示唆される
@@ -42,7 +51,7 @@ import {
   drawCzEntry, drawCzType, drawDirectBonus, drawRushType,
   drawSubStateUpgrade, drawSubStateDowngrade,
 } from '../lottery.js';
-import { NORMAL_SUBSTATES } from '../../data/modes.js';
+import { NORMAL_SUBSTATES, CZ_ENTRY } from '../../data/modes.js';
 import {
   ZENCHO, ZENCHO_PATTERN_BY_ID, ZENCHO_WIN_RANK, CHAIN_SPEC_BY_PATTERN,
 } from '../../data/zencho.js';
@@ -50,6 +59,48 @@ import {
 import { isRareRole } from '../../data/rareroles.js';
 
 const SUBSTATE_BY_ID = Object.fromEntries(NORMAL_SUBSTATES.states.map((s) => [s.id, s]));
+
+/**
+ * CZ確定役かどうか(U72 / 2026-08-15 ユーザー指示「チャンス目が出たらチャンスゾーン」)。
+ *
+ * **判定はデータ側(data/modes.js の CZ_ENTRY.table)を見るだけ**にしてある。
+ * ここに役IDを直書きすると、確定役を足したり外したりしたときに
+ * 「テーブルは 1.000 なのに即告知されない」という食い違いが起きるため。
+ * @param {string} flag 成立役
+ * @returns {boolean} その役でCZが確定するか
+ */
+function isCzConfirmFlag(flag) {
+  return (CZ_ENTRY.table[flag]?.cz ?? 0) >= 1;
+}
+
+/**
+ * CZ確定役の告知テロップ(U72)。
+ *
+ * 【U64-4「成立役テロップは書き戻さない」との関係】
+ * U64-4 が禁じたのは「チャンス目 — 次に期待」のような **成立しただけで何も確定していない**
+ * 役名テロップ(予告演出と同じことを2か所で言っていた)。
+ * こちらは **その役でCZ突入が確定した瞬間の当選告知**で、
+ * 「この役を引いたからCZに入った」という因果をプレイヤーへ伝えるのが仕事。
+ * U72 の指示「チャンス目=CZ がプレイヤーに伝わる一言」の置き場所そのものなので、
+ * 役名を出すのが正しい(ここを消すと、新ルールを画面から学ぶ手段が無くなる)。
+ */
+const CZ_CONFIRM_TELOP = {
+  CHANCE: 'チャンス目 — CHANCE ZONE 確定!!',
+  SHARK: 'サメ揃い — CHANCE ZONE 確定!!',
+};
+
+/** CZ確定役の入口ラベル(検証・プローブの内訳集計用) */
+const CZ_CONFIRM_ROUTE = { CHANCE: 'chance', SHARK: 'shark' };
+
+/**
+ * CZ確定役の告知から突入までに挟む移行前兆の最長ゲーム数(U72)。
+ *
+ * 0 にすると「確定告知 → 次スピンでCZ」になるが、**本前兆が1回も走らなくなる**
+ * ため擬似連(分散マップ / CodePipeline)が構造的に出なくなる(2026-08-15 ユーザー指摘)。
+ * 通常の本前兆は 2〜5G(data/zencho.js の ZENCHO.real.gamesDist)なので、
+ * 確定後の待ち時間として長すぎない **3G** で頭打ちにしている。
+ */
+const CZ_CONFIRM_ZENCHO_MAX_GAMES = 3;
 
 /**
  * 前兆の進行状態。ファイル冒頭のとおり state には持たせない。
@@ -304,8 +355,17 @@ export const freeTier = {
      */
     else if (res.directAt) win = { kind: 'AT', rushId: drawRushType(g.rng) };
     else if (res.cz) win = { kind: 'CZ', czId: drawCzType(g.rng) };
-    /** 当選の入口(検証用。直接 / 高確 / 激アツ / 天井) */
-    if (win) state.winRoute = state.subState === 'COLD_START' ? 'direct' : `stage:${state.subState}`;
+    /**
+     * 当選の入口(検証用。チャンス目 / サメ揃い / 直接 / 高確 / 激アツ / 天井)。
+     * U72 でCZ確定役(チャンス目・サメ揃い)は **ステージに関係なく確定** になったので、
+     * ステージ名ではなく役そのものをラベルにする(そうしないと
+     * 「高確で引いたチャンス目」が stage:WARM_POOL として数えられ、
+     *  主線がチャンス目なのかステージなのかがプローブから読めなくなる)。
+     */
+    if (win) {
+      state.winRoute = CZ_CONFIRM_ROUTE[g.flag]
+        ?? (state.subState === 'COLD_START' ? 'direct' : `stage:${state.subState}`);
+    }
 
     /**
      * ステージ滞在中の毎ゲーム抽選(2026-08-13 ユーザー指示)。
@@ -339,7 +399,60 @@ export const freeTier = {
     // 格上げの理由。演出は「1ゲームに1本」しか流せないので、
     // ここでは理由だけ決めておき、前兆の消化まで進めてからイベントを1本に絞る。
     let upgradeReason = null;
-    if (win) {
+    /** CZ確定役の告知テロップ(この後の前兆テロップより優先する) */
+    let czConfirmTelop = null;
+    /**
+     * ── U72: CZ確定役(チャンス目 / サメ揃い)の扱い(2026-08-15 ユーザー指示)──
+     *
+     * ユーザー指示は「チャンス目が出たらチャンスゾーンに入る。シンプルでいい」。
+     * **確定したことはその場のテロップで言い切る**(= ルールは1ゲームで伝わる)。
+     *
+     * ■ それでも前兆を挟む理由(2026-08-15 追加指示)
+     * 最初の実装は天井・フリーズと同じ「即告知 → 次スピンで突入」にしていたが、
+     * それだと **本前兆が1回も走らなくなる**。前兆の演出パターンには
+     * 擬似連(分散マップ / CodePipeline)が含まれていて、
+     * 擬似連が出られるのは「前兆が走っている間」だけなので、
+     * 確定役をCZへ直結させると **擬似連が構造的に死ぬ**(ユーザー指摘「擬似連が出ない」)。
+     * そこで確定役は
+     *   その場で「確定」を告知 → **短い移行前兆(2〜3G / 擬似連なら自分のstep数)** → CZ突入
+     * という形にした。当選は既に確定しているので前兆は当落を煽る装置ではなく、
+     * **突入までの見せ場**(擬似連が走る場所)として使う。
+     * 前兆の長さを 2〜3G に詰めてあるのは、告知から突入までが間延びしないため
+     * (通常の本前兆は 2〜5G / ZENCHO.real.gamesDist)。
+     *
+     * ■ 例外は1つだけ
+     * 前兆で **CZより上位の当選(ボーナス / RUSH直撃)** を保持しているときは、
+     * 確定役のCZで上書きすると格下げになるので通常処理へ落とす(格は絶対に下げない)。
+     * 擬似連のボーナス格上げより後ろに置いてあるのも同じ理由。
+     */
+    const czConfirmed = win?.kind === 'CZ' && isCzConfirmFlag(g.flag)
+      && !(zs.pending && ZENCHO_WIN_RANK[zs.pending.kind] > ZENCHO_WIN_RANK.CZ);
+    if (czConfirmed) {
+      if (!zs.z) {
+        startZencho(zs, g.rng, 'real', win, state);
+        shortenConfirmZencho(zs);
+      } else if (zs.z.chain) {
+        // 擬似連は自分の step 数で完結させる(尺を詰めると step4 のボーナス確定が消える)
+        upgradePending(zs, win);
+      } else if (!zs.pending) {
+        promoteZencho(zs, g.rng, win);
+        shortenConfirmZencho(zs);
+      } else {
+        // 同格(CZ)の保持を、いま確定した当選で置き換えてから尺を詰める
+        zs.pending = win;
+        shortenConfirmZencho(zs);
+      }
+      czConfirmTelop = CZ_CONFIRM_TELOP[g.flag] ?? 'CHANCE ZONE 確定!!';
+      /**
+       * 演出フック。どの役でCZが確定したかを1本だけ流す。
+       * 既存シナリオはどれも param 名か source で絞っているので、
+       * 新しい param 名を足しても既存の演出を巻き込むことはない。
+       */
+      events.push({
+        name: 'paramChange',
+        payload: { param: 'cz_confirmed', value: g.flag, delta: 0, czId: win.czId },
+      });
+    } else if (win) {
       if (!zs.z) {
         // 通常の当選 → 本前兆スタート
         startZencho(zs, g.rng, 'real', win, state);
@@ -421,7 +534,7 @@ export const freeTier = {
     }
 
     /*
-     * 昇格テロップ > 前兆テロップ の優先順。
+     * CZ確定の告知 > 昇格テロップ > 前兆テロップ の優先順。
      *
      * ── 成立役テロップを廃止した(2026-08-15 ユーザー指示 U64-4)────────────
      * ここには以前 `${役名} — 次に期待`(「チャンス目 — 次に期待」等)を出していたが、
@@ -429,8 +542,11 @@ export const freeTier = {
      * 下部テロップにも同じことを書くと U8(同じ情報を2か所に出さない)に反する。
      * レア役を引いたことは画と音で必ず伝わるので、テロップからは落とす。
      * **役名を出すテロップをここへ書き戻さないこと。**
+     * (U72 の CZ_CONFIRM_TELOP は「成立しました」ではなく「CZが確定しました」= 当選告知。
+     *  この1行だけが新ルールをプレイヤーへ伝える場所なので、昇格告知より優先する)
      */
-    if (!telop) telop = zenchoTelop;
+    if (czConfirmTelop) telop = czConfirmTelop;
+    else if (!telop) telop = zenchoTelop;
     return { telop, events };
   },
 };
@@ -540,6 +656,26 @@ function startZencho(zs, rng, kind, pending, state = null) {
   zs.pending = pending ?? null;
   // 演出向けの公開フラグ(本前兆・ガセの区別は載せない。後述 setZenchoActive)
   setZenchoActive(state, true);
+}
+
+/**
+ * CZ確定役(U72)の移行前兆を短く詰める。
+ *
+ * 確定を告知したあとの前兆は **当落を煽る装置ではなく突入までの見せ場**なので、
+ * 通常の本前兆(2〜5G)より短い **最長 CZ_CONFIRM_ZENCHO_MAX_GAMES** に収める。
+ * 経過ぶん(step)は動かさないので、ガセからの格上げでも見た目が巻き戻らない。
+ *
+ * 【擬似連は詰めない】擬似連は自分の step 数(1〜4)で完結する時計で、
+ * step3 のCZ移行・step4 のボーナス確定がその尺に紐づいている。
+ * ここで尺を切ると **step4 に到達できなくなり、ボーナスへの格上げを player から奪う**。
+ * もともと最長4stepなので詰める必要もない。
+ * @param {{z: object|null}} zs 前兆状態
+ */
+function shortenConfirmZencho(zs) {
+  const z = zs.z;
+  if (!z || z.chain) return;
+  z.left = Math.max(1, Math.min(z.left, CZ_CONFIRM_ZENCHO_MAX_GAMES));
+  z.total = z.step + z.left;
 }
 
 /**

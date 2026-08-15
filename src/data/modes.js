@@ -156,7 +156,30 @@ export const NORMAL_SUBSTATES = {
    * 張り付いたので、U48 のときと同じく **ここだけをもう一段(0.90倍)** 絞って
    * 1/100 前後へ着地させた(昇格率は「レア役を引いた手応え」なので触らない)。
    */
-  czPerGame: { COLD_START: 0, WARM_POOL: 0.0162, PROVISIONED: 0.064 },
+  /**
+   * 【U72(2026-08-15)/ 主線をチャンス目へ移したので、ここは「おまけ」へ降格】
+   *
+   * ■ 何が起きていたか
+   * U63 時点の実測(20,000セッション×3シード)では **CZ突入の 68% がこの毎ゲーム抽選**、
+   * レア役契機はわずか 5%、天井が 28%。プレイヤーから見ると
+   * 「自分の引きと関係なく、いつの間にかCZに入っている / 入らない」だった。
+   * ユーザー指示「チャンス目が出たらチャンスゾーン。シンプルでいい」に従い、
+   * **主線は CZ_ENTRY のチャンス目(1/45 = 確定)へ完全に移した**。
+   *
+   * ■ ではなぜ 0 にしないのか(廃止しなかった理由)
+   * ここを 0 にすると 通常 / サミット会場(高確)/ Invent会場(激アツ)の3ステージが
+   * **何の意味も持たなくなる**(昇格演出・背景・ステージ示唆・予告の期待度がまるごと死ぬ)。
+   * ステージには「チャンス目を引かなくてもCZに入ることがある」という
+   * **おまけの役割だけ**を残し、主線を食わない水準まで落とした:
+   *   高確   0.0162 → **0.004**(1/61.7G → 1/250G)
+   *   激アツ 0.064  → **0.016**(1/15.6G → 1/62.5G)
+   * = ステージ由来のCZは **CZ突入の1〜2割**。主役はあくまでチャンス目。
+   * 「激アツに上がったら数ゲーム以内に勝負が決まる」というU63までのリズムは
+   * ここでは作らない(その役目はチャンス目 1/45 が引き受けた)。
+   */
+  czPerGame: { COLD_START: 0, WARM_POOL: 0.003, PROVISIONED: 0.012 },
+  /** U72(チャンス目=CZ確定)の直前値 = U63 の値。主線を戻すなら CZ_ENTRY と一緒に戻す */
+  previousCzPerGameU63: { COLD_START: 0, WARM_POOL: 0.0162, PROVISIONED: 0.064 },
   /** U63(レア役さらに2倍)の直前値 = U48 の値 */
   previousCzPerGameRare2x: { COLD_START: 0, WARM_POOL: 0.030, PROVISIONED: 0.119 },
   /** U48(レア役2倍)の直前値 */
@@ -169,8 +192,17 @@ export const NORMAL_SUBSTATES = {
    * 激アツの毎ゲーム抽選のうち、CZではなくボーナス直撃になる割合。
    * 直撃はCZの突破率を経由しないぶん初当りに直結するので、
    * 2026-08-14 の引き締めでは czPerGame とは別に share 自体も少し下げてある。
+   *
+   * 【U72(2026-08-15)で 0 にした】導線をシンプルにするための整理。
+   * 上の czPerGame が「おまけ」まで落ちた以上、そのおまけの中でさらに
+   * 6%/16% だけ結果が変わる分岐は **誰にも見えない複雑さ**でしかない。
+   * ボーナス直撃は「ゴースト揃い / スイカ / 強チェリーを引いたとき」に一本化し、
+   * ステージ抽選は必ずCZ(= 分かりやすい1本道)にする。
+   * 戻すときは previousBonusShareU63 の値へ。
    */
-  bonusShareOfStageDraw: { COLD_START: 0, WARM_POOL: 0.06, PROVISIONED: 0.16 },
+  bonusShareOfStageDraw: { COLD_START: 0, WARM_POOL: 0, PROVISIONED: 0 },
+  /** U72(直撃をレア役契機へ一本化)の直前値 = U63 の値 */
+  previousBonusShareU63: { COLD_START: 0, WARM_POOL: 0.06, PROVISIONED: 0.16 },
   /** 初当り引き締め前の直撃割合 */
   previousBonusShareOfStageDraw: { COLD_START: 0, WARM_POOL: 0.10, PROVISIONED: 0.30 },
   /**
@@ -252,7 +284,15 @@ export const NORMAL_SUBSTATES = {
  */
 export const CZ_ENTRY = {
   id: 'cz_entry',
-  note: '確率は czMultiplier を適用(飽和しないよう 1-(1-p)^mult で合成)',
+  /**
+   * いまのルール(U72 / 2026-08-15)は1行で言える:
+   *   **チャンス目(Lambda)を引いたらチャンスゾーン。サメ揃いも同じ。**
+   * 下の table にある細かい数字は、そのルールの外側にある「直撃」だけ。
+   * 詳しい経緯と、他の導線をどう畳んだかは table の直前のコメントを読むこと。
+   */
+  headline: 'チャンス目 = CZ突入確定(U72)',
+  note: '確率は czMultiplier を適用(飽和しないよう 1-(1-p)^mult で合成)。'
+    + ' cz が 1.000 の役(チャンス目 / サメ揃い)は倍率に関係なく確定',
   /**
    * スコアアタック化に伴う再調整(2026-08-13 その3 ※当時は1プレイ50回転):
    * 1プレイ50回転なので「1回も当たらずに終わる回」を減らすのが最優先。
@@ -320,6 +360,60 @@ export const CZ_ENTRY = {
      *     出現率 1/1500 は通常時 75G で 5% = ボーナス初当りの約 6% を担う。
      *     ここは「引けたら確定」の背骨なので、寄与が増えるぶんは他で吸収する。
      */
+    /**
+     * ══ U72(2026-08-15 ユーザー指示)/ 「チャンス目が出たらチャンスゾーン」═══
+     *
+     * ■ 何が問題だったか
+     * U48・U63 でレア役の出現率を4倍にした相殺として、ここの当選率を 0.5倍 × 2回
+     * = **1/4** まで絞った。その結果 レア役契機のCZは
+     * **実測でCZ突入の 5% しか担っていない**(20,000セッション×3シード)。
+     * 残りは ステージの毎ゲーム抽選 68% と 天井 28%。
+     * = 「レア役を引いてもCZに入らない。入るときは勝手に入っている」状態で、
+     *   ユーザー体感は「CZにほぼ入らなくなった」。
+     *
+     * ■ ユーザー指示(そのまま)
+     *   「Lambdaのチャンス目が出たらチャンスゾーンに入る。シンプルでいい」
+     *
+     * ■ 新しい主線 — **チャンス目(1/45)= CZ突入確定**
+     *   ・ステージ(通常/高確/激アツ)も内部状態も問わず **100%**
+     *   ・前兆を挟まず **即告知**(game/modes/freetier.js。cz >= 1 の役が対象)
+     *   ・通常時の滞在は約70G なので **セッションあたり 1.4回前後**、
+     *     これだけでCZ供給の主線として足りる(実測は下の「U72 の着地」参照)
+     *
+     * ■ 同時に整理したもの(分かりやすさ最優先)
+     *   ・**サメ揃い(1/300)も CZ確定**。チャンス目の上位互換にしないと
+     *     「チャンス目より重い役を引いたのにCZに入らない」という倒立が起きる。
+     *     サメだけが持つ RUSH直撃(direct_at)はそのまま上振れとして残す
+     *   ・**それ以外のレア役の cz は全部 0**(Bedrock役・弱チェリー・スイカ・強チェリー)。
+     *     これらの仕事は NORMAL_SUBSTATES.upgrade(ステージ昇格)に一本化する。
+     *     0.7%〜2% の当選率は「引いた気がしない」だけで導線の説明を濁らせていた
+     *   ・チャンス目の **ボーナス直撃も 0**(旧 0.00625)。0.6% とはいえ残すと
+     *     「チャンス目=CZ」に例外ができる。上位への格上げでも例外は作らない
+     *   ・強チェリーは cz を失うぶん **ボーナス直撃を 0.016 → 0.020** に厚くした
+     *     (期待値の帳尻ではなく「強チェリーは直撃の役」という役割の明確化)
+     *   ・ゴースト揃いの bonus 1.000 は **今回も一切触らない**
+     *
+     * ■ 結果として、この表は3行だけ覚えれば読める
+     *     チャンス目・サメ揃い … CZ確定
+     *     ゴースト揃い         … ボーナス確定
+     *     スイカ・強チェリー   … まれに直撃(サメは RUSH直撃)
+     *   残りの役(Bedrock役・弱チェリー)はステージ昇格の担当。
+     */
+    ALARM:         { cz: 0.000,   bonus: 0.00000, direct_at: 0.00000 },
+    WEAK_CHERRY:   { cz: 0.000,   bonus: 0.00000, direct_at: 0.00000 },
+    MELON:         { cz: 0.000,   bonus: 0.00350, direct_at: 0.00000 },
+    CHANCE:        { cz: 1.000,   bonus: 0.00000, direct_at: 0.00000 },
+    STRONG_CHERRY: { cz: 0.000,   bonus: 0.02000, direct_at: 0.00175 },
+    SHARK:         { cz: 1.000,   bonus: 0.00000, direct_at: 0.00850 },
+    GHOST:         { cz: 0.000,   bonus: 1.00000, direct_at: 0.00000 },
+  },
+  /**
+   * U72(チャンス目=CZ確定)の直前値 = U63 の値。
+   * 「レア役ごとに細かい当選率を持つ」旧方式へ戻すならここへ戻すこと
+   * (戻す場合は NORMAL_SUBSTATES.czPerGame も previousCzPerGameU63 へ一緒に戻す。
+   *  片方だけ戻すとCZ供給が半分または倍になる)。
+   */
+  previousTableU63: {
     ALARM:         { cz: 0.012,   bonus: 0.00000, direct_at: 0.00000 },
     WEAK_CHERRY:   { cz: 0.00675, bonus: 0.00000, direct_at: 0.00000 },
     MELON:         { cz: 0.011,   bonus: 0.00350, direct_at: 0.00000 },
@@ -488,6 +582,16 @@ export const CZ_TYPES = {
    *                  + 0.02×0.72 + 0.02×0.84 ≒ **0.4134**(8種時代 0.4186 とほぼ同じ)
    *   平均滞在も 4.06G → **3.91G** で、CZが持ち時間を食う量は増えていない。
    * = 「CZの種類だけが増えて、初当りの重さは変わらない」再配分になっている。
+   *
+   * ── 【U72(2026-08-15)/ 振り分けは据え置き・突破率だけ一律 0.80倍】────────
+   * 「チャンス目 = CZ突入確定」にしたことで、CZ突入が **1.49 → 2.28回/セッション**
+   * (+53%)まで増えた。振り分け(どのCZがよく出るか)はCZの性格を決める表なので触らず、
+   * **抽選型11種の突破率だけを一律 0.80倍** して初当りを目標帯へ戻している
+   *   加重平均突破率 0.4134 → **0.3357**(-19%)
+   * 一律なので格差ラダーの順序も相対的な差も完全に保たれる(★は expectation 側なので不変)。
+   * 参加型の Well-Architected(0.83)は柱の獲得則で決まる公称値なので **据え置き**
+   *   = ラダー最上位とその下(FIS 0.58)の差はむしろ開き、「ご褒美CZ」の格が上がった。
+   * 旧値は previousSuccessRateU63 に保持。
    */
   distribution: {
     CW_ALARM: 0.22,
@@ -518,6 +622,18 @@ export const CZ_TYPES = {
   },
   /** Step Functions CZ 追加前の振り分け(戻す時の基準として保持) */
   previousDistribution: { CW_ALARM: 0.60, TRUSTED_ADVISOR: 0.30, WELL_ARCHITECTED: 0.10 },
+  /**
+   * U72(チャンス目=CZ確定)の直前 = U63 の突破率。
+   * CZ突入が1.5倍に増えたぶんをここで受けているので、
+   * **CZ_ENTRY を旧方式へ戻すときは必ずこの値へ一緒に戻すこと**
+   * (片方だけ戻すと初当りが 1/80 か 1/130 に振れる)。
+   * 参加型の WELL_ARCHITECTED は U72 でも動かしていないため載せていない。
+   */
+  previousSuccessRateU63: {
+    CW_ALARM: 0.30, SQS_REDRIVE: 0.26, CONFIG_RULES: 0.36, ALB_CZ: 0.42,
+    DX_REDUNDANCY: 0.47, TRUSTED_ADVISOR: 0.50, SFN_CZ: 0.55, CODEDEPLOY_BG: 0.62,
+    SHIELD_DDOS: 0.66, FIS_GAMEDAY: 0.72,
+  },
   /** 格差付け前の突破率(2026-08-13 午前の値) */
   previousSuccessRate: {
     CW_ALARM: 0.68, TRUSTED_ADVISOR: 0.72, SFN_CZ: 0.55, WELL_ARCHITECTED: 0.85,
@@ -527,7 +643,7 @@ export const CZ_TYPES = {
       // スコアアタック化(2026-08-13): 5G → 4G / 突破率 0.48 → 0.58。
       // 100回転しかないので、CZ滞在そのものが持ち時間を食う。短く・当たりやすく。
       // 格差付け(同日): 一番よく入るCZなので、ここを絞って全体の初当りを制御する。
-      id: 'CW_ALARM', name: 'CloudWatch アラートCZ', games: 3, successRate: 0.30,
+      id: 'CW_ALARM', name: 'CloudWatch アラートCZ', games: 3, successRate: 0.24,
       expectation: 1,
       // RUSHの門を狭める(2026-08-13): シャークボーナス(REG / atRate 低)寄りへ再配分。
       // ボーナスの当たりやすさは変えず、「ボーナス → RUSH」の接続だけを絞る。
@@ -547,7 +663,7 @@ export const CZ_TYPES = {
        * ペース保証(cz.js advanceDlq): 道中は failLeft+1 通までしか減らせない。
        * 当落どちらも同じ位置で最終ゲームを迎えるので、途中経過から結果は読めない。
        */
-      id: 'SQS_REDRIVE', name: 'SQS デッドレター再処理CZ', games: 3, successRate: 0.26,
+      id: 'SQS_REDRIVE', name: 'SQS デッドレター再処理CZ', games: 3, successRate: 0.21,
       expectation: 1,
       // 最弱枠なので REG 寄せを一番きつくする(入りやすいCZが RUSH の門を広げない)
       bonusDist: { LAMBDA_REG: 0.90, S3_BIG: 0.09, DYNAMO_BIG: 0.01 },
@@ -585,7 +701,7 @@ export const CZ_TYPES = {
        *   (黄色が失敗なのか途中なのか画面から判断できず、文言3条件のAWS条件にも抵触)。
        *   statusLabels で実在する語へ差し替えている。
        */
-      id: 'CONFIG_RULES', name: 'AWS Config 準拠ルールCZ', games: 4, successRate: 0.36,
+      id: 'CONFIG_RULES', name: 'AWS Config 準拠ルールCZ', games: 4, successRate: 0.29,
       expectation: 1,
       // 弱枠なのでシャークボーナス寄せ(CZが増えても RUSH の門を広げない)
       bonusDist: { LAMBDA_REG: 0.84, S3_BIG: 0.14, DYNAMO_BIG: 0.02 },
@@ -630,7 +746,7 @@ export const CZ_TYPES = {
        * Trusted Advisor と同じく **最終ゲームで残りが一斉に healthy** になる形にする
        * (道中は当落どちらも failHealthy 台までしか上がらない = 途中経過から結果が読めない)。
        */
-      id: 'ALB_CZ', name: 'ALB ターゲットグループCZ', games: 4, successRate: 0.42,
+      id: 'ALB_CZ', name: 'ALB ターゲットグループCZ', games: 4, successRate: 0.34,
       expectation: 2,
       bonusDist: { LAMBDA_REG: 0.80, S3_BIG: 0.18, DYNAMO_BIG: 0.02 },
       ui: 'alb',
@@ -670,7 +786,7 @@ export const CZ_TYPES = {
        *   BGP セッション確立 → ルート伝搬。BGP が上がらなければ本番トラフィックは流れない。
        *   本数は「2ロケーション × 2接続」= AWS のレジリエンシーモデルの最上位に合わせている。
        */
-      id: 'DX_REDUNDANCY', name: 'Direct Connect 冗長化CZ', games: 4, successRate: 0.47,
+      id: 'DX_REDUNDANCY', name: 'Direct Connect 冗長化CZ', games: 4, successRate: 0.38,
       expectation: 2,
       bonusDist: { LAMBDA_REG: 0.72, S3_BIG: 0.24, DYNAMO_BIG: 0.04 },
       ui: 'pillars',
@@ -709,7 +825,7 @@ export const CZ_TYPES = {
        * 最終ゲームまでは当落どちらも failGreen 個までしか緑にしないので、
        * 途中経過から結果は読めない(全緑の瞬間まで引っ張る)。
        */
-      id: 'TRUSTED_ADVISOR', name: 'Trusted Advisor CZ', games: 5, successRate: 0.50,
+      id: 'TRUSTED_ADVISOR', name: 'Trusted Advisor CZ', games: 5, successRate: 0.40,
       expectation: 2,
       bonusDist: { LAMBDA_REG: 0.62, S3_BIG: 0.30, DYNAMO_BIG: 0.08 },
       previousBonusDist: { LAMBDA_REG: 0.40, S3_BIG: 0.45, DYNAMO_BIG: 0.15 },
@@ -747,7 +863,7 @@ export const CZ_TYPES = {
        * Fail State へ落ちるのは 1〜4 番目のいずれか(failStepDist)。
        * = 最終ステートに到達した時点で突破確定になる。
        */
-      id: 'SFN_CZ', name: 'Step Functions CZ', games: 5, successRate: 0.55,
+      id: 'SFN_CZ', name: 'Step Functions CZ', games: 5, successRate: 0.44,
       expectation: 2,
       bonusDist: { LAMBDA_REG: 0.58, S3_BIG: 0.32, DYNAMO_BIG: 0.10 },
       previousBonusDist: { LAMBDA_REG: 0.40, S3_BIG: 0.45, DYNAMO_BIG: 0.15 },
@@ -779,7 +895,7 @@ export const CZ_TYPES = {
        * 「%バーが伸びて、失敗したら戻る」なのでワークフロー図とは完全に別物になる。
        * 最終ステップ(100%)に到達した時点で突破確定 = failShiftDist は 1〜4 だけ。
        */
-      id: 'CODEDEPLOY_BG', name: 'CodeDeploy Blue/Green CZ', games: 5, successRate: 0.62,
+      id: 'CODEDEPLOY_BG', name: 'CodeDeploy Blue/Green CZ', games: 5, successRate: 0.50,
       expectation: 2,
       bonusDist: { LAMBDA_REG: 0.58, S3_BIG: 0.33, DYNAMO_BIG: 0.09 },
       ui: 'bluegreen',
@@ -822,7 +938,7 @@ export const CZ_TYPES = {
        *   ダメージ計画は固定値(RNGを使わない)なので、耐え切る回は必ず
        *   バジェットを残して終わる = 「緩和したのに落ちた」矛盾が起きない。
        */
-      id: 'SHIELD_DDOS', name: 'Shield / WAF DDoS 防御CZ', games: 3, successRate: 0.66,
+      id: 'SHIELD_DDOS', name: 'Shield / WAF DDoS 防御CZ', games: 3, successRate: 0.53,
       expectation: 2,
       bonusDist: { LAMBDA_REG: 0.50, S3_BIG: 0.36, DYNAMO_BIG: 0.14 },
       ui: 'fis',
@@ -878,7 +994,7 @@ export const CZ_TYPES = {
        * 「耐えたのに尽きた」という矛盾した絵が出ない。
        * レア役の自動復旧(バジェット回復)は見せ場だけで当落を動かさない。
        */
-      id: 'FIS_GAMEDAY', name: 'GameDay CZ(FIS 障害注入)', games: 5, successRate: 0.72,
+      id: 'FIS_GAMEDAY', name: 'GameDay CZ(FIS 障害注入)', games: 5, successRate: 0.58,
       expectation: 3,
       bonusDist: { LAMBDA_REG: 0.42, S3_BIG: 0.40, DYNAMO_BIG: 0.18 },
       ui: 'fis',
@@ -1075,7 +1191,7 @@ export function czStars(specOrId) {
  *     **ベルが揃うたびに15枚**払い出す実機方式へ変更
  * DynamoDB BIG はセット継続型のまま 1セット30G → **15G**(継続率0.70は不変)。
  *
- * 純増は **8.45枚/G**(ベル1/1.4。U22 でレア役を厚くする前は 1/1.2 で 9.76枚/G。
+ * 純増は **10.60枚/G**(U72 でベルの払出が 15 → 18枚。それ以前は 8.45枚/G。
  * 正は data/payouts.js の BONUS_NET_PER_GAME)。獲得量は旧仕様とほぼ同じで、
  * 消化ゲーム数だけが 1/3〜1/5 に短縮される = 「一気に増える」体感に寄せた変更。
  * ※ payoutPerGame は撤去済み。ボーナス中の払出は小役払出そのものを使う。

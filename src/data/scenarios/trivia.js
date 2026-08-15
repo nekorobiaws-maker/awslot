@@ -108,6 +108,14 @@ export default [
     cues: [
       // 小さいチャイム。ベルの入賞音や払出音の邪魔をしない音量にしてある
       { at: 0, layer: 'sfx', action: 'synth', params: { preset: 'ui_select', gain: 0.3 } },
+      /*
+       * カードの横で解説ポーズ(U71: explain → present = グラフを指すポーズ)。
+       * 読み物の主役はカードなので、ルナは指し示すだけで文字には触れない
+       * (立ち位置はモード既定のまま。カードは重ならない座標に描かれている)。
+       * ポーズを素へ戻すキューは置かない — カードが消えるより先に
+       * render/chars/index.js が9秒で静かな立ち姿へ寝かせる。
+       */
+      { at: 120, layer: 'char', action: 'show', params: { char: 'kiro', pose: 'explain' } },
       {
         at: 0,
         layer: 'lcd',

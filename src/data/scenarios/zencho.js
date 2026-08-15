@@ -97,6 +97,18 @@ function zenchoBeat({
         : []),
       // 読ませる文字はすべて lcd.text = 座布団つき(V31-08)
       { at: 240, layer: 'lcd', action: 'text', params: { text, sub, color, ms: 1100 } },
+      /*
+       * 前兆中の相槌(U71)。「あれ?」「なんか来てる…?」あたりが **たまに** ぽつりと鳴る。
+       *
+       * ■ chance 0.25 の理由
+       *   前兆は 3〜5ゲーム続き、そのあいだ毎ゲームこの1コマが出る。
+       *   毎回喋ると相棒がうるさくなるので、4回に1回くらい = 前兆1回につき1度あるかないか。
+       *   さらに engine/voice.js が「1ゲーム1本 + cooldown 4秒」で二重に抑えるので、
+       *   赤文字予兆(下の zenchoHot)と重なった回はどちらか片方しか鳴らない。
+       * ■ 断定しない
+       *   react は全部が疑問形。ガセ前兆で鳴っても嘘にならない(data/voicepools.js)。
+       */
+      { at: 620, layer: 'voice', action: 'play', params: { pool: 'react', chance: 0.25 } },
     ],
   };
 }
@@ -126,6 +138,12 @@ function zenchoHot({ id, name, pattern, text, sub, sfx = 'alarm_beep' }) {
       { at: 120, layer: 'lcd', action: 'anim', params: { anim: 'step_up', step: '$level' } },
       { at: 300, layer: 'lcd', action: 'text',
         params: { text, sub, tone: 'hot', color: C.HOT, ms: 1300 } },
+      /*
+       * 赤文字予兆の煽り(U71)。tease は「これは…」「激アツ?」「くるかも…」など
+       * **全部が疑問形**なので、鳴っても信頼度は漏れない(赤帯そのものが示唆の本体)。
+       * 弱い1コマ(zenchoBeat)より少しだけ出やすくして、赤のときの温度差を作る。
+       */
+      { at: 700, layer: 'voice', action: 'play', params: { pool: 'tease', chance: 0.35 } },
     ],
   };
 }
@@ -185,8 +203,12 @@ export default [
       { at: 200, layer: 'lcd',  action: 'text',
         params: { text: 'SQS BACKLOG ${step}', sub: '未処理のメッセージが積み上がっている', color: '#ffd166', ms: 1100 } },
       { at: 240, layer: 'char', action: 'show', params: { char: 'kiro', pose: 'surprised' } },
-      // 前兆の入りの相槌(U68)。何かが起きかけている、を疑問形で置くだけ
-      { at: 320, layer: 'voice', action: 'play', params: { key: 'luna_react_nani_01', chance: 0.25 } },
+      /*
+       * 前兆の入りの相槌(U68 → U71 でプール化)。
+       * 「あれ?」「なになに?」「ん?」… のどれかが鳴る。前兆は何ゲームも続くので、
+       * 1本固定だと同じ声を繰り返し聞くことになる(pool の詳細は data/voicepools.js)。
+       */
+      { at: 320, layer: 'voice', action: 'play', params: { pool: 'react', chance: 0.25 } },
       { at: 1400, layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'normal' } },
     ],
   },
@@ -210,11 +232,11 @@ export default [
       { at: 360, layer: 'lcd', action: 'text',
         params: { text: 'CANARY ${step}0%', sub: '新バージョンへ流量を寄せている', color: '#7bf7d0', ms: 1100 } },
       /*
-       * CZ示唆の相槌(U68)。カナリアリリースは CZ の題材そのものなので、
-       * 「チャンスかも?」を **疑問形のまま** 置く。断定しないので
-       * ガセ前兆で鳴っても嘘にならない(本前兆かどうかはここでは分からない)。
+       * CZ示唆の相槌(U68 → U71 でプール化)。カナリアリリースは CZ の題材そのもの。
+       * tease プールは「チャンスかも?」「これは…」「くるかも…」など **全部が疑問形**なので、
+       * どれが鳴っても断定しない = ガセ前兆で鳴っても嘘にならない。
        */
-      { at: 700, layer: 'voice', action: 'play', params: { key: 'luna_cz_chance_01', chance: 0.28 } },
+      { at: 700, layer: 'voice', action: 'play', params: { pool: 'tease', chance: 0.28 } },
     ],
   },
 
@@ -331,7 +353,9 @@ export default [
       // U9: S3(スイカ)対応の示唆なので緑。tone は付けない
       { at: 300, layer: 'lcd',  action: 'text',
         params: { text: 'RESTORE ${step}/5', sub: 'Glacier からの復元が進んでいる', color: '#4ce0a0', ms: 1200 } },
-      { at: 340, layer: 'char', action: 'show', params: { char: 'kiro', pose: 'normal' } },
+      // 復元が終わるまで待つ場面なので、考え中の顔で眺めている(U71: think)
+      { at: 340, layer: 'char', action: 'show', params: { char: 'kiro', pose: 'think' } },
+      { at: 1750, layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'normal' } },
     ],
   },
 
@@ -346,8 +370,12 @@ export default [
     cues: [
       { at: 0,   layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick', gain: 0.5 } },
       { at: 40,  layer: 'lcd', action: 'anim',  params: { anim: 'step_up', step: '$level' } },
+      // 待たされている間はノートPCを開いて作業(U71: work → coding)。
+      // 何も起きないのがこのパターンの役目なので、表情も「手を動かしているだけ」に留める
+      { at: 60,  layer: 'char', action: 'show', params: { char: 'kiro', pose: 'work' } },
       { at: 240, layer: 'lcd', action: 'text',
         params: { text: 'INIT… ${step}', sub: 'コールドスタートで少し待たされている', color: '#8ad4ff', ms: 1000 } },
+      { at: 1350, layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'normal' } },
     ],
   },
 
@@ -453,8 +481,8 @@ export default [
       { at: 260,  layer: 'lcd',     action: 'text',
         params: { text: 'ESCALATED', sub: 'エスカレーション先を選定中…', tone: 'hot', color: '#ff3b30', ms: 1400 } },
       { at: 300,  layer: 'char',    action: 'show', params: { char: 'kiro', pose: 'panic' } },
-      // 前兆が伸びきった場面の煽り(U68)。ここは疑問形の「激アツ?」で、断定はしない
-      { at: 620,  layer: 'voice',   action: 'play', params: { key: 'luna_hot_01', chance: 0.5 } },
+      // 前兆が伸びきった場面の煽り(U68 → U71 でプール化)。tease は全部が疑問形なので断定しない
+      { at: 620,  layer: 'voice',   action: 'play', params: { pool: 'tease', chance: 0.5 } },
       { at: 1000, layer: 'sfx',     action: 'synth', params: { preset: 'countdown_tick' } },
       { at: 1700, layer: 'char',    action: 'pose', params: { char: 'kiro', pose: 'surprised' } },
     ],
@@ -565,10 +593,13 @@ export default [
       { at: 0,    layer: 'lcd',   action: 'anim',  params: { anim: 'health_check', ok: true, label: 'NO ISSUE' } },
       { at: 260,  layer: 'lcd',   action: 'text',
         params: { text: 'RESOLVED', sub: '誤検知でした', color: '#8aa0b4', ms: 1200 } },
-      { at: 300,  layer: 'char',  action: 'show', params: { char: 'kiro', pose: 'normal' } },
+      // ガセ終了。肩透かしを食った顔をひとつ挟んでから素へ戻る(U71: cry ではなく sulk。
+      // ここは泣くほどの負けではない = 表情の格を場面に合わせる)
+      { at: 300,  layer: 'char',  action: 'show', params: { char: 'kiro', pose: 'angry' } },
       { at: 900,  layer: 'lamp',  action: 'pattern', params: { pattern: 'idle' } },
-      // ガセ終了。落胆しすぎない「んー…」で流す(U68)
-      { at: 1100, layer: 'voice', action: 'play', params: { key: 'luna_hmm_01', chance: 0.5 } },
+      // 落胆しすぎない「気のせいかな?」「んー…」あたりで流す(U68 → U71 でプール化)
+      { at: 1100, layer: 'voice', action: 'play', params: { pool: 'doubt', chance: 0.5 } },
+      { at: 1650, layer: 'char',  action: 'pose', params: { char: 'kiro', pose: 'normal' } },
     ],
   },
 

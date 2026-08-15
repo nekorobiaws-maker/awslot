@@ -163,9 +163,10 @@ export default [
           text: 'BACK TO OK', sub: 'しきい値を割った — 通常へ',
           color: '#8ad4ff', ms: 1600, sticky: false,
         } },
-      { at: 1200, layer: 'char',  action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
-      // CZ非突破。結果が確定した瞬間なので間引かない(U68)
+      // CZ非突破。泣き顔をひと呼吸だけ(U71)。結果が確定した瞬間なので声は間引かない(U68)
+      { at: 1200, layer: 'char',  action: 'pose',  params: { char: 'kiro', pose: 'lose' } },
       { at: 1300, layer: 'voice', action: 'play',  params: { key: 'luna_lose_01', force: true } },
+      { at: 2100, layer: 'char',  action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
     ],
   },
 
@@ -246,8 +247,11 @@ export default [
       { at: 100,  layer: 'lcd',  action: 'anim',
         params: { anim: 'health_check', ok: false, label: 'EXECUTION FAILED' } },
       { at: 1200, layer: 'overlay', action: 'flash', params: { color: '#ff4d4d', ms: 280 } },
-      { at: 1300, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
+      // CZ非突破。**泣き顔をひと呼吸だけ**見せて「ざんねん…」と重ね、すぐ素へ戻る
+      // (U71: cry の出番。引きずらないのは次のゲームへ気持ちを渡すため)
+      { at: 1300, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'lose' } },
       { at: 1400, layer: 'voice', action: 'play', params: { key: 'luna_lose_01', force: true } },
+      { at: 2200, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
     ],
   },
 
@@ -303,8 +307,11 @@ export default [
       { at: 0,    layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'panic' } },
       { at: 100,  layer: 'lcd',  action: 'anim',  params: { anim: 'health_check', ok: false, label: 'NEEDS WORK' } },
       { at: 1200, layer: 'overlay', action: 'flash', params: { color: '#ff4d4d', ms: 300 } },
-      { at: 1300, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
+      // CZ非突破。**泣き顔をひと呼吸だけ**見せて「ざんねん…」と重ね、すぐ素へ戻る
+      // (U71: cry の出番。引きずらないのは次のゲームへ気持ちを渡すため)
+      { at: 1300, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'lose' } },
       { at: 1400, layer: 'voice', action: 'play', params: { key: 'luna_lose_01', force: true } },
+      { at: 2200, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
     ],
   },
 
@@ -406,10 +413,13 @@ export default [
         params: { anim: 'health_check', ok: '$success', label: "$success ? 'PASSED' : 'NEEDS WORK'" } },
       { at: 1200, layer: 'overlay', action: 'flash',
         params: { color: "$success ? '#4ce0a0' : '#ff4d4d'", ms: 300 } },
+      // 突破は満面の笑み / 非突破は泣き顔をひと呼吸だけ(U71)
       { at: 1300, layer: 'char', action: 'pose',
-        params: { char: 'kiro', pose: "$success ? 'happy' : 'normal'" } },
+        params: { char: 'kiro', pose: "$success ? 'happy' : 'lose'" } },
       { at: 1400, layer: 'voice', action: 'play',
         params: { key: "$success ? 'luna_win_01' : 'luna_lose_01'", force: true } },
+      { at: 2300, layer: 'char', action: 'pose',
+        params: { char: 'kiro', pose: "$success ? 'happy' : 'normal'" } },
     ],
   },
 
@@ -527,8 +537,11 @@ export default [
       { at: 100,  layer: 'lcd',  action: 'anim',
         params: { anim: 'health_check', ok: false, label: 'TARGET UNHEALTHY' } },
       { at: 1200, layer: 'overlay', action: 'flash', params: { color: '#ff4d4d', ms: 280 } },
-      { at: 1300, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
+      // CZ非突破。**泣き顔をひと呼吸だけ**見せて「ざんねん…」と重ね、すぐ素へ戻る
+      // (U71: cry の出番。引きずらないのは次のゲームへ気持ちを渡すため)
+      { at: 1300, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'lose' } },
       { at: 1400, layer: 'voice', action: 'play', params: { key: 'luna_lose_01', force: true } },
+      { at: 2200, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
     ],
   },
 
@@ -626,8 +639,10 @@ export default [
        * ポップアップは音・光・メッセージが戻る画だけを受け持つ。
        * 他CZの非突破(ALB / SFN / GameDay)も文字を持たない形で揃えてある。
        */
-      { at: 1400, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
+      // 泣き顔をひと呼吸だけ(U71)
+      { at: 1400, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'lose' } },
       { at: 1500, layer: 'voice', action: 'play', params: { key: 'luna_lose_01', force: true } },
+      { at: 2300, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
     ],
   },
 
@@ -748,8 +763,11 @@ export default [
        * ここは赤い明滅と音で「戻された」瞬間だけを担当する。
        */
       { at: 300,  layer: 'lcd',  action: 'anim',  params: { anim: 'lcd_flash', color: '#ff4d4d', strength: 0.45 } },
-      { at: 1300, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
+      // CZ非突破。**泣き顔をひと呼吸だけ**見せて「ざんねん…」と重ね、すぐ素へ戻る
+      // (U71: cry の出番。引きずらないのは次のゲームへ気持ちを渡すため)
+      { at: 1300, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'lose' } },
       { at: 1400, layer: 'voice', action: 'play', params: { key: 'luna_lose_01', force: true } },
+      { at: 2200, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
     ],
   },
 
@@ -886,8 +904,11 @@ export default [
       { at: 100,  layer: 'lcd',  action: 'anim',
         params: { anim: 'health_check', ok: false, label: 'SLO VIOLATION' } },
       { at: 1200, layer: 'overlay', action: 'flash', params: { color: '#ff4d4d', ms: 280 } },
-      { at: 1300, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
+      // CZ非突破。**泣き顔をひと呼吸だけ**見せて「ざんねん…」と重ね、すぐ素へ戻る
+      // (U71: cry の出番。引きずらないのは次のゲームへ気持ちを渡すため)
+      { at: 1300, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'lose' } },
       { at: 1400, layer: 'voice', action: 'play', params: { key: 'luna_lose_01', force: true } },
+      { at: 2200, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
     ],
   },
 
@@ -1019,8 +1040,11 @@ export default [
       { at: 100,  layer: 'lcd',  action: 'anim',
         params: { anim: 'health_check', ok: false, label: 'NON_COMPLIANT' } },
       { at: 1200, layer: 'overlay', action: 'flash', params: { color: '#ff4d4d', ms: 280 } },
-      { at: 1300, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
+      // CZ非突破。**泣き顔をひと呼吸だけ**見せて「ざんねん…」と重ね、すぐ素へ戻る
+      // (U71: cry の出番。引きずらないのは次のゲームへ気持ちを渡すため)
+      { at: 1300, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'lose' } },
       { at: 1400, layer: 'voice', action: 'play', params: { key: 'luna_lose_01', force: true } },
+      { at: 2200, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
     ],
   },
 
@@ -1112,8 +1136,11 @@ export default [
       { at: 100,  layer: 'lcd',  action: 'anim',
         params: { anim: 'health_check', ok: false, label: 'BGP DOWN' } },
       { at: 1200, layer: 'overlay', action: 'flash', params: { color: '#ff4d4d', ms: 280 } },
-      { at: 1300, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
+      // CZ非突破。**泣き顔をひと呼吸だけ**見せて「ざんねん…」と重ね、すぐ素へ戻る
+      // (U71: cry の出番。引きずらないのは次のゲームへ気持ちを渡すため)
+      { at: 1300, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'lose' } },
       { at: 1400, layer: 'voice', action: 'play', params: { key: 'luna_lose_01', force: true } },
+      { at: 2200, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
     ],
   },
 
@@ -1275,8 +1302,11 @@ export default [
       { at: 100,  layer: 'lcd',  action: 'anim',
         params: { anim: 'health_check', ok: false, label: 'SERVICE DEGRADED' } },
       { at: 1200, layer: 'overlay', action: 'flash', params: { color: '#ff4d4d', ms: 280 } },
-      { at: 1300, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
+      // CZ非突破。**泣き顔をひと呼吸だけ**見せて「ざんねん…」と重ね、すぐ素へ戻る
+      // (U71: cry の出番。引きずらないのは次のゲームへ気持ちを渡すため)
+      { at: 1300, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'lose' } },
       { at: 1400, layer: 'voice', action: 'play', params: { key: 'luna_lose_01', force: true } },
+      { at: 2200, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
     ],
   },
 ];

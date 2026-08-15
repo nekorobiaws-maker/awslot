@@ -486,7 +486,7 @@ function runSessions(runs, seed) {
      * 「ボーナス/直撃から新しく入った RUSH」だけを別に数える。
      */
     rushEntries: 0, rushResumes: 0,
-    /** CZ突入の経路内訳(直接 / 高確経由 / 激アツ経由 / 天井) */
+    /** CZ突入の経路内訳(チャンス目 / サメ揃い / 直接 / 高確経由 / 激アツ経由 / 天井) */
     czRoute: {},
     /** DeepRacer 擬似連(2026-08-13 ユーザー仕様)の到達step分布と結果 */
     racer: { starts: 0, byStep: {}, cz: 0, bonus: 0, miss: 0 },
@@ -762,7 +762,18 @@ function reportSessions({ scores, agg, runs, mean, pick }) {
   const czWins = Object.values(agg.czById).reduce((a, b) => a + b.win, 0);
   console.log(`  CZ経由のボーナス: ${fmt(czWins / runs, 2)}回/セッション`);
   const rTotal = Object.values(agg.czRoute).reduce((a, b) => a + b, 0) || 1;
-  const rLabel = { direct: '通常から直接', 'stage:WARM_POOL': '高確経由', 'stage:PROVISIONED': '激アツ経由', ceiling: '天井' };
+  /**
+   * 入口ラベル。U72 で **チャンス目 / サメ揃い(CZ確定役)** が加わった。
+   * ここが「チャンス目 60%台」になっていれば主線が設計どおりに効いている。
+   */
+  const rLabel = {
+    chance: 'チャンス目(確定)',
+    shark: 'サメ揃い(確定)',
+    direct: '通常から直接',
+    'stage:WARM_POOL': '高確経由',
+    'stage:PROVISIONED': '激アツ経由',
+    ceiling: '天井',
+  };
   console.log(
     `  CZ突入の経路   : ${Object.entries(agg.czRoute).sort((a, b) => b[1] - a[1])
       .map(([k, v]) => `${rLabel[k] ?? k} ${pct(v / rTotal)}`).join(' / ')}`,
@@ -1161,20 +1172,38 @@ function checkRareRoutes() {
     ]);
   }
 
-  // (7) czMultiplier が飽和せず、内部状態3段階が常に区別される(3.4)
+  /*
+   * (7) czMultiplier が飽和せず、内部状態3段階が常に区別される(3.4)
+   *
+   * 【U72(2026-08-15)で見る対象を広げた】
+   * 「チャンス目 = CZ突入確定」へ作り替えた結果、cz 列は **1.000 か 0 しか無い**
+   * (確定役はステージ倍率と無関係 / 他の役はCZ抽選そのものを持たない)。
+   * 旧実装は cz 列だけを見ていたので、この形にすると
+   * **検査対象が0行になって黙って素通り**する検証になってしまう。
+   * 倍率は bonus / direct_at にも掛かっている(= 上位ステージほど直撃しやすい)ので、
+   * 3列すべての「0 < p < 1」を対象にして、飽和しないことを見る。
+   */
   {
-    const rows = Object.entries(CZ_ENTRY.table).filter(([, r]) => r.cz > 0 && r.cz < 1);
-    const bad = rows.filter(([, r]) => {
-      const warm = applyCzMultiplier(r.cz, 2);
-      const prov = applyCzMultiplier(r.cz, 4);
-      return !(r.cz < warm && warm < prov && prov < 1);
+    const rows = [];
+    for (const [flag, r] of Object.entries(CZ_ENTRY.table)) {
+      for (const key of ['cz', 'bonus', 'direct_at']) {
+        if (r[key] > 0 && r[key] < 1) rows.push([`${flag}.${key}`, r[key]]);
+      }
+    }
+    const bad = rows.filter(([, p]) => {
+      const warm = applyCzMultiplier(p, 2);
+      const prov = applyCzMultiplier(p, 4);
+      return !(p < warm && warm < prov && prov < 1);
     });
-    const sc = CZ_ENTRY.table.STRONG_CHERRY.cz;
-    const ok = bad.length === 0;
+    // U72 の主線そのもの: チャンス目とサメ揃いは倍率に関係なく必ず 1.000(= CZ確定)
+    const confirmed = ['CHANCE', 'SHARK'].filter((f) => CZ_ENTRY.table[f]?.cz >= 1);
+    const sc = CZ_ENTRY.table.STRONG_CHERRY.bonus;
+    const ok = bad.length === 0 && rows.length > 0 && confirmed.length === 2;
     results.push([
       'czMultiplier が飽和しない', ok,
       bad.length === 0
-        ? `強チェリー ${sc} → ×2 ${fmt(applyCzMultiplier(sc, 2), 3)} → ×4 ${fmt(applyCzMultiplier(sc, 4), 3)}`
+        ? `確定役 ${confirmed.join('/')} は cz 1.000 / 直撃は倍率あり` +
+          `(強チェリー ${sc} → ×2 ${fmt(applyCzMultiplier(sc, 2), 3)} → ×4 ${fmt(applyCzMultiplier(sc, 4), 3)})`
         : `飽和: ${bad.map(([k]) => k).join(', ')}`,
     ]);
   }
@@ -1247,7 +1276,14 @@ function checkRareRoutes() {
    * 見たいのは「モードでテーブルが切り替わること」なので、通常時の払出は
    * **data/flags.js の値を正としてそのまま読む**(U63 でコイン持ちの調整のため
    * 通常時のベルが 8 → 7枚 になり、8枚を直書きしていたこの検証が落ちた)。
-   * ボーナス中の15枚だけは「ボーナスの純増の骨格」なので固定値で見張る。
+   *
+   * 【U72(2026-08-15)でボーナス中も直書きをやめた】
+   * 上振れの補填でボーナス中のベルが 15 → 18枚になり、15を直書きしていたこの検証が
+   * 落ちた(= 通常時とまったく同じ轍)。見張るべき不変条件は枚数そのものではなく
+   *   ・モードで小役テーブルが切り替わること
+   *   ・**ボーナス中のベルが通常時より厚いこと**(ボーナスの純増の骨格)
+   *   ・1ゲームの払出が100枚の壁を超えないこと
+   * なので、枚数は data/flags.js を正として読み、関係だけを検査する。
    */
   {
     const modes = new ModeMachine({ rng: new FixedRng(0.5), bus: new EventBus() });
@@ -1257,11 +1293,14 @@ function checkRareRoutes() {
     const bonusTable = modes.flagTableId;
     const normalBell = payoutOf('BELL', 'NORMAL');
     const bonusBell = payoutOf('BELL', 'BONUS');
+    const bonusBellSpec = BONUS_FLAGS.flags.find((f) => f.id === 'BELL')?.payout ?? 0;
     const ok = normalTable === 'NORMAL' && bonusTable === 'BONUS'
-      && normalBell === FLAG_BY_ID.BELL.payout && bonusBell === 15 && bonusBell > normalBell;
+      && normalBell === FLAG_BY_ID.BELL.payout && bonusBell === bonusBellSpec
+      && bonusBell > normalBell && bonusBell <= 100;
     results.push([
-      'ボーナス中のベルは15枚', ok,
-      `通常${normalBell}枚 / ボーナス${bonusBell}枚(table=${bonusTable})`,
+      `ボーナス中のベルは${bonusBellSpec}枚(通常より厚い)`, ok,
+      `通常${normalBell}枚 / ボーナス${bonusBell}枚(table=${bonusTable})` +
+      ` / 純増 ${fmt(BONUS_NET_PER_GAME, 2)}枚/G`,
     ]);
   }
 
@@ -1302,11 +1341,20 @@ function checkRareRoutes() {
     const okA = heldA?.kind === 'BONUS'
       && a.currentId === 'BONUS_READY' && a.state.bonusId === heldA.bonusId;
 
-    // (12-b) CZ保持のまま天井へ到達 → 突破確定の天井CZへ吸収
+    /*
+     * (12-b) CZ保持のまま天井へ到達 → 突破確定の天井CZへ吸収
+     *
+     * 【U72(2026-08-15)で契機を差し替えた】
+     * 以前は Bedrock役(ALARM)の cz 抽選で CZ保持を作っていたが、
+     * U72 で **レア役ごとのCZ抽選は廃止**(チャンス目とサメ揃いは確定 = 前兆を挟まず即突入)。
+     * 「前兆でCZを保持したまま天井へ到達する」状況が残るのは
+     * **ステージの毎ゲーム抽選(おまけ)で当たったとき**だけになったので、そちらで作る。
+     * サミット会場(高確)に居れば czPerGame(0.004)を FixedRng(0.001) で必ず引ける。
+     */
     const b = new ModeMachine({ rng: new FixedRng(0.001), bus: new EventBus() });
-    b.start('FREE_TIER');
+    b.start('FREE_TIER', { subState: 'WARM_POOL' });
     b.state.games = NORMAL_SUBSTATES.ceiling.games - 2;
-    step(b, { flag: 'ALARM', win: 'ALARM', payout: 1 });  // cz 3% を引いて CZ保持
+    step(b, { flag: 'LOSE', win: 'LOSE', payout: 0 });    // ステージ抽選でCZ保持
     const heldB = inspectZencho(b.state).pending;
     step(b, { flag: 'LOSE', win: 'LOSE', payout: 0 });
     const okB = heldB?.kind === 'CZ'
@@ -1561,7 +1609,12 @@ function checkRareRoutes() {
   //      当選告知のゲームは通常ステージのまま終わり、次のレバーONでCZの1G目が始まる。
   {
     const bus = new EventBus();
-    const rng = new FixedRng(0.001);           // 弱チェリーで必ずCZ当選する値
+    /*
+     * U72(2026-08-15): 契機を **チャンス目(CZ確定役)** に差し替えた。
+     * 0.001 だとレバーONフリーズ(CHANCE 0.00675)を引いてボーナスになるので、
+     * フリーズも他の抽選も引かない中庸な値(0.5)を使う。
+     */
+    const rng = new FixedRng(0.5);
     const credit = new Credit(500);
     const modes = new ModeMachine({ rng, bus });
     const flow = new GameFlow({ bus, rng, credit, reels: new ReelController(), modeMachine: modes });
@@ -1596,10 +1649,12 @@ function checkRareRoutes() {
 
     const timeline = [];
     for (let i = 1; i <= 10; i++) {
-      // Bedrock役(cz 0.35 / レア役ではない)を強制 + FixedRng(0.001) で必ずCZ当選させる。
-      // レア役だと DeepRacer 擬似連中のボーナス格上げが働いて経路が変わるので、
-      // ここは「通常時のCZ当選 → 告知 → 次スピンで突入」だけを見る。
-      flow.setForcedFlag('ALARM');
+      /*
+       * チャンス目(U72 で CZ突入確定になった主線の役)を強制する。
+       * 確定役は前兆を挟まず即告知なので、擬似連の格上げが割り込む余地もない。
+       * ここで見るのは「CZ当選 → **通常画面のまま告知** → 次スピンで突入」の時系列。
+       */
+      flow.setForcedFlag('CHANCE');
       timeline.push(spin(i));
       // 告知(遷移予約)が出た次のスピンまで見れば十分
       const idx = timeline.findIndex((r) => r.pending);

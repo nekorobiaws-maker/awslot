@@ -42,7 +42,20 @@
  *   音は記録も検証もしない完全な出力側なので、
  *   **演出RNGを1ステップも動かさない** Math.random をあえて使う。
  *   これで「ボイスを足したら予告の出方が変わった」が構造的に起きない。
+ *
+ * ══ 5. 同じ場面で同じ声を繰り返さない(2026-08-15 U71)═══════════════
+ *
+ * 前兆は1回の当たりに何ゲームも続くので、同じ場面に同じ key を貼ると
+ * 毎回まったく同じ声が鳴る。そこで **プール**(data/voicepools.js)から
+ * 1本引いて鳴らせるようにした。
+ *   { pool: 'react', chance: 0.25 }        … 相槌プールから1本
+ *   { key: ['luna_a','luna_b'] }           … その場で並べた候補から1本
+ *   { key: 'luna_rush_01', force: true }   … 従来どおりの1本指定
+ * 選択も **Math.random**(上と同じ理由で演出RNGは使わない)。
+ * 直前に鳴らした key は候補から外すので、2連続で同じ声にはならない。
  */
+
+import { VOICE_POOL_KEYS } from '../data/voicepools.js';
 
 /** 読み込みに時間がかかりすぎたセリフは、演出とズレるので鳴らさない */
 const DEFAULT_STALE_MS = 2000;
@@ -80,6 +93,8 @@ export class VoicePlayer {
     this._spokeThisGame = false;
     /** 直前に発話を始めた時刻(ms)。0 は未発話 */
     this._lastSpokeAt = 0;
+    /** 直前に鳴らした key(U71: 2連続で同じ声にしないための除外用) */
+    this._lastKey = null;
 
     /** @type {AudioContext|null} */
     this.ctx = null;
@@ -214,20 +229,53 @@ export class VoicePlayer {
   }
 
   /**
+   * 候補から実際に鳴らす1本を選ぶ(U71)。
+   *
+   *   'luna_x'                  … そのまま
+   *   ['luna_a','luna_b']       … どれか1本
+   *   opts.pool:'react'         … data/voicepools.js の束から1本
+   *
+   * 直前に鳴らした key は候補から外す(全部が直前と同じなら諦めてそれを返す)。
+   * 乱数は Math.random = **演出RNGを1ステップも動かさない**(冒頭 4. の理由)。
+   *
+   * @param {string|string[]|null} key
+   * @param {{pool?:string}} [opts]
+   * @returns {string|null}
+   */
+  pick(key, opts = {}) {
+    let candidates = null;
+    if (Array.isArray(key)) candidates = key;
+    else if (typeof key === 'string' && key) candidates = [key];
+    else if (opts.pool) candidates = VOICE_POOL_KEYS[opts.pool] ?? null;
+    if (!candidates || candidates.length === 0) return null;
+
+    const usable = candidates.filter((k) => typeof k === 'string' && k);
+    if (usable.length === 0) return null;
+    if (usable.length === 1) return usable[0];
+
+    const fresh = usable.filter((k) => k !== this._lastKey);
+    const from = fresh.length > 0 ? fresh : usable;
+    return from[Math.floor(Math.random() * from.length)];
+  }
+
+  /**
    * セリフを再生する。同時発話は1つまでで、鳴っている途中なら差し替える。
    * 音声が無い/未整備でも例外は投げず、黙って false を返す。
    *
-   * @param {string} key
+   * @param {string|string[]|null} key
+   *   key 直指定 / その場の候補配列 / null(opts.pool を使う)
    * @param {object} [opts] シナリオの voice.play キューの params がそのまま届く
+   * @param {string} [opts.pool] data/voicepools.js のプール名(U71)
    * @param {number} [opts.chance] 0〜1。省略時は必ず鳴らそうとする
    * @param {boolean} [opts.force] true で間引き(chance / 1ゲーム1本 / cooldown)を全部素通し。
    *   **確定告知にだけ付ける**(ボーナス確定・RUSH突入・引き戻し成功・リザルト)
    * @param {number} [opts.cooldownMs] このセリフだけ cooldown を変える
-   * @returns {boolean} 再生(またはロード開始)したか
+   * @returns {string|false} 実際に鳴らす(ロードを始めた)key。鳴らさないときは false
    */
-  play(key, opts = {}) {
-    if (!key || typeof key !== 'string') return false;
+  play(keyOrList, opts = {}) {
     if (this.muted) return false;
+    const key = this.pick(keyOrList, opts);
+    if (!key) return false;
     /*
      * 未生成のキーはここで打ち切る(間引きの記帳より **前**)。
      * 順序が逆だと「MP3が無いセリフ」が 1ゲーム1本の枠と cooldown を食ってしまい、
@@ -236,9 +284,11 @@ export class VoicePlayer {
      */
     if (this.manifestFound && !this.entry(key)) {
       if (this.debug) console.info(`[voice] skip(manifest未登録): ${key}`);
-      return this._speakFallback(key);
+      return this._speakFallback(key) ? key : false;
     }
     if (!this._admit(opts)) return false;
+    // 次に同じプールを引いたとき、この1本は候補から外れる(2連続で同じ声にしない)
+    this._lastKey = key;
 
     const token = ++this._token;
 
@@ -258,14 +308,14 @@ export class VoicePlayer {
     const cached = this._buffers.get(key);
     if (cached) {
       this._start(cached);
-      return true;
+      return key;
     }
     if (!this.entry(key)) {
       if (this.debug) console.info(`[voice] skip(manifest未登録): ${key}`);
-      return this._speakFallback(key);
+      return this._speakFallback(key) ? key : false;
     }
     this._playWhenReady(key, token, performance.now());
-    return true;
+    return key;
   }
 
   /** 再生中のセリフを止める */

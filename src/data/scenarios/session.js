@@ -47,6 +47,10 @@ export default [
       { at: 1400, layer: 'char',    action: 'show',  params: { char: 'kiro', pose: 'happy' } },
       // 100ゲーム完走のねぎらい(U68)。セッションに1回だけなので間引かない
       { at: 1500, layer: 'voice',   action: 'play',  params: { key: 'luna_result_01', force: true } },
+      // 「おつかれさま!」に合わせて手を振る(U71: cheer → wave)。
+      // 勝ち負けを知らない場面なので、表情は結果に依らない挨拶にしておく
+      { at: 1560, layer: 'char',    action: 'pose',  params: { char: 'kiro', pose: 'cheer' } },
+      { at: 1600, layer: 'char',    action: 'motion', params: { char: 'kiro', motion: 'lunaHooray' } },
       { at: 1400, layer: 'lcd',     action: 'text',
         params: {
           text: 'あなたの成績は…?',

@@ -479,7 +479,9 @@ export const CUTINS = {
    *      文言だけにすると「INTERRUPTION NOTICE」の意味を字で読むしかなくなる。
    *   2. 背びれ(下の drawFinSilhouette)は **プロシージャル描画** なので、
    *      キャラ素材の大写しには当たらない。露出は「小さい・短い・顔なし」の3点で最小。
-   *      同じ絵は既存のガセ予告 shark_fin_tease でも使っていて、台の語彙として一貫する。
+   *      2026-08-15 U71: 同じ絵を単体で横切らせていたガセ予告(shark_fin_tease)は
+   *      「変な帽子が飛んでくる」と読まれて削除された。**ここが唯一の使い所**で、
+   *      速度線・警告帯・驚いているルナと組にしてあることが成立の条件。
    *   3. 主役はルナ。驚き(!!)ポーズで前に立たせ、背びれはその **後ろを横切るだけ**。
    *      「相棒が焦っている」ほうが、プレイヤーの気持ちに近い画になる。
    */
@@ -725,24 +727,15 @@ export const CUTINS = {
     },
   },
 
-  /**
-   * ガセ用: 背びれチラ見せ(弱)。IDEAS.md 2-15
-   * U68 でもここは据え置き。**顔のないシルエットなので「サメを前面に出す」には当たらない**
-   * (キャラ素材 shark.png は一切使っていない)。
+  /* ══ 削除: shark_fin_tease(2026-08-15 U71 ユーザー指示)═════════════
+   *
+   * 「背びれのシルエットだけが液晶を横切る」ガセ予告(IDEAS.md 2-15)。
+   * ユーザーの見え方は **「変な帽子が飛んでくる」**(オレンジのとんがり + 細い波紋)で、
+   * サメのメタファーとして機能していなかったため、呼び出し元のシナリオ
+   * (data/scenarios/normal.js の normal_fin_tease_gase)ごと削除した。
+   * 背びれの描画関数 drawFinSilhouette は Spot ゾーン突入(spot_entry)が
+   * **文脈つきで**(速度線 + INTERRUPTION 帯 + ルナの後ろを小さく短く)使っているので残す。
    */
-  shark_fin_tease: {
-    ms: 1100,
-    draw(ctx, p, params, w, h) {
-      const peek = Math.sin(clamp01(p) * Math.PI);
-      // U66-4: 旧実装は y = h-150(画面下端の筐体側)だった。煽りなので液晶の中で泳がせる
-      const spot = lcdSpot(0.82, 0.24);
-      const y = spot.y + (1 - peek) * 90;
-      ctx.save();
-      ctx.globalAlpha = peek;
-      drawFinSilhouette(ctx, spot.x + p * 90, y, 1, peek);
-      ctx.restore();
-    },
-  },
 };
 
 // 強予告用の追加カットインをレジストリへ合流させる(cutins-extra.js)。
@@ -780,9 +773,13 @@ function stageHop(cycles) {
  *
  * 「サメ = 中断・捕食」のメタファーを **顔のない図形** だけで表す共通パーツ。
  * キャラ素材(assets/chars/shark.png)は使わないので、サメの露出は最小に保てる。
- * 使いどころは2つだけ:
- *   shark_fin_tease … ガセ予告(液晶の中を横切る)
- *   spot_entry      … Spot ゾーン突入(ルナの後ろを小さく短く横切る)
+ *
+ * ■ 使いどころは **1つだけ**(2026-08-15 U71)
+ *   spot_entry … Spot ゾーン突入(ルナの後ろを小さく短く横切る)
+ *   単体で横切らせていた shark_fin_tease は
+ *   「変な帽子が飛んでくる」と読まれてしまい削除した(上のブロックを参照)。
+ *   **この図形を単独で出さないこと**。速度線・警告帯・驚いているルナと
+ *   組で出して初めて「追ってくる何か」に見える、という教訓が残っている。
  *
  * @param {CanvasRenderingContext2D} ctx
  * @param {number} x 背びれの根元の中心

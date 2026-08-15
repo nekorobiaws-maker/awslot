@@ -18,6 +18,8 @@ import { inspectReelPickState, reelPickVerdictOf } from './anims/lcdanims-extra.
 // 学習記録(2026-08-15 学習強化)。**ゲーム側からは絶対に import しないこと**
 import { recordQuizAnswer, recordServiceSeen } from '../data/learnlog.js';
 import { resolveServiceByQuizAnswer } from '../data/services.js';
+// U71: 鳴らしたセリフに表情を合わせるための対応表(相槌プールの定義そのもの)
+import { poseForVoiceKey } from '../data/voicepools.js';
 
 /**
  * @param {object} deps
@@ -223,9 +225,54 @@ export function createActions({
      * params をそのまま渡すので、シナリオ側で間引きを指定できる:
      *   { key:'luna_react_oh_01', chance: 0.25 } … 4回に1回だけ喋る(予兆・煽り)
      *   { key:'luna_rush_01', force: true }      … 確定告知。間引かない
+     *   { pool:'react', chance: 0.25 }           … 相槌プールから1本(U71)
      * 判定の実体と「なぜ演出RNGを使わないか」は engine/voice.js の冒頭を参照。
+     *
+     * ■ 声に表情を合わせる(U71)
+     *   実際に鳴った key に pose が結びついていれば(data/voicepools.js)、
+     *   数秒だけその表情にする。**鳴らなかったときは何もしない**ので、
+     *   間引かれた回に表情だけ動いて「無言で驚く」画にはならない。
+     *   演出がポーズを指定している場面では chars 側が差し替えを断る
+     *   (render/chars/index.js の gestureFor)。
      */
-    'voice.play': (params) => { voice?.play(params.key, params); },
+    'voice.play': (params) => {
+      const played = voice?.play(params.key ?? null, params);
+      if (!played) return;
+      const pose = params.pose ?? poseForVoiceKey(played);
+      if (pose) chars?.gestureFor?.(params.char ?? 'kiro', pose, params.poseMs ?? 2200);
+    },
+    /**
+     * 3択クイズの **正誤に応じた** ルナのひとこと(2026-08-15 U71b ユーザー指示)。
+     *
+     * ■ なぜ voice.play では書けないのか
+     *   sfx.quizVerdict と同じ理由で、正誤は「押したリールと正解の位置の一致」という
+     *   事実で決まり、正解の位置は盤面(lcdanims-extra.js)が演出RNGで毎回シャッフルしている。
+     *   シナリオ側は正誤を知らないので、key を直書きすると
+     *   **正解なのに「それは良くないよー」** が鳴る(旧 sfx で実際に起きた事故と同型)。
+     *   盤面と同じ判定関数を引いて、プールを選び分ける。
+     *
+     * ■ 音がぶつからないようにする
+     *   同じ瞬間に正誤SE(チャイム / ブザー)が鳴っているので、
+     *   **シナリオ側で 250ms ほど遅らせて**呼ぶこと(声はSEの後を追う)。
+     *   ここでは遅延を持たない = 演出データが時間を決める、という分担を崩さない。
+     *
+     * ■ 1ゲーム1本ルールとの関係
+     *   このひとことは force を付けない = 通常の間引き(1ゲーム1本 + cooldown)に従う。
+     *   同じゲームの後半に来る当落の告知(CZ突入の「きたきたっ!」など)は force なので、
+     *   **当落側が必ず勝つ**(engine/voice.js の _admit)。答え合わせを言い終える前に
+     *   当たりが確定したら、そちらへ声が差し替わるのが正しい優先順。
+     *
+     *   params: { pick, chance, okPool='quizOk', ngPool='quizNg', poseMs }
+     */
+    'voice.quizVerdict': (params = {}) => {
+      const verdict = reelPickVerdictOf({ phase: 'answer', pick: params.pick });
+      if (!verdict) return;
+      const pool = verdict.correct ? (params.okPool ?? 'quizOk') : (params.ngPool ?? 'quizNg');
+      const played = voice?.play(null, { ...params, pool });
+      if (!played) return;
+      const pose = poseForVoiceKey(played);
+      if (pose) chars?.gestureFor?.(params.char ?? 'kiro', pose, params.poseMs ?? 2200);
+    },
     // 同じ曲を指定した場合 changeBgm は no-op になるため、
     // モード遷移による自動切替(main.js)と重なっても鳴り直さない。
     'bgm.change': (params) => { audio?.changeBgm(params.bgm, { fadeMs: params.fadeMs ?? 800 }); },

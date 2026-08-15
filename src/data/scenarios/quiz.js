@@ -327,6 +327,15 @@ export default applyForce([
       { waitFor: 'stop1', after: 150, layer: 'sfx',     action: 'quizVerdict',
         params: { pick: '$stop1.index', gain: 0.7 } },
       /*
+       * 答え合わせのひとこと(U71b)。**正誤で言い分ける**専用アクション。
+       *   正解   … 「いいねっ!」「せいかーい!」…(quizOk プールから1本)
+       *   不正解 … 「それは良くないよー」「おしい!」…(quizNg プールから1本)
+       * SE(上の quizVerdict)の 250ms 後に置いて、チャイムと声が団子にならないようにする。
+       * force は付けない = このあと来る CZ突入の告知(force)が必ず優先される。
+       */
+      { waitFor: 'stop1', after: 400, layer: 'voice',   action: 'quizVerdict',
+        params: { pick: '$stop1.index' } },
+      /*
        * 学習記録(2026-08-15 学習強化 L1/L4)。**画も音も出さないキュー**。
        *   ・正誤を data/learnlog.js へ積む(苦手カテゴリの材料になる)
        *   ・正解サービスを AWS図鑑へ入れる(不正解でも入れる = 正解を画面で見せているため)
@@ -409,9 +418,17 @@ export default applyForce([
       { waitFor: 'stop1', after: 160, layer: 'learn', action: 'quizResult',
         params: { pick: '$stop1.index' } },
       { waitFor: 'stop1', after: 380, layer: 'char',  action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
+      /*
+       * 答え合わせのひとこと(U71b)。SE の 250ms 後。
+       * このシナリオは非当選なので、下の「んー…」(当落への反応 / force)と続けて2本鳴る。
+       * 順番は 正誤 → 当落 で、当落側が force なので必ず後勝ちになる
+       * (答え合わせの途中で当落が確定したら、そちらへ声が差し替わるのが正しい)。
+       */
+      { waitFor: 'stop1', after: 550, layer: 'voice', action: 'quizVerdict',
+        params: { pick: '$stop1.index' } },
       { waitFor: 'stop1', after: 1000, layer: 'sfx',  action: 'synth', params: { preset: 'cz_lose', gain: 0.4 } },
       { waitFor: 'stop1', after: 560, layer: 'lamp',  action: 'pattern', params: { pattern: 'idle' } },
-      { waitFor: 'stop1', after: 700, layer: 'voice', action: 'play',   params: { key: 'luna_hmm_01', force: true } },
+      { waitFor: 'stop1', after: 1500, layer: 'voice', action: 'play',   params: { key: 'luna_hmm_01', force: true } },
     ],
   },
 
@@ -456,6 +473,9 @@ export default applyForce([
       { waitFor: 'stop1', after: 160, layer: 'learn', action: 'quizResult',
         params: { pick: '$stop1.index' } },
       { waitFor: 'stop1', after: 380, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
+      // 答え合わせのひとこと(U71b)。ここは当落の声を持たないので1本だけ鳴る
+      { waitFor: 'stop1', after: 550, layer: 'voice', action: 'quizVerdict',
+        params: { pick: '$stop1.index' } },
       { waitFor: 'stop1', after: 1000, layer: 'sfx', action: 'synth', params: { preset: 'cz_lose', gain: 0.4 } },
       { waitFor: 'stop1', after: 560, layer: 'lamp', action: 'pattern', params: { pattern: 'idle' } },
     ],

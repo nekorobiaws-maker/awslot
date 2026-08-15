@@ -117,6 +117,9 @@ export default [
       { at: 100, layer: 'char',    action: 'motion', params: { char: 'george', motion: 'tailWhip' } },
       // 引き戻し成功。見せ場なので間引かない(U68)
       { at: 150, layer: 'voice',   action: 'play',  params: { key: 'luna_comeback_01', force: true } },
+      // U71: 「おかえり!」のあとはハートを飛ばして喜ぶ(loveWin → heart)。
+      // 復活はこの台でいちばん嬉しい瞬間なので、専用の表情を1つ当てておく
+      { at: 900, layer: 'char',    action: 'pose',  params: { char: 'kiro', pose: 'loveWin' } },
       { at: 200, layer: 'lcd',     action: 'text',
         params: { text: 'FAILOVER OK', sub: 'AZ-c で復旧しました', color: '#7bf7d0', ms: 1800 } },
       { at: 300, layer: 'overlay', action: 'particles', params: { preset: 'scale', x: 360, y: 360, count: 28 } },

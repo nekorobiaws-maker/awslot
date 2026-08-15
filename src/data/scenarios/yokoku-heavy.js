@@ -42,7 +42,7 @@ export default [
        * 「喋ったかどうか」から本物かガセかは読めない(信頼度は演出のまま変わらない)。
        * 断定しない疑問形なので、外れても嘘をついたことにならない。
        */
-      { at: 420, layer: 'voice',   action: 'play',   params: { key: 'luna_tease_kore_01', chance: 0.3 } },
+      { at: 420, layer: 'voice',   action: 'play',   params: { pool: 'tease', chance: 0.3 } },
       { waitFor: 'stop2', layer: 'sfx', action: 'synth', params: { preset: 'charge_up' } },
       { waitFor: 'stop3', after: 100, layer: 'sfx',  action: 'synth', params: { preset: 'cutin_whoosh' } },
       { waitFor: 'stop3', after: 200, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'happy' } },
@@ -60,7 +60,7 @@ export default [
       { at: 0,   layer: 'lamp',    action: 'pattern', params: { pattern: 'rare' } },
       { at: 40,  layer: 'overlay', action: 'cutin',  params: { id: 'guardduty_alert' } },
       // 本物版(yh_guardduty_hit)と同じ声・同じ確率。声で当たりかどうかは分からない
-      { at: 420, layer: 'voice',   action: 'play',   params: { key: 'luna_tease_kore_01', chance: 0.3 } },
+      { at: 420, layer: 'voice',   action: 'play',   params: { pool: 'tease', chance: 0.3 } },
       { waitFor: 'stop2', layer: 'sfx', action: 'synth', params: { preset: 'charge_up' } },
       { waitFor: 'stop3', after: 300, layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'normal' } },
     ],
@@ -109,7 +109,7 @@ export default [
       { at: 60,  layer: 'char',    action: 'hide',   params: { char: 'kiro' } },
       { at: 60,  layer: 'overlay', action: 'cutin',  params: { id: 'iam_admin_badge' } },
       // 煽り(U68)。ガセ版にも同じ声・同じ確率で貼ってある
-      { at: 440, layer: 'voice',   action: 'play',   params: { key: 'luna_tease_moshika_01', chance: 0.3 } },
+      { at: 440, layer: 'voice',   action: 'play',   params: { pool: 'tease', chance: 0.3 } },
       { waitFor: 'stop2', layer: 'sfx', action: 'synth', params: { preset: 'contract_sign' } },
       { waitFor: 'stop3', after: 150, layer: 'sfx',  action: 'synth', params: { preset: 'upgrade_chime' } },
       { waitFor: 'stop3', after: 200, layer: 'char', action: 'show',  params: { char: 'kiro', pose: 'happy' } },
@@ -126,7 +126,7 @@ export default [
       { at: 0,   layer: 'sfx',     action: 'synth', params: { preset: 'rare_flag' } },
       { at: 60,  layer: 'overlay', action: 'cutin',  params: { id: 'iam_admin_badge' } },
       // 本物版(yh_iam_admin_badge_hit)と同じ声・同じ確率
-      { at: 440, layer: 'voice',   action: 'play',   params: { key: 'luna_tease_moshika_01', chance: 0.3 } },
+      { at: 440, layer: 'voice',   action: 'play',   params: { pool: 'tease', chance: 0.3 } },
       { waitFor: 'stop3', after: 200, layer: 'sfx', action: 'synth', params: { preset: 'contract_sign' } },
     ],
   },
@@ -143,7 +143,7 @@ export default [
       { at: 0,   layer: 'lamp',    action: 'pattern', params: { pattern: 'rare' } },
       { at: 60,  layer: 'overlay', action: 'cutin',  params: { id: 'cloudtrail_root_login' } },
       // いちばん熱い煽り(U68)。ここも疑問形。ガセ版にも同じ声・同じ確率で貼ってある
-      { at: 460, layer: 'voice',   action: 'play',   params: { key: 'luna_hot_01', chance: 0.3 } },
+      { at: 460, layer: 'voice',   action: 'play',   params: { pool: 'tease', chance: 0.3 } },
       { waitFor: 'stop2', layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
       { waitFor: 'stop3', after: 100, layer: 'sfx',     action: 'synth', params: { preset: 'alarm_beep' } },
       { waitFor: 'stop3', after: 200, layer: 'overlay', action: 'shake', params: { power: 14, ms: 400 } },
@@ -160,7 +160,7 @@ export default [
       { at: 0,   layer: 'sfx',     action: 'synth', params: { preset: 'announce' } },
       { at: 60,  layer: 'overlay', action: 'cutin',  params: { id: 'cloudtrail_root_login' } },
       // 本物版(yh_cloudtrail_root_login_hit)と同じ声・同じ確率
-      { at: 460, layer: 'voice',   action: 'play',   params: { key: 'luna_hot_01', chance: 0.3 } },
+      { at: 460, layer: 'voice',   action: 'play',   params: { pool: 'tease', chance: 0.3 } },
       { waitFor: 'stop3', after: 200, layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
     ],
   },
@@ -277,7 +277,7 @@ export default [
   /* ── Bedrock揃い(ALARM役)= LLM生成イベント ────────────────────────────
    *
    * ユーザー要望「Bedrock の絵柄が揃ったら LLM イベントが起きるようにして」。
-   * ALARM役は 1/120・4枚でCZ抽選にも参加する(通常時 cz 0.14〜、内部状態で最大×4)
+   * ALARM役は 1/120・4枚(※U72でCZ抽選は「チャンス目=確定」に一本化され、ALARMのcz値は0になった)
    * 期待できる役なのに揃っても地味だった、という指摘への対応。
    *
    * ■ 2段構えで「そのゲームの抽選結果と連動」させる
@@ -531,10 +531,15 @@ export default [
    * 「赤 = 確定」になって裏切りが無くなる。ユーザー指示の目標は 75〜85% なので、
    * **当選寄りではあるが確定ではない**レア役の単発予告にも赤を混ぜて平均を下げる。
    *
-   * 対象は CZ抽選率が中位の2役(data/modes.js の CZ_ENTRY.table):
-   *   MELON  cz 0.50 / CHANCE cz 0.60
-   * 強チェリー(0.78)やサメ(0.80)を混ぜると平均が下がらないので、あえて外している。
-   * これらは前兆を挟んで告知されるため、当たっていれば5G以内にCZ/ボーナスへ到達する。
+   * 対象は当時のCZ抽選率が中位だった2役(MELON cz 0.50 / CHANCE cz 0.60)。
+   *
+   * ★【U72で前提が崩れている(2026-08-15・要再設計 U73)】
+   * U72でCZ導線が「チャンス目=確定(cz 1.0)/他レア役は cz 0」に一本化されたため、
+   *   ・CHANCE への赤 … 実質確定示唆(信頼度をむしろ引き上げる)
+   *   ・MELON への赤 … CZに繋がらない=構造的にほぼ裏切り
+   * となり「平均を75〜85%へ下げる中間役」がこの台から消えた。
+   * 赤文字の信頼度は再測定のうえ、混ぜ先の再選定(強チェ直撃2%等)か
+   * 赤の出し方自体の再設計が必要。それまでこの2本は暫定で残置している。
    */
   {
     id: 'yh_hot_guardduty_alert',

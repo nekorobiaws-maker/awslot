@@ -350,6 +350,19 @@ function badScenario(t) {
       { waitFor: 'stop3', after: 140, layer: 'overlay', action: 'shake', params: { power: 6, ms: 180 } },
       // ハズレ = 何も成立していない → 白(U62)
       conclusionCue({ flag: 'LOSE', text: t.bad, sub: t.badSub, ms: 1300 }),
+      /*
+       * アンチパターンへのツッコミ(U71b)。クイズの不正解と同じプールを使う
+       * (「それは良くないよー」は admin権限を付けちゃう画にそのまま効く)。
+       * ■ 当たりは漏れない
+       *   この声が鳴るのは **ハズレ確定の stop3 のあと** で、
+       *   ベストプラクティス側(下の goodScenario)にも同じ chance で正解側の声を貼ってある。
+       *   どちらの声も「もう決まったこと」への反応なので、期待度は1ミリも動かない。
+       * ■ 低めの chance
+       *   あるあるは頻発する枠なので、毎回ツッコむとうるさい。
+       *   engine/voice.js の 1ゲーム1本 + cooldown も併せて効く。
+       */
+      { waitFor: 'stop3', after: 420, layer: 'voice', action: 'play',
+        params: { pool: 'quizNg', chance: 0.3 } },
     ],
   };
 }
@@ -362,6 +375,10 @@ function goodScenario(t) {
     ...introCues(t),
     { waitFor: 'stop3', after: 120, layer: 'sfx', action: 'synth', params: { preset: 'checklist_ok' } },
     conclusionCue({ flag: t.color, text: t.good, sub: t.goodSub, ms: 1400 }),
+    // ベストプラクティスへの相づち(U71b)。ハズレ側と同じ chance で対になっている
+    // (声の有無で当落が読めないようにするための対称配置。上の badScenario を参照)
+    { waitFor: 'stop3', after: 420, layer: 'voice', action: 'play',
+      params: { pool: 'quizOk', chance: 0.3 } },
   ];
   if (t.emphasis) {
     // レア役・特殊役のときだけ、確定後に電飾と一瞬のフラッシュを足す。

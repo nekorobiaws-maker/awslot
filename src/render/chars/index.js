@@ -77,86 +77,106 @@ const DIM_GAIN = 1.55;
 /** プレミア枠が出ているあいだ、常設キャラを下げる濃さ */
 const PREMIUM_DUCK = 0.4;
 
-/**
- * キャラの定位置(LCD 440×300 内の論理座標)。
+/*
+ * ══ 立ち位置と大きさ(2026-08-15 U71 で全面見直し)════════════════════
  *
- * 液晶が狭いので、モードごとに「そのモードのUIと重ならない位置」を持たせる。
- * (RUSHのDCアイコン列・CZのグラフ・ボーナスのロゴを避ける)
+ * 【指摘】「チャンスゾーンでルナが小さくなる」→ そのとおりだった。
+ *   CZ の常駐は scale 0.30(= 高さ 50px)で、通常時 0.78(129px)の **4割** しかない。
+ *   この値はサメ時代(箱 186×150 / 横長)の「盤面の端にちょこんと置く」設計の
+ *   生き残りで、主役が人間になった今は「急に遠くへ行ってしまった」ようにしか見えない。
+ *
+ * 【新しい約束】
+ *   1. 大きさは3段階だけ(SIZE)。**通常時を基準**に、盤面の混み具合で選ぶ。
+ *      いちばん小さい side でも通常時の 8割 あるので「小さくなった」とは見えない。
+ *   2. 位置は「足元の高さ」で書く(stand())。中心Yを直接書くと scale を触るたびに
+ *      足元がズレて、接地(U68b)の意味が消えるため。
+ *   3. 立ち位置は **液晶の右端** に統一する(ヒーローRUSH だけは主役を立てて左)。
+ *      どのモードでも同じ場所に居る = 目が迷わない。通常時(x352)とも揃う。
+ *   4. 足元は結論行(y232〜262)より下、遊び方の常設行(y266〜300)の中まで下ろす。
+ *      **キャラは常設UIより先に描かれる**(render/lcd.js の draw 順)ので、
+ *      足元に文字帯が重なっても文字は必ず読める。逆に頭を盤面(y34〜176)へ
+ *      突っ込ませると、盤面のカードの裏に隠れて画が濁る。
+ *      → 「頭は盤面に入れない、足元は文字帯に埋める」で高さを稼ぐ。
  *
  * ■ 液晶の座席割り(全モード共通の約束 / render/lcd-cz-extra.js と同じ)
  *     y   0〜 34 … タイトルバー
  *     y  34〜176 … 盤面
  *     y 178〜230 … 演出テキスト帯(lcd.text)
- *     y 232〜262 … 結論・合計の1行 ←★ここに常設の文字が出るモードがある
- *     y 266〜300 … テロップ帯
- *   2026-08-14 検証指摘 V21-09「サメが結論行テキストに被る」への対処として、
- *   結論行を持つモード(CZ 4種 / RUSH 4種)のキャラは **結論行に体をかけない**
- *   高さへ移した。テキスト帯と重なるぶんは、帯が出ている間の減光(draw の dim)で
- *   キャラが沈むので文字が勝つ。
+ *     y 232〜262 … 結論・合計の1行
+ *     y 266〜300 … 遊び方 / 目標の常設行
+ *   テキスト帯と重なるぶんは、帯が出ている間の減光(draw の dim)でキャラが沈む。
  *
  * ■ wander(省略可)
- *   アイドル中のうろうろの最大移動量(px)。中央へ寄ってくると
- *   中央寄せの常設テキストに被るので、結論行のあるモードでは小さくしてある。
+ *   待機中に歩いて移動する最大量(px)。U71 で「基本は立ち止まる」に変えたので、
+ *   これは **たまに場所を変えるときの振れ幅**(頻度は WANDER が握る)。
  *
- * ■ U68(常駐がルナになった)以降の読み方
+ * ■ george の行について(U68 以降)
  *   実際に描かれるのは kiro(= ルナ本体)の1行だけ。george の行は
  *   **別名として kiro へ転送される**ので使われないが、
  *   「サメを戻したくなったら1行で戻せる」保全としてそのまま残してある。
- *   ルナの箱は 132×165(サメは 186×150)で **1割ほど縦に長い**ため、
- *   体の下端が結論行(y230〜)へ入らないよう、大きめの定位置だけ scale を見直した。
  */
+
+/**
+ * 常駐ルナの大きさ(高さ = 165 × scale)。
+ *   full … 通常時。液晶で主役を張る大きさ    129px
+ *   main … 盤面のあるモード(CZ / ボーナス / RUSH …)116px = 通常時の 90%
+ *   side … 別の主役が居るモード(ヒーローRUSH)102px = 通常時の 80%
+ */
+const SIZE = { full: 0.78, main: 0.70, side: 0.62 };
+
+/**
+ * 定位置を「足元の高さ」で書くための小道具(U71)。
+ * @param {number} x 立ち位置(体の中心X)
+ * @param {number} feet 足元の高さ(px)。ここから中心Yを逆算する
+ * @param {number} scale SIZE のどれか
+ * @param {number} [wander] たまに歩く振れ幅(px)
+ */
+const stand = (x, feet, scale, wander) => ({
+  x,
+  y: Math.round(feet - (LUNA_GROUND_HALF * scale)),
+  scale,
+  ...(wander == null ? {} : { wander }),
+});
+
+/** キャラの定位置(LCD 440×300 内の論理座標) */
 const MODE_HOMES = {
-  // U68: 通常時は主役なので一回り大きく(165×0.78 ≒ 129px / 足元 y260 = テロップ帯の手前)
-  FREE_TIER:   { kiro: { x: 352, y: 196, scale: 0.78, wander: 44 }, george: { x: 80, y: 240, scale: 0.50, wander: 52 } },
-  // CZ: 盤面(y34〜176)と結論行(y232〜262)に挟まれた帯へ、左右の端に小さく置く。
-  // 旧値(y246〜250)は結論行そのものに座っていて「HTTP 200 OK…」の末尾に被っていた
-  CZ:          { kiro: { x: 402, y: 202, scale: 0.30, wander: 16 }, george: { x: 40, y: 206, scale: 0.28, wander: 16 } },
-  // ボーナスの主役は bonusId で変わる(どちらもサメ。ポーズと定位置が違うだけ)。
-  // ただし applyMode は main.js から modeEnter の id しか渡されないため、
-  // ここで bonusId 別の定位置を持たせても選べない。
-  // 「どちらを出すか」は data/scenarios/bonus.js の char.show / char.hide が決めており、
-  // 出ている1体がここの定位置に収まる。左右どちらでも液晶UIと重ならない値にしてある。
-  BONUS:       { kiro: { x: 384, y: 214, scale: 0.58 }, george: { x: 62, y: 236, scale: 0.48 } },
-  // 入賞待ち: 中央に「ゴースト7 / サメBAR を揃えろ!」の指示が出るので左右の下端へ。
-  // 未定義だと FREE_TIER の定位置(幽霊 y196 / scale 0.72)に落ちて指示テロップへ被っていた
-  BONUS_READY: { kiro: { x: 386, y: 220, scale: 0.54 }, george: { x: 60, y: 238, scale: 0.46 } },
+  // 通常時。盤面に常設UIが無いので、足元をテロップ帯の手前(y260)に置いて一番大きく
+  FREE_TIER:   { kiro: stand(352, 260, SIZE.full, 44), george: { x: 80, y: 240, scale: 0.50, wander: 52 } },
+  // CZ: 11種すべて盤面が y34〜176 を full幅で使う。頭を入れずに高さを稼ぐため、
+  // 足元を目標行(y266〜)の中まで下ろして右端へ立たせる(旧: x402 / scale 0.30)
+  CZ:          { kiro: stand(388, 282, SIZE.main, 12), george: { x: 40, y: 206, scale: 0.28, wander: 16 } },
+  // ボーナス: 中央にロゴと払い出し。右端で通常時と同じ背丈に揃える
+  BONUS:       { kiro: stand(384, 282, SIZE.main), george: { x: 62, y: 236, scale: 0.48 } },
+  // 入賞待ち: 中央に「サメBAR を揃えろ!」の指示。指示は必ずキャラの上に描かれる
+  BONUS_READY: { kiro: stand(384, 282, SIZE.main), george: { x: 60, y: 238, scale: 0.46 } },
   /*
-   * ── RUSH 4種の立ち位置(結論行の座布団は y230〜258)──
-   *   体の下端が 230 を越えないように、中心Yと scale を組にして決めてある
-   *   (サメの箱は 186×150 なので 高さ = 150×scale)。
-   *   中央下(x130〜300)は座布団が無いので、そこだけ少し下まで使える。
+   * ── RUSH 4種 ──
+   * 結論行の座布団は左(進捗)と右(+n枚)の2枚で、どちらも y230〜258。
+   * 座布団はキャラより後に描かれるので、足元が隠れても数字は読める。
+   * ただし **座布団が体のどこを横切るか** は選べるので、足元を少しだけ上げて
+   * 「胸を横切る」ではなく「すねを横切る」高さにしてある(実機確認 U71)。
    */
-  // AS_RUSH: EC2アイコン列(y70〜150)と結論行(左「上乗せ +nG」/ 右「+n枚」)を避ける
-  AS_RUSH:     { kiro: { x: 250, y: 214, scale: 0.40, wander: 30 }, george: { x: 62, y: 204, scale: 0.34, wander: 24 } },
-  // U11 の RUSH 3種。どれも中央上〜中段に主役の絵があるので、左右の端の「帯の高さ」へ逃がす
-  // CF: エッジの並び(y66〜116)と中央の払い出し数字(y150)を避ける
-  CF_RUSH:     { kiro: { x: 400, y: 202, scale: 0.34, wander: 18 }, george: { x: 52, y: 204, scale: 0.32, wander: 18 } },
-  // Aurora: ゲージ(y66)とACUの大きい数字(y128)を避ける
-  AURORA_RUSH: { kiro: { x: 400, y: 202, scale: 0.34, wander: 18 }, george: { x: 52, y: 204, scale: 0.32, wander: 18 } },
-  // ヒーロー: 主役は hero(右 x309〜395)。サメ2体は左に小さく並べて拍手役にまわる
-  HERO_RUSH:   { kiro: { x: 106, y: 206, scale: 0.26, wander: 12 }, george: { x: 44, y: 208, scale: 0.28, wander: 12 } },
-  HOT_STANDBY: { kiro: { x: 392, y: 242, scale: 0.44 }, george: { x: 50, y: 246, scale: 0.38 } },
+  AS_RUSH:     { kiro: stand(384, 274, SIZE.main, 12), george: { x: 62, y: 204, scale: 0.34, wander: 24 } },
+  CF_RUSH:     { kiro: stand(386, 274, SIZE.main, 10), george: { x: 52, y: 204, scale: 0.32, wander: 18 } },
+  AURORA_RUSH: { kiro: stand(386, 274, SIZE.main, 10), george: { x: 52, y: 204, scale: 0.32, wander: 18 } },
+  // ヒーロー: 主役は hero(右 x309〜395)。ルナは左で拍手役にまわる = ここだけ side
+  HERO_RUSH:   { kiro: stand(58, 272, SIZE.side, 10), george: { x: 44, y: 208, scale: 0.28, wander: 12 } },
+  HOT_STANDBY: { kiro: stand(384, 284, SIZE.main), george: { x: 50, y: 246, scale: 0.38 } },
 
   // ── Phase 5 ──
-  // Route 53: 中央の大きなTTL表示を避けて左右の下端へ
-  ROUTE53_FAILOVER: { kiro: { x: 394, y: 240, scale: 0.42 }, george: { x: 48, y: 244, scale: 0.36 } },
-  // Spot: 中断通知に振り回される場面。U68 で主役はルナ1人になったので、
-  // 旧ジョージの立ち位置(液晶の左寄り・大きめ)を常駐へ引き継ぐ
-  SPOT_ZONE:        { kiro: { x: 372, y: 236, scale: 0.46 }, george: { x: 86, y: 232, scale: 0.60 } },
-  // EC2 バースト: 中央にクレジットゲージがあるので両端へ
-  EC2_BURST:        { kiro: { x: 396, y: 232, scale: 0.42 }, george: { x: 46, y: 244, scale: 0.36 } },
-  GRAVITON:         { kiro: { x: 388, y: 226, scale: 0.48 }, george: { x: 52, y: 248, scale: 0.34 } },
-  // Reserved: 契約書が中央上を占める
-  RESERVED:         { kiro: { x: 76, y: 232, scale: 0.44 }, george: { x: 372, y: 240, scale: 0.42 } },
-  CLOUDFRONT:       { kiro: { x: 400, y: 248, scale: 0.36 }, george: { x: 44, y: 250, scale: 0.32 } },
-  KINESIS:          { kiro: { x: 402, y: 250, scale: 0.34 }, george: { x: 44, y: 250, scale: 0.32 } },
-  // Step Functions: 選択肢ボックス(y116〜176)を避けて最下段へ小さく
-  STEP_FUNCTIONS:   { kiro: { x: 404, y: 254, scale: 0.32 }, george: { x: 42, y: 254, scale: 0.30 } },
-  SERVERLESS_RUSH:  { kiro: { x: 244, y: 236, scale: 0.46 }, george: { x: 58, y: 242, scale: 0.42 } },
-  // Multi-Region: 世界地図が全面なので端に小さく
-  MULTI_REGION:     { kiro: { x: 406, y: 252, scale: 0.32 }, george: { x: 40, y: 252, scale: 0.30 } },
-  // エンディング: 2人が壇上に並ぶ
-  REINVENT_ED:      { kiro: { x: 140, y: 244, scale: 0.50 }, george: { x: 320, y: 248, scale: 0.46 } },
+  ROUTE53_FAILOVER: { kiro: stand(384, 284, SIZE.main), george: { x: 48, y: 244, scale: 0.36 } },
+  SPOT_ZONE:        { kiro: stand(382, 284, SIZE.main), george: { x: 86, y: 232, scale: 0.60 } },
+  EC2_BURST:        { kiro: stand(384, 284, SIZE.main), george: { x: 46, y: 244, scale: 0.36 } },
+  GRAVITON:         { kiro: stand(384, 284, SIZE.main), george: { x: 52, y: 248, scale: 0.34 } },
+  RESERVED:         { kiro: stand(384, 284, SIZE.main), george: { x: 372, y: 240, scale: 0.42 } },
+  CLOUDFRONT:       { kiro: stand(386, 284, SIZE.main), george: { x: 44, y: 250, scale: 0.32 } },
+  KINESIS:          { kiro: stand(386, 284, SIZE.main), george: { x: 44, y: 250, scale: 0.32 } },
+  // Step Functions: 選択肢ボックス(y116〜176)が下まで来るので、ほんの少し低く
+  STEP_FUNCTIONS:   { kiro: stand(386, 286, SIZE.main), george: { x: 42, y: 254, scale: 0.30 } },
+  SERVERLESS_RUSH:  { kiro: stand(384, 284, SIZE.main), george: { x: 58, y: 242, scale: 0.42 } },
+  MULTI_REGION:     { kiro: stand(388, 286, SIZE.main), george: { x: 40, y: 252, scale: 0.30 } },
+  // エンディング: 壇上。中央の大きな文字を避けて左に立つ
+  REINVENT_ED:      { kiro: stand(96, 284, SIZE.main), george: { x: 320, y: 248, scale: 0.46 } },
 };
 
 /*
@@ -323,18 +343,23 @@ const easeOutBack = (x) => 1 + 2.70158 * (x - 1) ** 3 + 1.70158 * (x - 1) ** 2;
 const LCD_W = 440;
 
 /**
- * アイドル時のうろうろ(= 液晶の中を **歩く**)。
+ * 待機中の立ち居振る舞い(= たまに歩いて場所を変える)。
  *
- * 定位置に立っているだけだと置物に見えるので、待機中はゆっくり左右へ歩かせる。
- * 演出(モーション/ポーズ指定)が入っている間はそちらを優先し、
- * アイドルへ戻ったら再開する。
+ * ══ 2026-08-15 U71「まだ左右にゆらゆら浮いて見える」════════════════
+ *
+ * 【指摘】U68b で縦のぷかぷかは消えたが、**横の揺れが残っていて浮遊感がある**。
+ * 【原因】うろうろが「常に歩いている」実装だった。
+ *   片道 2.4〜4.2秒 → 立ち止まり **0.26〜0.9秒** → また逆へ、の繰り返しで、
+ *   ほぼ全時間が移動中。おまけに歩けば進行方向へ体が傾く(wanderTilt)ので、
+ *   ゆっくり左右に流れながら傾く = 水中を漂っているように見えていた。
+ * 【対処】立ち止まりを **6〜14秒** に伸ばして主従を逆にした。
+ *   ・立っている間は移動も傾きも跳ねも **完全に 0**(下の _updateWander)
+ *   ・歩いている間だけ歩幅ぶんの跳ねと進行方向の傾きが出る(これは自然な動き)
+ *   ・退屈しのぎは「揺らす」ではなく **たまに仕草を挟む**(GESTURE)で作る
  *
  * ■ U68b(接地): 常時の上下ゆらぎ(bobY)は廃止
- *   旧実装は sin 波で体全体を上下に 5px 揺らし続けていた = 常時ホバリング。
  *   人間なので **止まっているときは上下に動かない**(呼吸だけ。呼吸は
  *   render/chars/lunachan.js の ANIMS.idle が sy で表現する)。
- *   歩いている最中だけ、歩幅ぶんの小さな跳ね(walkBob)を入れて足取りを出す。
- *   跳ねは必ず 0(接地)へ戻る値なので「浮いている」画にはならない。
  */
 const WANDER = {
   /** 定位置からの最大移動量(px) */
@@ -344,9 +369,13 @@ const WANDER = {
   /** 片道にかける時間(ms)。距離に応じてこの範囲で決まる */
   minMs: 2400,
   maxMs: 4200,
-  /** 折り返し前に立ち止まる時間(ms) */
-  holdMinMs: 260,
-  holdMaxMs: 900,
+  /**
+   * 次に歩き出すまで **立ち止まっている** 時間(U71)。
+   * ここが移動時間より十分に長いことが「立っている」画の要。
+   * 実測(scripts の30秒観察)で、止まっている時間が全体の 8割 を超える値にしてある。
+   */
+  holdMinMs: 10000,
+  holdMaxMs: 22000,
   /** 歩幅ぶんの跳ね(px)。歩いている間だけ。0 で完全に接地 */
   walkBob: 2.6,
   /** 1秒あたりの歩数(2 = 左右で1歩ずつ) */
@@ -358,7 +387,58 @@ const WANDER = {
   tilt: 0.05,
   /** 傾きが最大になる速さ(px/ms) */
   tiltSpeed: 0.075,
+  /** これ以下の速さは「立ち止まっている」とみなして揺れを完全に切る(px/ms) */
+  stillSpeed: 0.002,
 };
+
+/**
+ * 待機中の仕草(U71)。**ポーズだけ**を数秒差し替える。
+ *
+ * ■ なぜ「揺らす」のではなく「ポーズを替える」のか
+ *   置物に見せないための動きが欲しいだけなら体を揺らすのが簡単だが、
+ *   それは今回まさに「浮いて見える」と言われた当のもの。
+ *   人間は立っているとき体幹を揺らさず、**表情と仕草**で間を持たせる。
+ *   ポーズの切り替えは一瞬で終わり、移行中に体が流れないので浮遊感が出ない。
+ *
+ * ■ 選ぶポーズの条件(render/chars/lunachan.js の LUNA_POSES)
+ *   ・追加エフェクト(fx)を持たないこと。きらめきやハートが待機で出ると
+ *     「何か起きた」の誤報になる(演出の信頼度に嘘を混ぜない)
+ *   ・大きく移動しないこと(peek は ±34px 動くので待機では使わない)
+ * ■ sleep(居眠り)だけは長い待機のごほうび
+ *   「通常時が長く続いたときのアイドル変化」。ずっと出ると寝てばかりの子になるので、
+ *   同じ場所で idleSec を積んだときにだけ候補へ入る。
+ */
+const GESTURE = {
+  /** 通常の仕草(fxなし・その場から動かないポーズ) */
+  poses: ['think', 'question', 'wave', 'coding'],
+  /** 長く待たされたときだけ足す仕草 */
+  longPoses: ['sleep'],
+  /** これだけ待機が続いたら longPoses も候補に入れる(秒) */
+  longIdleSec: 60,
+  /** 次の仕草までの間隔(ms)。数十秒に1回 = 常時ではない */
+  waitMinMs: 14000,
+  waitMaxMs: 30000,
+  /** 1回の仕草の長さ(ms) */
+  minMs: 2200,
+  maxMs: 3600,
+};
+
+/** 仕草として差し替えてよい「素の立ち姿」のポーズ名(演出中の指定は上書きしない) */
+const NEUTRAL_POSES = new Set(['normal', 'idle', 'smile']);
+
+/**
+ * 演出が指定したポーズを、何もされないまま何秒保持したら素へ戻すか(U71)。
+ *
+ * ■ なぜ要るのか
+ *   演出データには「決めポーズで終わって素へ戻さない」シナリオがある
+ *   (例: data/scenarios/normal.js の stage_up_provisioned は happy で終わる)。
+ *   ポーズ既定のアニメは **鳴らしっぱなしで走り続ける** ので、
+ *   happy(cheerJump)なら次の演出が来るまで延々と跳ね続けることになる。
+ *   これがユーザーの言う「浮いてる感じ」の一因でもあった。
+ *   決めポーズは見せ場の数秒ぶんあれば足りるので、しばらく放置されたら
+ *   静かな立ち姿へ戻す。**演出が続いている間(モーション中)は戻さない**。
+ */
+const POSE_HOLD_SEC = 9;
 
 class CharState {
   constructor(id) {
@@ -387,8 +467,21 @@ class CharState {
     this.wanderTo = 0;
     this.wanderTime = 0;
     this.wanderDur = 0;
-    this.wanderHold = 0;
+    // U71: 出てきた直後は歩き出さず、まず立つ
+    this.wanderHold = 1500 + Math.random() * 4000;
     this.wanderPhase = Math.random() * Math.PI * 2;
+    /*
+     * 待機の仕草(U71)。**描画に使うポーズだけ**を一時的に差し替える。
+     * c.pose には触らないので、うろうろのアイドル判定も演出側の指定も乱さない。
+     */
+    this.gesture = null;
+    this.gestureLeft = 0;
+    this.gestureT0 = 0;
+    this.gestureWait = GESTURE.waitMinMs + Math.random() * (GESTURE.waitMaxMs - GESTURE.waitMinMs);
+    /** 素の立ち姿のまま待っている時間(秒)。長い待機のごほうび(sleep)の条件 */
+    this.idleSec = 0;
+    /** 今のポーズが指定された時刻(秒)。決めポーズの寝かせ(U71)に使う */
+    this.poseAt = 0;
     this.reset();
   }
 
@@ -441,6 +534,8 @@ export class CharacterLayer {
     if (!c) return;
     c.visible = true;
     c.pose = pose;
+    c.poseAt = this.t;      // 決めポーズの寝かせ(U71)の基準時刻
+    c.gesture = null;       // 演出が来たら待機の仕草は畳む
     c.targetAlpha = 1;
     if (opts.x != null) c.x = opts.x;
     if (opts.y != null) c.y = opts.y;
@@ -469,7 +564,10 @@ export class CharacterLayer {
   /** ポーズだけ変える */
   pose(id, pose) {
     const c = this.chars[realId(id)];
-    if (c) c.pose = pose;
+    if (!c) return;
+    c.pose = pose;
+    c.poseAt = this.t;      // 決めポーズの寝かせ(U71)の基準時刻
+    c.gesture = null;       // 演出が来たら待機の仕草は畳む
   }
 
   /** モーションを再生する */
@@ -479,6 +577,7 @@ export class CharacterLayer {
     if (!c || !def) return;
     c.motion = motion;
     c.motionLeft = def.ms;
+    c.gesture = null;       // 芝居が入るあいだは待機の仕草を止める
   }
 
   /** 定位置に戻す */
@@ -548,6 +647,76 @@ export class CharacterLayer {
     // アイドル時のうろうろ。U68 で常駐が1人になったので、動かす対象もルナだけ
     // (置物に見えないようにするのが目的。演出中は _updateWander 側で止まる)
     this._updateWander(this.chars[RESIDENT], dt);
+    // 待機の仕草(U71)。揺らす代わりに、たまに表情と姿勢を変える
+    this._updateGesture(this.chars[RESIDENT], dt);
+  }
+
+  /**
+   * 待機中の仕草(U71)。
+   *   ・素の立ち姿で待っている間だけ、数十秒に1回 数秒だけポーズを差し替える
+   *   ・演出が始まったら(ポーズ指定・モーション)即座に取り下げる
+   * ポーズの差し替えは描画専用の c.gesture で行い、c.pose には触らない。
+   */
+  _updateGesture(c, dt) {
+    if (!c) return;
+    /*
+     * 決めポーズの寝かせ(U71)。演出が素へ戻し忘れたまま放置されたら、
+     * 静かな立ち姿へ戻す(理由は POSE_HOLD_SEC のコメント)。
+     */
+    if (!NEUTRAL_POSES.has(c.pose) && !c.motion && this.t - c.poseAt > POSE_HOLD_SEC) {
+      c.pose = 'normal';
+    }
+    const neutral = c.visible && c.targetAlpha > 0 && !c.motion && NEUTRAL_POSES.has(c.pose);
+    if (!neutral) {
+      // 演出が主役。仕草はその場で畳んで、次の間隔を取り直す
+      c.gesture = null;
+      c.gestureLeft = 0;
+      c.idleSec = 0;
+      c.gestureWait = GESTURE.waitMinMs + Math.random() * (GESTURE.waitMaxMs - GESTURE.waitMinMs);
+      return;
+    }
+
+    c.idleSec += dt / 1000;
+
+    if (c.gesture) {
+      c.gestureLeft -= dt;
+      if (c.gestureLeft <= 0) {
+        c.gesture = null;
+        c.gestureWait = GESTURE.waitMinMs + Math.random() * (GESTURE.waitMaxMs - GESTURE.waitMinMs);
+      }
+      return;
+    }
+
+    c.gestureWait -= dt;
+    if (c.gestureWait > 0) return;
+    // 長く待たされているときだけ居眠りを候補に足す
+    const pool = c.idleSec >= GESTURE.longIdleSec
+      ? [...GESTURE.poses, ...GESTURE.longPoses]
+      : GESTURE.poses;
+    // 演出RNGは使わない(engine/voice.js 冒頭と同じ理由。見た目だけの乱数)
+    this.gestureFor(c.id, pool[Math.floor(Math.random() * pool.length)],
+      GESTURE.minMs + Math.random() * (GESTURE.maxMs - GESTURE.minMs));
+  }
+
+  /**
+   * 一時的にポーズだけ差し替える(U71)。**素の立ち姿のときだけ効く**。
+   *
+   * 演出(char.pose / char.motion)が指定したポーズは上書きしない。
+   * ボイスの相槌に表情を合わせる用途で staging/actions.js からも呼ばれる
+   * (「あれ?」で首をかしげる、など)。
+   *
+   * @param {string} id
+   * @param {string} pose LUNA_POSES / LUNA_SITUATIONS のどちらの名前でも通る
+   * @param {number} [ms]
+   */
+  gestureFor(id, pose, ms = 2400) {
+    const c = this.chars[realId(id)];
+    if (!c || !pose) return;
+    if (!NEUTRAL_POSES.has(c.pose) || c.motion) return;
+    c.gesture = pose;
+    c.gestureLeft = ms;
+    c.gestureT0 = this.t;
+    c.idleSec = 0;
   }
 
   /**
@@ -585,21 +754,33 @@ export class CharacterLayer {
       this._pickWanderTarget(c);
     }
 
-    // 進行方向へ体を傾ける(速度に比例)
+    /*
+     * ここから下は「歩いている間だけの味付け」(U71)。
+     * 立ち止まっている間は v がゼロなので、傾きも跳ねも **必ず 0 に収束する**。
+     * 収束の途中で微小な値が残り続けると、それが「ゆらゆら」の正体になるので、
+     * 止まっていると判定できる速さ(stillSpeed)ではその場で 0 に落とし切る。
+     */
     const v = dt > 0 ? (c.wanderX - prevX) / dt : 0;
-    const target = Math.max(-1, Math.min(1, v / WANDER.tiltSpeed)) * WANDER.tilt;
+    const walking = Math.abs(v) > WANDER.stillSpeed;
+
+    // 進行方向へ体を傾ける(速度に比例)
+    const target = walking
+      ? Math.max(-1, Math.min(1, v / WANDER.tiltSpeed)) * WANDER.tilt
+      : 0;
     c.wanderTilt += (target - c.wanderTilt) * Math.min(1, dt / 180);
+    if (!walking && Math.abs(c.wanderTilt) < 0.0005) c.wanderTilt = 0;
 
     /*
      * 歩幅ぶんの跳ね(U68b)。**歩いている間だけ**上下する。
      * speed(0〜1)は今の移動の速さで、立ち止まっていれば 0 = 完全に接地。
      * |sin| なので、1歩ごとに必ず 0(足が着いた瞬間)へ戻る。
      */
-    const speed = Math.min(1, Math.abs(v) / WANDER.tiltSpeed);
+    const speed = walking ? Math.min(1, Math.abs(v) / WANDER.tiltSpeed) : 0;
     const bob = speed > 0.02
       ? Math.abs(Math.sin(this.t * Math.PI * WANDER.stepsPerSec + c.wanderPhase)) * WANDER.walkBob * speed
       : 0;
     c.wanderY += (-bob - c.wanderY) * Math.min(1, dt / 60);
+    if (!walking && Math.abs(c.wanderY) < 0.02) c.wanderY = 0;
   }
 
   /** 次の目標地点(定位置からのオフセット)を決める */
@@ -678,11 +859,17 @@ export class CharacterLayer {
           y: ry,
           scale: resident.scale * resident.scaleMul,
           dir: resident.dir,
-          t: this.t,
+          /*
+           * 待機の仕草(U71)は **その仕草が始まった瞬間を 0 秒** として渡す。
+           * ポーズ既定のアニメには「はじめに首をかしげて、そのまま保つ」のように
+           * 立ち上がりを持つものがあり、途中の位相から始めると
+           * いきなり傾いた姿勢で現れて不自然になる。
+           */
+          t: resident.gesture ? this.t - resident.gestureT0 : this.t,
           alpha: resident.alpha * resident.alphaMul * sideMul,
           // ポーズ名でもシチュエーション名でも通る(旧サメのポーズ名も
           // render/chars/lunachan.js の LUNA_SITUATIONS が読み替える)
-          pose: resident.pose,
+          pose: resident.gesture ?? resident.pose,
           // 常駐は後光なし・減光ありの「素の」ルナ(カメオとの格の差を保つ)
           premium: false,
         });

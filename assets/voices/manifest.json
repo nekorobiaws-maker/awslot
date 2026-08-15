@@ -1,6 +1,6 @@
 {
   "note": "scripts/generate-voices.mjs が自動生成します。手で編集しないこと。",
-  "generatedAt": "2026-08-15T11:49:35.258Z",
+  "generatedAt": "2026-08-15T13:46:13.050Z",
   "basePath": "assets/voices/",
   "pathRule": "{basePath}{char}/{file}",
   "groups": {
@@ -20,7 +20,25 @@
       "luna_sugoi_01",
       "luna_freeze_01",
       "luna_hmm_01",
-      "luna_lose_01"
+      "luna_lose_01",
+      "luna_react_are_01",
+      "luna_react_n_01",
+      "luna_react_o_01",
+      "luna_react_nn_01",
+      "luna_react_nanka_01",
+      "luna_react_matte_01",
+      "luna_react_zawa_01",
+      "luna_react_kuru_01",
+      "luna_react_uzu_01",
+      "luna_react_kinosei_01",
+      "luna_quiz_ok_01",
+      "luna_quiz_ok_02",
+      "luna_quiz_ok_03",
+      "luna_quiz_ok_04",
+      "luna_quiz_ng_01",
+      "luna_quiz_ng_02",
+      "luna_quiz_ng_03",
+      "luna_quiz_ng_04"
     ],
     "CZ": [
       "luna_react_oh_01",
@@ -31,7 +49,25 @@
       "luna_bonus_kakutei_01",
       "luna_kita_01",
       "luna_win_01",
-      "luna_lose_01"
+      "luna_lose_01",
+      "luna_react_are_01",
+      "luna_react_n_01",
+      "luna_react_o_01",
+      "luna_react_nn_01",
+      "luna_react_nanka_01",
+      "luna_react_matte_01",
+      "luna_react_zawa_01",
+      "luna_react_kuru_01",
+      "luna_react_uzu_01",
+      "luna_react_kinosei_01",
+      "luna_quiz_ok_01",
+      "luna_quiz_ok_02",
+      "luna_quiz_ok_03",
+      "luna_quiz_ok_04",
+      "luna_quiz_ng_01",
+      "luna_quiz_ng_02",
+      "luna_quiz_ng_03",
+      "luna_quiz_ng_04"
     ],
     "BONUS_READY": [
       "luna_bonus_kakutei_01"
@@ -176,6 +212,96 @@
       "file": "luna_18.mp3",
       "char": "luna",
       "text": "まだまだ〜"
+    },
+    "luna_react_are_01": {
+      "file": "luna_21.mp3",
+      "char": "luna",
+      "text": "あれ?"
+    },
+    "luna_react_n_01": {
+      "file": "luna_22.mp3",
+      "char": "luna",
+      "text": "ん?"
+    },
+    "luna_react_o_01": {
+      "file": "luna_23.mp3",
+      "char": "luna",
+      "text": "お?"
+    },
+    "luna_react_nn_01": {
+      "file": "luna_24.mp3",
+      "char": "luna",
+      "text": "んん?"
+    },
+    "luna_react_nanka_01": {
+      "file": "luna_25.mp3",
+      "char": "luna",
+      "text": "なんか来てる…?"
+    },
+    "luna_react_matte_01": {
+      "file": "luna_26.mp3",
+      "char": "luna",
+      "text": "ちょっと待って?"
+    },
+    "luna_react_zawa_01": {
+      "file": "luna_27.mp3",
+      "char": "luna",
+      "text": "ざわざわしてる…"
+    },
+    "luna_react_kuru_01": {
+      "file": "luna_28.mp3",
+      "char": "luna",
+      "text": "くるかも…"
+    },
+    "luna_react_uzu_01": {
+      "file": "luna_29.mp3",
+      "char": "luna",
+      "text": "うずうずする…"
+    },
+    "luna_react_kinosei_01": {
+      "file": "luna_30.mp3",
+      "char": "luna",
+      "text": "気のせいかな?"
+    },
+    "luna_quiz_ok_01": {
+      "file": "luna_31.mp3",
+      "char": "luna",
+      "text": "いいねっ!"
+    },
+    "luna_quiz_ok_02": {
+      "file": "luna_32.mp3",
+      "char": "luna",
+      "text": "せいかーい!"
+    },
+    "luna_quiz_ok_03": {
+      "file": "luna_33.mp3",
+      "char": "luna",
+      "text": "さすが!"
+    },
+    "luna_quiz_ok_04": {
+      "file": "luna_34.mp3",
+      "char": "luna",
+      "text": "よく知ってるね!"
+    },
+    "luna_quiz_ng_01": {
+      "file": "luna_35.mp3",
+      "char": "luna",
+      "text": "それは良くないよー"
+    },
+    "luna_quiz_ng_02": {
+      "file": "luna_36.mp3",
+      "char": "luna",
+      "text": "ちがうちがう!"
+    },
+    "luna_quiz_ng_03": {
+      "file": "luna_37.mp3",
+      "char": "luna",
+      "text": "おしい!"
+    },
+    "luna_quiz_ng_04": {
+      "file": "luna_38.mp3",
+      "char": "luna",
+      "text": "うーん、ざんねん!"
     }
   }
 }

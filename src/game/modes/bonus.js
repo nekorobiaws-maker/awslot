@@ -180,7 +180,7 @@ export const bonus = {
 
   /**
    * 100回転終了時の残存価値(data/session.js)。
-   * 残ゲーム数 × ボーナス中の期待純増(BONUS_NET_PER_GAME = **8.45枚/G**)。
+   * 残ゲーム数 × ボーナス中の期待純増(BONUS_NET_PER_GAME = **10.60枚/G** / U72)。
    * 数値は data/payouts.js が data/flags.js の BONUS_FLAGS から算出した実値で、
    * ここに書き写さない(U22 でベルが 1/1.2 → 1/1.4 に下がり 9.7 → 8.45 になった際、
    * 古い数字だけが残って読み手を誤らせた。2026-08-14 検証)。

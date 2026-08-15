@@ -322,6 +322,98 @@ const PHRASES = [
   { char: 'luna', key: 'luna_madamada_01', file: 'luna_18.mp3',
     modes: ['AS_RUSH', 'CF_RUSH', 'AURORA_RUSH', 'SPOT_ZONE'],
     text: 'まだまだ〜' },
+
+  /* ── ルナ 相槌バリエーション(2026-08-15 U71)──────────────────────
+   *
+   * 【指示】「前兆演出で『あれ?』『なになに?』みたいなちょっとした声がほしい」
+   *
+   * 前兆は1回の当たりに何ゲームも続くので、同じ場面に同じ1本を貼ると
+   * **毎回まったく同じ声**になって一気に飽きる。ここで束(プール)を厚くして、
+   * src/data/voicepools.js の react / tease / doubt から1本ずつ引かせる。
+   *
+   * ■ 守っていること
+   *   ・全部が **疑問形・非断定**。ガセ前兆にも等しく貼るので、
+   *     断定するセリフを混ぜるとその声で当たりが割れてしまう
+   *   ・1本 1〜2秒。何度も聞くものほど短く
+   *   ・**既存の 01〜20 には手を触れない**。file は未使用の番号(21〜30)を新規に割り当てる
+   *     (ファイル名固定の掟。番号を詰め直すと既存MP3が別テキストとして再利用される)
+   */
+  // 予兆の入り(react プール)
+  { char: 'luna', key: 'luna_react_are_01', file: 'luna_21.mp3',
+    modes: ['FREE_TIER', 'CZ'],
+    text: 'あれ?' },
+  { char: 'luna', key: 'luna_react_n_01', file: 'luna_22.mp3',
+    modes: ['FREE_TIER', 'CZ'],
+    text: 'ん?' },
+  { char: 'luna', key: 'luna_react_o_01', file: 'luna_23.mp3',
+    modes: ['FREE_TIER', 'CZ'],
+    text: 'お?' },
+  { char: 'luna', key: 'luna_react_nn_01', file: 'luna_24.mp3',
+    modes: ['FREE_TIER', 'CZ'],
+    text: 'んん?' },
+  { char: 'luna', key: 'luna_react_nanka_01', file: 'luna_25.mp3',
+    modes: ['FREE_TIER', 'CZ'],
+    text: 'なんか来てる…?' },
+  { char: 'luna', key: 'luna_react_matte_01', file: 'luna_26.mp3',
+    modes: ['FREE_TIER', 'CZ'],
+    text: 'ちょっと待って?' },
+  // 煽り(tease プール)
+  { char: 'luna', key: 'luna_react_zawa_01', file: 'luna_27.mp3',
+    modes: ['FREE_TIER', 'CZ'],
+    text: 'ざわざわしてる…' },
+  { char: 'luna', key: 'luna_react_kuru_01', file: 'luna_28.mp3',
+    modes: ['FREE_TIER', 'CZ'],
+    text: 'くるかも…' },
+  { char: 'luna', key: 'luna_react_uzu_01', file: 'luna_29.mp3',
+    modes: ['FREE_TIER', 'CZ'],
+    text: 'うずうずする…' },
+  // ガセの締め(doubt プール)
+  { char: 'luna', key: 'luna_react_kinosei_01', file: 'luna_30.mp3',
+    modes: ['FREE_TIER', 'CZ'],
+    text: '気のせいかな?' },
+
+  /* ── クイズの答え合わせ(2026-08-15 U71b)────────────────────────────
+   *
+   * 【指示】3択クイズの正解/不正解にルナのコメントをつける。
+   *
+   * ■ ここだけ「断定してよい」理由
+   *   このゲームで唯一、**当落と無関係に事実が確定している**のがクイズの正誤。
+   *   押したリールと正解の位置が一致したかどうかだけで決まるので、
+   *   「いいねっ!」と言い切っても当たりの示唆にはならない
+   *   (正解してもハズレるし、不正解でもCZに入る。data/scenarios/quiz.js の表を参照)。
+   *
+   * ■ 不正解でも責めない
+   *   この台は「遊んで覚える」がコンセプトなので、
+   *   叱る言い方(「違うでしょ」)ではなく **一緒に悔しがる** 言い方に寄せる。
+   *   「それは良くないよー」はアンチパターン(admin権限を付けちゃう等)を
+   *   選んだときの言い回しとしても効くので、筆頭に置く。
+   */
+  // 正解(quizOk プール)
+  { char: 'luna', key: 'luna_quiz_ok_01', file: 'luna_31.mp3',
+    modes: ['FREE_TIER', 'CZ'],
+    text: 'いいねっ!' },
+  { char: 'luna', key: 'luna_quiz_ok_02', file: 'luna_32.mp3',
+    modes: ['FREE_TIER', 'CZ'],
+    text: 'せいかーい!' },
+  { char: 'luna', key: 'luna_quiz_ok_03', file: 'luna_33.mp3',
+    modes: ['FREE_TIER', 'CZ'],
+    text: 'さすが!' },
+  { char: 'luna', key: 'luna_quiz_ok_04', file: 'luna_34.mp3',
+    modes: ['FREE_TIER', 'CZ'],
+    text: 'よく知ってるね!' },
+  // 不正解(quizNg プール)
+  { char: 'luna', key: 'luna_quiz_ng_01', file: 'luna_35.mp3',
+    modes: ['FREE_TIER', 'CZ'],
+    text: 'それは良くないよー' },
+  { char: 'luna', key: 'luna_quiz_ng_02', file: 'luna_36.mp3',
+    modes: ['FREE_TIER', 'CZ'],
+    text: 'ちがうちがう!' },
+  { char: 'luna', key: 'luna_quiz_ng_03', file: 'luna_37.mp3',
+    modes: ['FREE_TIER', 'CZ'],
+    text: 'おしい!' },
+  { char: 'luna', key: 'luna_quiz_ng_04', file: 'luna_38.mp3',
+    modes: ['FREE_TIER', 'CZ'],
+    text: 'うーん、ざんねん!' },
 ];
 
 // ─────────────────────────────────────────────

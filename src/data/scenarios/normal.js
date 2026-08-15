@@ -34,11 +34,12 @@ export default [
       { at: 100, layer: 'char',    action: 'show',  params: { char: 'kiro', pose: 'surprised' } },
       { at: 120, layer: 'lcd',     action: 'particles', params: { preset: 'spark', x: 352, y: 176 } },
       /*
-       * ルナの相槌(U68)。レア役が入った瞬間の「おっ?」。
+       * ルナの相槌(U68 → U71 でプール化)。レア役が入った瞬間の「おっ?」「あれ?」…。
        * chance で間引くのは、レア役はそこそこ引けるので毎回喋ると耳につくため
        * (engine/voice.js 側でも1ゲーム1本 + cooldown の二重の歯止めがある)。
+       * プールから1本引くので、同じ場面でも毎回同じ声にはならない(data/voicepools.js)。
        */
-      { at: 200, layer: 'voice',   action: 'play',  params: { key: 'luna_react_oh_01', chance: 0.22 } },
+      { at: 200, layer: 'voice',   action: 'play',  params: { pool: 'react', chance: 0.22 } },
       { waitFor: 'stop3', after: 300, layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'normal' } },
     ],
   },
@@ -61,20 +62,26 @@ export default [
     ],
   },
 
-  {
-    id: 'normal_fin_tease_gase',
-    name: '【ガセ】サメの尾びれチラ見せ(ハズレ・ベルでも出る)',
-    // IDEAS.md 2-15。低期待度シナリオをあえて非レア役に混ぜて「らしさ」を出す
-    when: { event: 'leverOn', flag: ['LOSE', 'BELL'], mode: ['FREE_TIER'] },
-    weight: { FREE_TIER: 100, default: 0 },
-    // 通常時のハズレは頻発するので、発火自体を 2.5% に間引く
-    chance: 0.25,  // 統合調律(2026-08-13): 非レア時の演出発火率30%に合わせて 0.025 → 0.25
-    duration: 1300,
-    cues: [
-      { at: 0,   layer: 'overlay', action: 'cutin', params: { id: 'shark_fin_tease' } },
-      { at: 100, layer: 'sfx',     action: 'synth', params: { preset: 'shark_swim' } },
-    ],
-  },
+  /* ══ 削除: normal_fin_tease_gase(2026-08-15 U71 ユーザー指示)═══════════
+   *
+   * 【指摘】「なんか変な帽子が飛んでくるイベントがある。あれは不要」
+   * 【正体】ハズレ・ベルで 25% 抽選されていたガセ予告
+   *         「【ガセ】サメの尾びれチラ見せ」(IDEAS.md 2-15)。
+   *         中身は overlay.cutin 'shark_fin_tease' = **背びれのシルエットだけ**を
+   *         液晶の中で横に泳がせるカットイン(顔も体も描かない)。
+   *         水面の波紋が細い1本線なので、実機では
+   *         「オレンジのとんがり帽子が横切っていく」ようにしか見えていなかった。
+   *         サメ本体を出さない方針(U68)と、絵をプロシージャルに削った経緯が重なって、
+   *         **メタファーが伝わらない図形だけが残っていた**のが原因。
+   * 【対処】シナリオごと削除。カットイン定義 'shark_fin_tease' も
+   *         staging/anims/cutins.js から消した(参照はここ1か所だけだった)。
+   * 【発火量への影響】
+   *   ここは通常時ハズレ帯の重み付き抽選プールなので、抜けたぶん(FREE_TIER 100)は
+   *   **同じプールの他シナリオへ自動で按分される**(演出の総量は変わらない)。
+   *   ハズレ帯には normal_kinesis_tease_gase(weight 60 / chance 0.30)など
+   *   別のガセが残っているので、「何も起きない画」が増えることはない。
+   *   ゲーム性への影響はゼロ(演出はゲーム進行に一切影響しない)。
+   */
 
   {
     id: 'normal_alarm_tease_gase',
@@ -180,6 +187,14 @@ export default [
         after: 200,
         ms: 900,
       }),
+      /*
+       * U71: 引っぱって何も無かったときの「むすっ」(penalty → sulk)。
+       * このシナリオ自体が chance 0.30 で間引かれているので、
+       * ハズレが続いたときに **たまに** 見える顔になる(毎回だと拗ねてばかりの子になる)。
+       * 泣き顔(cry)は CZ非突破まで取っておく = 表情の格を場面に合わせる。
+       */
+      { waitFor: 'stop3', after: 260, layer: 'char', action: 'show', params: { char: 'kiro', pose: 'penalty' } },
+      { waitFor: 'stop3', after: 1200, layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'normal' } },
     ],
   },
 
@@ -274,7 +289,9 @@ export default [
           color: '#e0b3ff', ms: 1800, sticky: true,
         } },
       { at: 1400, layer: 'overlay', action: 'particles', params: { preset: 'rainbow', x: 360, y: 380, count: 18 } },
-      { at: 2400, layer: 'char',    action: 'pose',   params: { char: 'kiro', pose: 'happy' } },
+      // U71: 到着後はペンライトを振って会場のノリに乗る(chance → penlight)。
+      // 9秒放置されれば render/chars/index.js が静かな立ち姿へ寝かせる
+      { at: 2400, layer: 'char',    action: 'pose',   params: { char: 'kiro', pose: 'chance' } },
     ],
   },
 
@@ -294,8 +311,17 @@ export default [
       { at: 0,   layer: 'overlay', action: 'flash', params: { color: '#ffb04a', ms: 240 } },
       { at: 60,  layer: 'lcd',     action: 'anim',  params: { anim: 'lcd_flash', color: '#ffb04a', strength: 0.4 } },
       { at: 200, layer: 'lcd',     action: 'particles', params: { preset: 'spark', x: 300, y: 210, count: 12 } },
-      { at: 240, layer: 'char',    action: 'show',   params: { char: 'kiro', pose: 'happy' } },
-      { at: 240, layer: 'char',    action: 'motion', params: { char: 'kiro', motion: 'bounce' } },
+      /*
+       * U71: 「会場入り」を2拍で見せる。
+       *   1拍目 会場へ走っていく(run + dashBy。走りポーズは唯一 左右反転してよい絵)
+       *   2拍目 到着してペンライトを振る(chance → penlight。音符のエフェクト付き)
+       * 走りポーズを立ち姿のまま横滑りさせないため、pose と motion は必ず組で置く
+       * (render/chars/index.js の dashBy のコメント)。
+       */
+      { at: 240, layer: 'char',    action: 'show',   params: { char: 'kiro', pose: 'dash' } },
+      { at: 240, layer: 'char',    action: 'motion', params: { char: 'kiro', motion: 'dashBy' } },
+      { at: 1150, layer: 'char',   action: 'pose',   params: { char: 'kiro', pose: 'chance' } },
+      { at: 1200, layer: 'char',   action: 'motion', params: { char: 'kiro', motion: 'bounce' } },
       // 2026-08-14 ユーザー指摘 U6:
       // 実際には「もう移動した(高確に居る)」ので、近づいてきた表現は嘘だった。
       // U55: 告知は1本だけ / sticky = 次のゲームのレバーONで消える
