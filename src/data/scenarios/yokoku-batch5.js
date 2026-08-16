@@ -220,7 +220,8 @@ export default [
     sub: 'AWS の第三者監査報告書を1枚だけ取得した',
     anim: 'checklist_green',
     animParams: { index: 1 },
-    weight: 56,
+    // U82: 56 → 14(マイナー勢の降格。帳簿は yokoku-major.js の冒頭)
+    weight: 14,
   }),
   weakYokoku({
     id: 'yb5_ebs_snapshot_weak',
@@ -236,7 +237,8 @@ export default [
     name: '【弱】FSx for Windows予告(共有ドライブが生きているだけ)',
     text: 'Z: 接続中',
     sub: 'Windows のファイルサーバがまだ繋がっている',
-    weight: 54,
+    // U82: 54 → 14(マイナー勢の降格)
+    weight: 14,
   }),
   weakYokoku({
     id: 'yb5_appstream_weak',
@@ -246,7 +248,8 @@ export default [
     anim: 'cw_graph_appear',
     sfx: 'stream_flow',
     gain: 0.4,
-    weight: 54,
+    // U82: 54 → 14(マイナー勢の降格)
+    weight: 14,
   }),
   weakYokoku({
     id: 'yb5_ses_weak',
@@ -301,7 +304,8 @@ export default [
     name: '【弱】License Manager予告(残数が1つ減っただけ)',
     text: 'LICENSE −1',
     sub: '持ち込みソフトのライセンスが1つ使われた',
-    weight: 52,
+    // U82: 52 → 13(マイナー勢の降格)
+    weight: 13,
   }),
   weakYokoku({
     id: 'yb5_amplify_preview_weak',
@@ -358,7 +362,8 @@ export default [
     sub: 'Keyspaces — 文法を変えずにマネージドへ載せられる',
     color: COLOR_MID,
     sfx: 'dynamo_scale',
-    weight: 48,
+    // U82: 48 → 12(マイナー勢の降格。削ったぶんは ymg_ のレア役全般版が受け取る)
+    weight: 12,
   }),
   midYokoku({
     id: 'yb5_wavelength_mid',
@@ -374,7 +379,8 @@ export default [
     anim: 'az_failover',
     animParams: {},
     sfx: 'region_light',
-    weight: 48,
+    // U82: 48 → 12(マイナー勢の降格。削ったぶんは ymg_lambda_layer_mid が受け取る)
+    weight: 12,
   }),
   midYokoku({
     id: 'yb5_redshift_serverless_mid',
@@ -385,7 +391,8 @@ export default [
     anim: 'pillar_raise',
     animParams: { index: 3, count: 4 },
     sfx: 'pillar_up',
-    weight: 48,
+    // U82: 48 → 12(マイナー勢の降格。削ったぶんは ymg_s3_versioning_mid が受け取る)
+    weight: 12,
   }),
   midYokoku({
     id: 'yb5_documentdb_mid',
@@ -394,7 +401,8 @@ export default [
     sub: 'DocumentDB — 互換の問い合わせがそのまま動く',
     color: COLOR_MID,
     sfx: 'dynamo_scale',
-    weight: 46,
+    // U82: 46 → 12(マイナー勢の降格。削ったぶんは ymg_ のレア役全般版が受け取る)
+    weight: 12,
   }),
   midYokoku({
     id: 'yb5_opensearch_index_mid',

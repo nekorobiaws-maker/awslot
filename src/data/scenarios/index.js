@@ -29,6 +29,7 @@ import yokokuBatch3 from './yokoku-batch3.js';
 import yokokuBatch4 from './yokoku-batch4.js';
 import yokokuBatch5 from './yokoku-batch5.js';
 import yokokuBedrock from './yokoku-bedrock.js';
+import yokokuMajor from './yokoku-major.js';
 import yokokuPolly from './yokoku-polly.js';
 import trivia from './trivia.js';
 import paramFx from './paramfx.js';
@@ -103,6 +104,11 @@ export const SCENARIOS = [
   //   (かぶり回避の対応表は yokoku-batch5.js の冒頭)。
   // 弱はハズレ寄りプールと同じ chance を持たせてあるので総発火量は変わらない。
   ...yokokuBatch5,
+  // U82(2026-08-16): 予告 第8弾(ymg_)。ユーザー指摘「GameLift とか知らんし」への対処。
+  //   EC2 / S3 / Lambda / IAM / VPC / SNS の6サービス × 弱・中の対 = 12本。
+  // 足したぶんと **同じ重み** をマイナーサービスの予告から差し引いてあるので、
+  // 予兆の合計発生率は動かない(帳簿と証明は yokoku-major.js の冒頭)。
+  ...yokokuMajor,
   // U46b(2026-08-15): Bedrock 生成予告(ybr_)。生成された1行がそのまま結果を表す。
   //   IAM が設定されます=チェリー / スイカの美味しい季節ですね=スイカ /
   //   チャンスかもしれません=チャンス目 / サメの群れが…=サメ揃い /

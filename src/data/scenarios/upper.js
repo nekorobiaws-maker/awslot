@@ -305,6 +305,8 @@ export default [
       { at: 0,  layer: 'lcd',  action: 'anim',  params: { anim: 'checklist_green', index: '$value' } },
       { at: 60, layer: 'lcd',  action: 'particles', params: { preset: 'scale', x: 220, y: 120, count: 10 } },
       { at: 80, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'happy' } },
+      // CZ道中の相槌(U81)。8種のCZと同じ扱い(理由は cz.js の cz_sfn_state_step)
+      { at: 300, layer: 'voice', action: 'play', params: { pool: 'cheer', chance: 0.4 } },
     ],
   },
   {
@@ -321,6 +323,8 @@ export default [
       { at: 60,  layer: 'char',    action: 'show',  params: { char: 'george', pose: 'grin' } },
       { at: 60,  layer: 'char',    action: 'motion', params: { char: 'george', motion: 'tailWhip' } },
       { at: 900, layer: 'lcd',     action: 'particles', params: { preset: 'spark', x: 220, y: 190, count: 12 } },
+      // CZ道中の相槌(U81)。理由は cz_checklist_green と同じ
+      { at: 320, layer: 'voice',   action: 'play',  params: { pool: 'cheer', chance: 0.4 } },
     ],
   },
 

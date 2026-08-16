@@ -15,11 +15,17 @@
  * と書くだけでよく、フレーズを足したり差し替えたりしてもシナリオは触らずに済む。
  *
  * ■ 嘘をつかせない(U68 からの約束)
- *   ここに入れてよいのは **すべて疑問形・非断定** のセリフだけ。
- *   プールはガセ前兆にも本前兆にも等しく貼るので、断定するセリフを1本でも
+ *   **予兆・煽りの束**(react / tease / doubt)に入れてよいのは
+ *   すべて疑問形・非断定のセリフだけ。
+ *   この3つはガセ前兆にも本前兆にも等しく貼るので、断定するセリフを1本でも
  *   混ぜると、その声が鳴った瞬間に当たりが割れてしまう。
  *   断定してよいのは当落が確定した瞬間だけで、そちらは key 直指定のまま
  *   ({ key:'luna_bonus_kakutei_01', force:true })。
+ *
+ *   例外は **すでに画面に出た事実へ相槌を打つだけ** の束で、
+ *   quizOk / quizNg(U71b の正誤)と cheer / relief(U81 の進捗と一息)がそれ。
+ *   どれも貼り先が当落で分岐しないので、断定しても示唆にならない
+ *   (それぞれの定義の直前のコメントに理由を書いてある)。
  *
  * ■ pose(任意)
  *   その声に合わせて出す表情。staging/actions.js が
@@ -52,6 +58,7 @@ export const VOICE_POOLS = {
     { key: 'luna_react_nn_01',    pose: 'think' },     // んん?
     { key: 'luna_react_nanka_01', pose: 'peek' },      // なんか来てる…?
     { key: 'luna_react_matte_01', pose: 'surprise' },  // ちょっと待って?
+    { key: 'luna_react_mita_01',  pose: 'peek' },      // ねぇ、今の見た?(U81)
   ],
 
   /**
@@ -66,6 +73,8 @@ export const VOICE_POOLS = {
     { key: 'luna_react_zawa_01',     pose: 'think' },     // ざわざわしてる…
     { key: 'luna_react_kuru_01',     pose: 'peek' },      // くるかも…
     { key: 'luna_react_uzu_01',      pose: 'point' },     // うずうずする…
+    { key: 'luna_tease_dokidoki_01', pose: 'heart' },     // ドキドキする…(U81)
+    { key: 'luna_tease_sorosoro_01', pose: 'peek' },      // そろそろかな?(U81)
   ],
 
   /**
@@ -76,6 +85,57 @@ export const VOICE_POOLS = {
     { key: 'luna_react_kinosei_01', pose: 'think' },     // 気のせいかな?
     { key: 'luna_hmm_01',           pose: 'sulk' },      // んー…
     { key: 'luna_react_nn_01',      pose: 'question' },  // んん?
+    { key: 'luna_relief_fuu_01',    pose: 'think' },     // ふぅ…(U81。relief と同じポーズにしてある)
+  ],
+
+  /* ══ 事実が確定したあとの2つ(2026-08-16 U81)══════════════════════════
+   *
+   * 【指示】「ルナの声をもっと頻繁に」
+   *
+   * 上の3つ(react / tease / doubt)は **これから何が起きるか分からない時間** の束で、
+   * だから全部が疑問形・非断定になっている。ところが声を増やそうとすると、
+   *   ・レア役が止まった第3停止
+   *   ・CZ の1コマが進んだ瞬間
+   *   ・RUSH で残りゲーム数や枚数が伸びた瞬間
+   *   ・ステージが上がった瞬間
+   * のような「もう画面に出ている事実」の直後にこそ貼りたくなる。
+   * そこへ疑問形を貼ると、起きたことを疑う変な相棒になる。
+   *
+   * ■ この2つが断定してよい理由(U71b のクイズ正誤と同じ論法)
+   *   貼り先はすべて **当落と無関係に確定済みの出来事** で、しかも
+   *   その出来事は液晶が数字や画で先に見せている。声はそれを追認するだけなので、
+   *   画面より多くを教えていない = 当たりの示唆にはならない。
+   *
+   * ■ それでも守っていること
+   *   ・**当落を語らない**(「当たる」「確定」に類する言葉を1つも入れない)
+   *   ・**残りゲーム数を語らない**(「あと少し!」は気持ちであって残数の申告ではない)
+   *   ・本物とガセで **同じ束・同じ確率** で鳴らす(貼り先は当落で分岐しない場面だけ)
+   */
+
+  /**
+   * 進んだこと・増えたことへの後押し(応援系)。
+   * レア役の第3停止 / CZ の1コマ進行 / RUSH の上乗せ / ステージ昇格 に貼る。
+   */
+  cheer: [
+    { key: 'luna_cheer_yoshi_01',      pose: 'joy' },     // よしっ
+    { key: 'luna_cheer_iikanji_01',    pose: 'point' },   // いい感じ!
+    { key: 'luna_cheer_tsugitsugi_01', pose: 'wave' },    // つぎつぎ!
+    { key: 'luna_cheer_atosukoshi_01', pose: 'fire' },    // あと少し!
+    { key: 'luna_cheer_shuuchuu_01',   pose: 'think' },   // 集中集中
+    { key: 'luna_cheer_ganbare_01',    pose: 'fire' },    // がんばれがんばれ!
+    { key: 'luna_madamada_01',         pose: 'point' },   // まだまだ〜(U68 からの既存)
+  ],
+
+  /**
+   * 決着したあとの一息(一息系)。
+   * ヒーローRUSH の毎ゲーム抽選のように **その場で当落が出きる** 場面と、
+   * ガセ前兆の締めに貼る。まだ何も決まっていない時間には貼らないこと。
+   */
+  relief: [
+    { key: 'luna_relief_fuu_01',  pose: 'think' },  // ふぅ…
+    { key: 'luna_relief_okke_01', pose: 'joy' },    // おっけー
+    { key: 'luna_relief_kuu_01',  pose: 'cry' },    // くぅ〜!
+    { key: 'luna_hmm_01',         pose: 'sulk' },   // んー…(U68 からの既存)
   ],
 
   /* ══ クイズの答え合わせ(U71b)══════════════════════════════════════
@@ -91,6 +151,9 @@ export const VOICE_POOLS = {
     { key: 'luna_quiz_ok_02', pose: 'joy' },     // せいかーい!
     { key: 'luna_quiz_ok_03', pose: 'point' },   // さすが!
     { key: 'luna_quiz_ok_04', pose: 'present' }, // よく知ってるね!
+    // U81: cheer と共用。正誤は確定した事実なので、同じ「よしっ」で受けてよい
+    { key: 'luna_cheer_yoshi_01',   pose: 'joy' },   // よしっ
+    { key: 'luna_cheer_iikanji_01', pose: 'point' }, // いい感じ!
   ],
   /** 不正解。責めずに一緒に悔しがる言い方だけを入れる */
   quizNg: [
@@ -98,6 +161,8 @@ export const VOICE_POOLS = {
     { key: 'luna_quiz_ng_02', pose: 'question' }, // ちがうちがう!
     { key: 'luna_quiz_ng_03', pose: 'cry' },      // おしい!
     { key: 'luna_quiz_ng_04', pose: 'cry' },      // うーん、ざんねん!
+    // U81: relief と共用。「くぅ〜!」は一緒に悔しがる声で、責める言い方ではない
+    { key: 'luna_relief_kuu_01', pose: 'cry' },   // くぅ〜!
   ],
 };
 

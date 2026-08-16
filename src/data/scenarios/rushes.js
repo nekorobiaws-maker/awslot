@@ -136,8 +136,15 @@ export default [
       { at: 60,  layer: 'char',    action: 'motion', params: { char: 'kiro', motion: 'bounce' } },
       // カウントアップが止まるあたりで、もう一度だけ音で押す
       { at: 560, layer: 'sfx',     action: 'synth', params: { preset: 'fanfare_reg', gain: 0.6 } },
-      // 上乗せは何度も起きるので、毎回は喋らせない(U68)
-      { at: 200, layer: 'voice',   action: 'play',  params: { key: 'luna_madamada_01', chance: 0.25 } },
+      /*
+       * 上乗せの一言(U68 → U81 でプール化 + 増量)。
+       * 「まだまだ〜」1本だと RUSH 中ずっと同じ声になるので、
+       * cheer(「よしっ」「つぎつぎ!」「まだまだ〜」…)から1本引く。
+       * 台数が増えたことは液晶が大きく出している **確定した事実**なので、
+       * 追認する言い方でよい(当落や残りゲーム数は語らない = data/voicepools.js)。
+       * 上乗せは何度も起きるので、chance と 1ゲーム1本で間引くのは今までどおり。
+       */
+      { at: 200, layer: 'voice',   action: 'play',  params: { pool: 'cheer', chance: 0.45 } },
       { at: 1400, layer: 'char',   action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
     ],
   },
@@ -181,6 +188,12 @@ export default [
       { at: 0,   layer: 'lcd', action: 'anim',
         params: { anim: 'cf_edge_fly', add: '$delta', edge: '$edge' } },
       { at: 60,  layer: 'lcd', action: 'particles', params: { preset: 'coin', x: 220, y: 150, count: 14 } },
+      /*
+       * 払い出しへの相槌(U81)。CloudFront RUSH は毎ゲーム必ずここを通るので、
+       * AS の上乗せ(chance 0.45)より低めにして喋りすぎを防ぐ。
+       * 払い出された枚数は液晶が出している事実なので cheer で追認してよい。
+       */
+      { at: 220, layer: 'voice', action: 'play', params: { pool: 'cheer', chance: 0.3 } },
     ],
   },
   {
@@ -268,6 +281,8 @@ export default [
       { at: 60,  layer: 'lcd',     action: 'particles', params: { preset: 'scale', x: 220, y: 96, count: 22 } },
       { at: 80,  layer: 'char',    action: 'show',  params: { char: 'george', pose: 'grin' } },
       { at: 80,  layer: 'char',    action: 'motion', params: { char: 'george', motion: 'bounce' } },
+      // 純増アップの一言(U81)。AS のスケールアウトと同格の見せ場なので同じ扱いにする
+      { at: 220, layer: 'voice',   action: 'play',  params: { pool: 'cheer', chance: 0.45 } },
       { at: 560, layer: 'sfx',     action: 'synth', params: { preset: 'upgrade_chime' } },
     ],
   },
@@ -361,6 +376,14 @@ export default [
       { at: 0,   layer: 'char',    action: 'motion', params: { char: 'hero', motion: 'heroHop' } },
       { at: 60,  layer: 'char',    action: 'show',  params: { char: 'kiro', pose: 'happy' } },
       { at: 120, layer: 'lcd',     action: 'particles', params: { preset: 'coin', x: 220, y: 120, count: 22 } },
+      /*
+       * 毎ゲーム抽選に当たった瞬間の一言(U81)。
+       * ヒーローRUSH は 5G のあいだ毎ゲーム当落がその場で出きるので、
+       * ここは **もう決まったこと** への反応 = cheer で追認してよい。
+       * 外した側(hero_rush_miss)には relief を同じ確率で貼ってあるので、
+       * 「声が鳴った = 当たった」にはならない(どちらでも喋る)。
+       */
+      { at: 260, layer: 'voice',   action: 'play',  params: { pool: 'cheer', chance: 0.45 } },
       { at: 900, layer: 'sfx',     action: 'synth', params: { preset: 'coin_in', gain: 0.5 } },
       { at: 1400, layer: 'char',   action: 'pose',  params: { char: 'hero', pose: 'guts' } },
     ],
@@ -387,6 +410,12 @@ export default [
       { at: 0, layer: 'char', action: 'show',  params: { char: 'hero', pose: 'sweat' } },
       { at: 0, layer: 'char', action: 'motion', params: { char: 'hero', motion: 'heroShrink' } },
       { at: 0, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'panic' } },
+      /*
+       * 外した側の一息(U81)。当選側(hero_rush_hit)と **同じ chance** で貼ってある。
+       * 束は relief(「くぅ〜!」「ふぅ…」)= 決着したあとの声で、
+       * この画は文字を1つも出さない方針(U67-2)なので声も結果を言い切らない。
+       */
+      { at: 260, layer: 'voice', action: 'play', params: { pool: 'relief', chance: 0.45 } },
       { at: 600, layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'normal' } },
       { at: 900, layer: 'char', action: 'pose', params: { char: 'hero', pose: 'doya' } },
     ],

@@ -41,8 +41,12 @@ export default [
        * 煽りの相槌(U68)。**本物版とガセ版の両方に同じ声を同じ確率で貼る**ので、
        * 「喋ったかどうか」から本物かガセかは読めない(信頼度は演出のまま変わらない)。
        * 断定しない疑問形なので、外れても嘘をついたことにならない。
+       *
+       * U81(2026-08-16)でこのファイルの tease を一律 0.3 → 0.5 にした。
+       * **本物版とガセ版を必ず同じ値で動かすこと**(片方だけ上げた瞬間に
+       * 「声が鳴ったら本物」が成立してしまう)。この6か所は3組の対になっている。
        */
-      { at: 420, layer: 'voice',   action: 'play',   params: { pool: 'tease', chance: 0.3 } },
+      { at: 420, layer: 'voice',   action: 'play',   params: { pool: 'tease', chance: 0.5 } },
       { waitFor: 'stop2', layer: 'sfx', action: 'synth', params: { preset: 'charge_up' } },
       { waitFor: 'stop3', after: 100, layer: 'sfx',  action: 'synth', params: { preset: 'cutin_whoosh' } },
       { waitFor: 'stop3', after: 200, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'happy' } },
@@ -60,7 +64,7 @@ export default [
       { at: 0,   layer: 'lamp',    action: 'pattern', params: { pattern: 'rare' } },
       { at: 40,  layer: 'overlay', action: 'cutin',  params: { id: 'guardduty_alert' } },
       // 本物版(yh_guardduty_hit)と同じ声・同じ確率。声で当たりかどうかは分からない
-      { at: 420, layer: 'voice',   action: 'play',   params: { pool: 'tease', chance: 0.3 } },
+      { at: 420, layer: 'voice',   action: 'play',   params: { pool: 'tease', chance: 0.5 } },
       { waitFor: 'stop2', layer: 'sfx', action: 'synth', params: { preset: 'charge_up' } },
       { waitFor: 'stop3', after: 300, layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'normal' } },
     ],
@@ -109,7 +113,7 @@ export default [
       { at: 60,  layer: 'char',    action: 'hide',   params: { char: 'kiro' } },
       { at: 60,  layer: 'overlay', action: 'cutin',  params: { id: 'iam_admin_badge' } },
       // 煽り(U68)。ガセ版にも同じ声・同じ確率で貼ってある
-      { at: 440, layer: 'voice',   action: 'play',   params: { pool: 'tease', chance: 0.3 } },
+      { at: 440, layer: 'voice',   action: 'play',   params: { pool: 'tease', chance: 0.5 } },
       { waitFor: 'stop2', layer: 'sfx', action: 'synth', params: { preset: 'contract_sign' } },
       { waitFor: 'stop3', after: 150, layer: 'sfx',  action: 'synth', params: { preset: 'upgrade_chime' } },
       { waitFor: 'stop3', after: 200, layer: 'char', action: 'show',  params: { char: 'kiro', pose: 'happy' } },
@@ -126,7 +130,7 @@ export default [
       { at: 0,   layer: 'sfx',     action: 'synth', params: { preset: 'rare_flag' } },
       { at: 60,  layer: 'overlay', action: 'cutin',  params: { id: 'iam_admin_badge' } },
       // 本物版(yh_iam_admin_badge_hit)と同じ声・同じ確率
-      { at: 440, layer: 'voice',   action: 'play',   params: { pool: 'tease', chance: 0.3 } },
+      { at: 440, layer: 'voice',   action: 'play',   params: { pool: 'tease', chance: 0.5 } },
       { waitFor: 'stop3', after: 200, layer: 'sfx', action: 'synth', params: { preset: 'contract_sign' } },
     ],
   },
@@ -143,7 +147,7 @@ export default [
       { at: 0,   layer: 'lamp',    action: 'pattern', params: { pattern: 'rare' } },
       { at: 60,  layer: 'overlay', action: 'cutin',  params: { id: 'cloudtrail_root_login' } },
       // いちばん熱い煽り(U68)。ここも疑問形。ガセ版にも同じ声・同じ確率で貼ってある
-      { at: 460, layer: 'voice',   action: 'play',   params: { pool: 'tease', chance: 0.3 } },
+      { at: 460, layer: 'voice',   action: 'play',   params: { pool: 'tease', chance: 0.5 } },
       { waitFor: 'stop2', layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
       { waitFor: 'stop3', after: 100, layer: 'sfx',     action: 'synth', params: { preset: 'alarm_beep' } },
       { waitFor: 'stop3', after: 200, layer: 'overlay', action: 'shake', params: { power: 14, ms: 400 } },
@@ -160,7 +164,7 @@ export default [
       { at: 0,   layer: 'sfx',     action: 'synth', params: { preset: 'announce' } },
       { at: 60,  layer: 'overlay', action: 'cutin',  params: { id: 'cloudtrail_root_login' } },
       // 本物版(yh_cloudtrail_root_login_hit)と同じ声・同じ確率
-      { at: 460, layer: 'voice',   action: 'play',   params: { pool: 'tease', chance: 0.3 } },
+      { at: 460, layer: 'voice',   action: 'play',   params: { pool: 'tease', chance: 0.5 } },
       { waitFor: 'stop3', after: 200, layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick' } },
     ],
   },
@@ -525,44 +529,66 @@ export default [
     ],
   },
 
-  /* ══ 赤文字予兆(単発予告版)══════════════════════════════════════
+  /* ══ 赤文字予兆(単発予告版)/ U73 で全面再設計(2026-08-16)═══════════
    *
-   * 前兆の赤(zencho.js の zn_hot_*)だけだと信頼度が 93% まで上がってしまい、
-   * 「赤 = 確定」になって裏切りが無くなる。ユーザー指示の目標は 75〜85% なので、
-   * **当選寄りではあるが確定ではない**レア役の単発予告にも赤を混ぜて平均を下げる。
+   * ── これまでの経緯 ─────────────────────────────
+   * もともとは「前兆の赤(zencho.js の zn_hot_*)だけだと信頼度が 93% まで上がり、
+   * 赤 = 確定になってしまう」ので、当選寄りだが確定ではない中位のレア役
+   * (当時 MELON cz 0.50 / CHANCE cz 0.60)にも赤を混ぜて平均を下げていた。
    *
-   * 対象は当時のCZ抽選率が中位だった2役(MELON cz 0.50 / CHANCE cz 0.60)。
+   * ところが **U72 でCZ導線が「チャンス目・サメ揃い = CZ確定 / 他のレア役は cz 0」**
+   * に一本化されたため、この2本の意味が真っ二つに割れてしまった。
+   *   ・CHANCE に出た赤 … 100%当たる(= 確定の先出し)
+   *   ・MELON に出た赤 … CZへ繋がる道が無い(= 構造的にほぼ必ず裏切る)
+   * 実測(scripts/hot-trust-probe.mjs / 3,600セッション)でも
+   *   yh_hot_guardduty_alert 49.6% / yh_hot_bedrock_alert 39.4%
+   * と「役に紐づいているのに半々」という読めない赤になっていた。
    *
-   * ★【U72で前提が崩れている(2026-08-15・要再設計 U73)】
-   * U72でCZ導線が「チャンス目=確定(cz 1.0)/他レア役は cz 0」に一本化されたため、
-   *   ・CHANCE への赤 … 実質確定示唆(信頼度をむしろ引き上げる)
-   *   ・MELON への赤 … CZに繋がらない=構造的にほぼ裏切り
-   * となり「平均を75〜85%へ下げる中間役」がこの台から消えた。
-   * 赤文字の信頼度は再測定のうえ、混ぜ先の再選定(強チェ直撃2%等)か
-   * 赤の出し方自体の再設計が必要。それまでこの2本は暫定で残置している。
+   * ── U73 の再設計方針 ───────────────────────────
+   * **赤に持たせる意味を3つに絞り、1本のシナリオには1つの意味だけを持たせる。**
+   *
+   *   1. 確定の先出し   … CZ確定役(チャンス目 / サメ揃い)を引いた瞬間の赤。信頼度 100%
+   *                       → yh_hot_bedrock_alert が担当
+   *   2. 前兆の重なり   … **前兆中に**レア役が重なった赤。信頼度 = その前兆が本物の割合
+   *                       → yh_hot_guardduty_alert が担当(スイカ単独の赤は廃止)
+   *   3. 裏切り枠       … 何も走っていないゲームの赤。信頼度ほぼ 0%
+   *                       → yh_hot_false_alarm / yw_hot_false_evacuation が担当
+   *
+   * この3つに加えて前兆の赤(zn_hot_* 93% / zn_final_push 53%)が乗り、
+   * 全部を混ぜた平均が **ユーザー指定の 75〜85%** に着地するよう量を配ってある。
+   * 各シナリオの重み・chance を動かしたら **必ず hot-trust-probe.mjs で測り直すこと**
+   * (計算だけでは出ない。前兆の赤は交通整理で落とされる量が打ち方で変わる)。
+   *
+   * 【この再設計で守ったこと】
+   *   ・**赤 = 確定にしない**。1〜2割は必ず空振りする(従来からの思想)
+   *   ・**役に紐づく赤が構造的に裏切る形は作らない**。
+   *     「スイカの赤が毎回裏切る」は台への不信になるので、裏切りは
+   *     "何も走っていないゲーム"(裏切り枠)と "ガセ前兆" に集約する
+   *   ・ゲーム側の数値(CZ導線・レア役出現率・RUSH)には一切触っていない。
+   *     動かしたのは演出抽選(重み・chance・発火条件)だけ
    */
   {
-    id: 'yh_hot_guardduty_alert',
-    name: '【赤】GuardDuty 緊急検知(スイカ/チャンス目)',
-    when: { event: 'leverOn', mode: ['FREE_TIER'], flag: ['MELON', 'CHANCE'] },
-    weight: { FREE_TIER: 420, default: 0 },
-    duration: 2400,
-    cues: [
-      { at: 0,   layer: 'sfx',     action: 'synth', params: { preset: 'alarm_beep' } },
-      { at: 0,   layer: 'lamp',    action: 'pattern', params: { pattern: 'rare' } },
-      { at: 40,  layer: 'overlay', action: 'flash', params: { color: '#ff3b30', ms: 220 } },
-      { at: 80,  layer: 'overlay', action: 'cutin', params: { id: 'guardduty_alert' } },
-      { waitFor: 'stop2', layer: 'sfx', action: 'synth', params: { preset: 'charge_up' } },
-      { waitFor: 'stop3', after: 100, layer: 'reelfx', action: 'highlight', params: { ms: 520, color: '#ff3b30' } },
-      { waitFor: 'stop3', after: 200, layer: 'lcd', action: 'text',
-        params: { text: 'CRITICAL FINDING', sub: 'Amazon GuardDuty — 緊急度が跳ね上がった', tone: 'hot', color: '#ff3b30', ms: 1400 } },
-    ],
-  },
-  {
     id: 'yh_hot_bedrock_alert',
-    name: '【赤】Bedrock が緊急提案を生成(スイカ/チャンス目)',
-    when: { event: 'leverOn', mode: ['FREE_TIER'], flag: ['MELON', 'CHANCE'] },
-    weight: { FREE_TIER: 420, default: 0 },
+    name: '【赤・確定先出し】Bedrock が緊急提案を生成(チャンス目/サメ揃い)',
+    /*
+     * ── 意味1: 確定の先出し(U73)──────────────────────
+     * 発火条件は **CZ確定役(チャンス目 / サメ揃い)だけ**。信頼度は実測 100%。
+     *
+     * 「確定なのに赤を出す意味があるのか」への答え:
+     * CZ確定を伝えるテロップ(freetier.js の CZ_CONFIRM_TELOP)は
+     * **払い出しまで進んでから**出るので、レバーONから第3停止までの数秒は
+     * まだ何も分かっていない時間になる。そこへ赤を差し込むことで
+     * 「赤が出た → やっぱりチャンス目だった」という **先出しの気持ちよさ** が生まれる。
+     * 逆に言うと、この赤は当落を作っていない(既に確定しているものを早く見せるだけ)。
+     *
+     * 【weight の意味】チャンス目のレバーON候補プール(重み合計 約9,100)に対する取り分。
+     * 1,100 ≒ 12% = **チャンス目8回に1回くらい赤で先出しされる**。
+     * ここを上げると赤全体の信頼度が上がる(100%の赤が増えるため)。
+     */
+    when: { event: 'leverOn', mode: ['FREE_TIER'], flag: ['CHANCE', 'SHARK'] },
+    weight: { FREE_TIER: 1100, default: 0 },
+    /** U73 の直前値(MELON と共用で 420 だった頃) */
+    previousWeightU72: 420,
     duration: 2600,
     cues: [
       { at: 0,   layer: 'sfx',  action: 'synth', params: { preset: 'charge_up' } },
@@ -574,8 +600,62 @@ export default [
       { waitFor: 'stop3', after: 100, layer: 'lcd', action: 'anim',
         params: { anim: 'bedrock_typing', tier: 'mid', phase: 3, ms: 1800 } },
       { waitFor: 'stop3', after: 220, layer: 'sfx', action: 'synth', params: { preset: 'alarm_beep' } },
+      // 結論(CZ確定)はモード側のテロップが言う。ここは「最優先で出力された」までに留める
       { waitFor: 'stop3', after: 260, layer: 'lcd', action: 'text',
         params: { text: '緊急提案を生成', sub: '推論の結果、最優先で出力された', tone: 'hot', color: '#ff3b30', ms: 1400 } },
+    ],
+  },
+  {
+    id: 'yh_hot_guardduty_alert',
+    name: '【赤・前兆の重なり】GuardDuty 緊急検知(前兆中のレア役)',
+    /*
+     * ── 意味2: 前兆の重なり(U73)──────────────────────
+     * 旧版は「スイカ or チャンス目」で出していたが、U72 以降スイカはCZへ繋がらないため
+     * **スイカ単独の赤は構造的にほぼ必ず裏切る**(実測でも 1% 前後)。
+     * 役に紐づく赤が毎回裏切るのは台への不信になるので、スイカ単独の赤は廃止した。
+     *
+     * 代わりに **前兆が走っているゲームでレア役が重なったとき** の赤にする。
+     * この場面には実際の意味がある:
+     *   ・ガセ前兆中に当選すれば **本前兆へ格上げ**(freetier.js の promoteZencho)
+     *   ・擬似連中のレア役は **ボーナス確定**(data/zencho.js の rareUpgradesToBonus)
+     * つまり「対応中の案件に、もう1件検知が重なった」= 事態が動きうる場面そのもの。
+     *
+     * 信頼度は **その前兆が本物である割合**(実測 65〜75%)になる。
+     * 前兆の赤(zn_hot_* 93%)より低いのは、こちらは強度で絞っていないぶん
+     * ガセ前兆にも等しく乗るため。この "少し低い赤" があることで
+     * 赤全体の平均が 75〜85% に収まる。
+     *
+     * 【CZ確定役(チャンス目 / サメ揃い)を入れない理由】
+     * それは意味1(上の yh_hot_bedrock_alert)の担当。1本のシナリオに
+     * 「確定」と「確定ではない」を同居させると、また読めない赤に戻ってしまう。
+     */
+    when: {
+      event: 'leverOn', mode: ['FREE_TIER'],
+      flag: ['MELON', 'WEAK_CHERRY', 'STRONG_CHERRY'],
+      match: { 'modeState.zenchoActive': [true] },
+    },
+    /**
+     * 前兆中(全ゲームの約5%)かつレア役(1/6.2)という二重条件で母数が小さいので、
+     * 取り分は大きめに取る。それでも実測で赤全体の1割前後にしかならない。
+     *
+     * 【上げても平均が動かない理由】この赤の信頼度(実測 83%)は
+     * 赤全体の平均(79%)とほぼ同じなので、**量を増やしても平均をほとんど動かさずに
+     * 見せ場だけが増える**。赤の総量を戻したいときに一番副作用が少ないノブ。
+     */
+    weight: { FREE_TIER: 2100, default: 0 },
+    /** U73 の直前値(スイカ/チャンス目に無条件で出していた頃) */
+    previousWeightU72: 420,
+    duration: 2400,
+    cues: [
+      { at: 0,   layer: 'sfx',     action: 'synth', params: { preset: 'alarm_beep' } },
+      { at: 0,   layer: 'lamp',    action: 'pattern', params: { pattern: 'rare' } },
+      { at: 40,  layer: 'overlay', action: 'flash', params: { color: '#ff3b30', ms: 220 } },
+      { at: 80,  layer: 'overlay', action: 'cutin', params: { id: 'guardduty_alert' } },
+      { waitFor: 'stop2', layer: 'sfx', action: 'synth', params: { preset: 'charge_up' } },
+      { waitFor: 'stop3', after: 100, layer: 'reelfx', action: 'highlight', params: { ms: 520, color: '#ff3b30' } },
+      // 「重なった」= 前兆中であることを言う。当落は言わない(結論は zencho_end 側)
+      { waitFor: 'stop3', after: 200, layer: 'lcd', action: 'text',
+        params: { text: 'CRITICAL FINDING', sub: 'Amazon GuardDuty — 対応中の案件に検知が重なった', tone: 'hot', color: '#ff3b30', ms: 1400 } },
     ],
   },
 
@@ -602,15 +682,27 @@ export default [
      * 断定する文言を足したくなったら、data/scenarios/yokoku-batch3.js の
      * WEAK_WHEN と同じ4条件(subState / 天井 / freeze / 前兆)まで絞ること。
      *
-     * chance で出現量を絞ってあるので、赤全体の1〜2割に収まる。
+     * chance で出現量を絞ってあるので、赤全体の1割前後に収まる。
+     *
+     * ══ U73(2026-08-16)/ 0.020 → 0.013 ═════════════════════════
+     * U72 でCZ導線が「チャンス目 = CZ確定」に一本化された結果、
+     * 赤の主力である前兆の赤が **93%** まで上がった一方で、
+     * ここと yw_hot_false_evacuation の裏切り枠が赤全体の **15%** を占めており、
+     * 赤の総合信頼度が **64.9%**(目標 75〜85%)まで落ちていた。
+     * 裏切り枠は「赤 = 確定にしない」ための構造なので消さずに残し、
+     * **量を3分の2**にして平均を持ち上げる(赤全体の 15% → 10% 前後)。
+     * ガセ前兆(前兆の赤の1割強 / zn_final_push の約半分)も裏切りを担うので、
+     * 純粋な空振りの赤はこの量で足りる。
      */
     when: {
       event: 'leverOn', mode: ['FREE_TIER'], flag: ['LOSE', 'BELL', 'REPLAY'],
       match: { 'modeState.zenchoActive': [false] },
     },
     weight: { FREE_TIER: 400, default: 0 },
-    // 実測で赤全体の信頼度が目標帯(75〜85%)に収まる量へ調整(2026-08-13)
-    chance: 0.020,
+    // 実測で赤全体の信頼度が目標帯(75〜85%)に収まる量へ調整(U73 / 2026-08-16)
+    chance: 0.013,
+    /** U73 の直前値(赤の総合信頼度が 64.9% だった頃) */
+    previousChanceU72: 0.020,
     duration: 2000,
     cues: [
       { at: 0,   layer: 'sfx',     action: 'synth', params: { preset: 'alarm_beep' } },

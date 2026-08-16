@@ -325,7 +325,8 @@ export default [
     id: 'yb4_dax_weak',
     name: '【弱】DAX予告(キャッシュミス)',
     when: WEAK_WHEN,
-    weight: { FREE_TIER: 55, default: 0 },
+    // U82: 55 → 14(マイナー勢の降格。理由と帳簿は yokoku-major.js の冒頭)
+    weight: { FREE_TIER: 14, default: 0 },
     chance: CHANCE_WEAK,
     duration: 1200,
     cues: [
@@ -340,7 +341,8 @@ export default [
     id: 'yb4_dax_mid',
     name: '【中】DAX予告(キャッシュヒットでマイクロ秒)',
     when: { event: 'leverOn', rare: true, mode: ['FREE_TIER'] },
-    weight: { FREE_TIER: 46, default: 0 },
+    // U82: 46 → 12(マイナー勢の降格。削ったぶんは ymg_ のレア役全般版が受け取る)
+    weight: { FREE_TIER: 12, default: 0 },
     duration: 2000,
     cues: [
       { at: 0,   layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
@@ -360,7 +362,8 @@ export default [
     id: 'yb4_workspaces_weak',
     name: '【弱】WorkSpaces予告(デスクトップ起動待ち)',
     when: WEAK_WHEN,
-    weight: { FREE_TIER: 54, default: 0 },
+    // U82: 54 → 14(マイナー勢の降格)
+    weight: { FREE_TIER: 14, default: 0 },
     chance: CHANCE_WEAK,
     duration: 1200,
     cues: [
@@ -379,7 +382,8 @@ export default [
     id: 'yb4_auditmanager_mid',
     name: '【中】Audit Manager予告(証拠がそろった = IAM 成立)',
     when: { event: 'leverOn', flag: ['WEAK_CHERRY', 'STRONG_CHERRY'], mode: ['FREE_TIER'] },
-    weight: { FREE_TIER: 50, default: 0 },
+    // U82: 50 → 13(マイナー勢の降格。削ったぶんは ymg_iam_assume_mid が受け取る)
+    weight: { FREE_TIER: 13, default: 0 },
     duration: 2100,
     cues: [
       { at: 0,   layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },

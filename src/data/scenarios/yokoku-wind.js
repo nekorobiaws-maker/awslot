@@ -701,6 +701,15 @@ export default applyForce([
    *
    * scaleChance:false … 裏切り枠まで間引くと目的が逆転するので、間引き係数の対象外にする。
    * 最終的な赤の信頼度(目標 75〜85%)は実測して調整すること。
+   *
+   * ══ U73(2026-08-16)/ chance 0.020 → 0.013 ═══════════════════════
+   * U72 で「チャンス目 = CZ確定」になり、前兆の赤(zn_hot_*)の信頼度が **93%** に
+   * 上がった一方で、裏切り枠2本(ここと yh_hot_false_alarm)が赤全体の **15%** を
+   * 占めていたため、赤の総合信頼度が **64.9%** と目標(75〜85%)を大きく下回っていた。
+   * 裏切り枠そのものは「赤 = 確定」を防ぐ構造なので残し、**量を3分の2**にする。
+   * 変更後は2本合わせて赤全体の1割前後。裏切りの主役は
+   * ガセ前兆(前兆の赤の1割強 / zn_final_push の約半分)が引き続き担う。
+   * 実測は scripts/hot-trust-probe.mjs(--human 必須)。
    */
   {
     id: 'yw_hot_false_evacuation',
@@ -710,7 +719,9 @@ export default applyForce([
       match: { 'modeState.zenchoActive': [false] },
     },
     weight: { FREE_TIER: 400, default: 0 },
-    chance: 0.020,
+    chance: 0.013,
+    /** U73 の直前値(赤の総合信頼度が 64.9% だった頃) */
+    previousChanceU72: 0.020,
     scaleChance: false,
     duration: 2000,
     cues: [

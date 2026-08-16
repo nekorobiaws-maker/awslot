@@ -1,6 +1,6 @@
 {
   "note": "scripts/generate-voices.mjs が自動生成します。手で編集しないこと。",
-  "generatedAt": "2026-08-15T13:46:13.050Z",
+  "generatedAt": "2026-08-16T05:37:44.946Z",
   "basePath": "assets/voices/",
   "pathRule": "{basePath}{char}/{file}",
   "groups": {
@@ -38,7 +38,19 @@
       "luna_quiz_ng_01",
       "luna_quiz_ng_02",
       "luna_quiz_ng_03",
-      "luna_quiz_ng_04"
+      "luna_quiz_ng_04",
+      "luna_cheer_yoshi_01",
+      "luna_cheer_iikanji_01",
+      "luna_cheer_tsugitsugi_01",
+      "luna_cheer_atosukoshi_01",
+      "luna_cheer_shuuchuu_01",
+      "luna_cheer_ganbare_01",
+      "luna_relief_okke_01",
+      "luna_relief_kuu_01",
+      "luna_relief_fuu_01",
+      "luna_react_mita_01",
+      "luna_tease_dokidoki_01",
+      "luna_tease_sorosoro_01"
     ],
     "CZ": [
       "luna_react_oh_01",
@@ -67,7 +79,19 @@
       "luna_quiz_ng_01",
       "luna_quiz_ng_02",
       "luna_quiz_ng_03",
-      "luna_quiz_ng_04"
+      "luna_quiz_ng_04",
+      "luna_cheer_yoshi_01",
+      "luna_cheer_iikanji_01",
+      "luna_cheer_tsugitsugi_01",
+      "luna_cheer_atosukoshi_01",
+      "luna_cheer_shuuchuu_01",
+      "luna_cheer_ganbare_01",
+      "luna_relief_okke_01",
+      "luna_relief_kuu_01",
+      "luna_relief_fuu_01",
+      "luna_react_mita_01",
+      "luna_tease_dokidoki_01",
+      "luna_tease_sorosoro_01"
     ],
     "BONUS_READY": [
       "luna_bonus_kakutei_01"
@@ -75,25 +99,53 @@
     "BONUS": [
       "luna_bonus_kakutei_01",
       "luna_rush_01",
-      "luna_sugoi_01"
+      "luna_sugoi_01",
+      "luna_learn_hee_01"
     ],
     "AS_RUSH": [
       "luna_rush_01",
       "luna_comeback_01",
       "luna_sugoi_01",
       "luna_miss_01",
-      "luna_madamada_01"
+      "luna_madamada_01",
+      "luna_cheer_yoshi_01",
+      "luna_cheer_iikanji_01",
+      "luna_cheer_tsugitsugi_01",
+      "luna_cheer_atosukoshi_01",
+      "luna_cheer_shuuchuu_01",
+      "luna_cheer_ganbare_01"
     ],
     "CF_RUSH": [
       "luna_rush_01",
-      "luna_madamada_01"
+      "luna_madamada_01",
+      "luna_cheer_yoshi_01",
+      "luna_cheer_iikanji_01",
+      "luna_cheer_tsugitsugi_01",
+      "luna_cheer_atosukoshi_01",
+      "luna_cheer_shuuchuu_01",
+      "luna_cheer_ganbare_01"
     ],
     "AURORA_RUSH": [
       "luna_rush_01",
-      "luna_madamada_01"
+      "luna_madamada_01",
+      "luna_cheer_yoshi_01",
+      "luna_cheer_iikanji_01",
+      "luna_cheer_tsugitsugi_01",
+      "luna_cheer_atosukoshi_01",
+      "luna_cheer_shuuchuu_01",
+      "luna_cheer_ganbare_01"
     ],
     "HERO_RUSH": [
-      "luna_rush_01"
+      "luna_rush_01",
+      "luna_cheer_yoshi_01",
+      "luna_cheer_iikanji_01",
+      "luna_cheer_tsugitsugi_01",
+      "luna_cheer_atosukoshi_01",
+      "luna_cheer_shuuchuu_01",
+      "luna_cheer_ganbare_01",
+      "luna_relief_okke_01",
+      "luna_relief_kuu_01",
+      "luna_relief_fuu_01"
     ],
     "HOT_STANDBY": [
       "luna_rush_01",
@@ -302,6 +354,71 @@
       "file": "luna_38.mp3",
       "char": "luna",
       "text": "うーん、ざんねん!"
+    },
+    "luna_cheer_yoshi_01": {
+      "file": "luna_39.mp3",
+      "char": "luna",
+      "text": "よしっ"
+    },
+    "luna_cheer_iikanji_01": {
+      "file": "luna_41.mp3",
+      "char": "luna",
+      "text": "いい感じ!"
+    },
+    "luna_cheer_tsugitsugi_01": {
+      "file": "luna_42.mp3",
+      "char": "luna",
+      "text": "つぎつぎ!"
+    },
+    "luna_cheer_atosukoshi_01": {
+      "file": "luna_43.mp3",
+      "char": "luna",
+      "text": "あと少し!"
+    },
+    "luna_cheer_shuuchuu_01": {
+      "file": "luna_49.mp3",
+      "char": "luna",
+      "text": "集中集中"
+    },
+    "luna_cheer_ganbare_01": {
+      "file": "luna_50.mp3",
+      "char": "luna",
+      "text": "がんばれがんばれ!"
+    },
+    "luna_relief_okke_01": {
+      "file": "luna_40.mp3",
+      "char": "luna",
+      "text": "おっけー"
+    },
+    "luna_relief_kuu_01": {
+      "file": "luna_45.mp3",
+      "char": "luna",
+      "text": "くぅ〜!"
+    },
+    "luna_relief_fuu_01": {
+      "file": "luna_47.mp3",
+      "char": "luna",
+      "text": "ふぅ…"
+    },
+    "luna_react_mita_01": {
+      "file": "luna_46.mp3",
+      "char": "luna",
+      "text": "ねぇ、今の見た?"
+    },
+    "luna_tease_dokidoki_01": {
+      "file": "luna_44.mp3",
+      "char": "luna",
+      "text": "ドキドキする…"
+    },
+    "luna_tease_sorosoro_01": {
+      "file": "luna_48.mp3",
+      "char": "luna",
+      "text": "そろそろかな?"
+    },
+    "luna_learn_hee_01": {
+      "file": "luna_51.mp3",
+      "char": "luna",
+      "text": "へぇ〜、そうなんだ"
     }
   }
 }

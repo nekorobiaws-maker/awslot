@@ -116,6 +116,19 @@ export default [
        * render/chars/index.js が9秒で静かな立ち姿へ寝かせる。
        */
       { at: 120, layer: 'char', action: 'show', params: { char: 'kiro', pose: 'explain' } },
+      /*
+       * カードを読んだ相槌(2026-08-16 U81)。「へぇ〜、そうなんだ」。
+       *
+       * ■ ここだけ専用の1本にした理由
+       *   カードは **当落と完全に無関係な読み物** なので、
+       *   予兆の束(react / tease)を貼ると「何か起きるかも」の合図に読めてしまう。
+       *   逆に cheer を貼ると進捗を祝う声になって、読み物の場に合わない。
+       *   学習の場にだけ効く1本を key 直指定で置く。
+       * ■ 半分くらいで鳴る
+       *   カードは1ゲームおきに出るので、毎回喋ると読む前に声が被る。
+       *   force は付けていないので、同じゲームに来る払出の告知が優先される。
+       */
+      { at: 900, layer: 'voice', action: 'play', params: { key: 'luna_learn_hee_01', chance: 0.5 } },
       {
         at: 0,
         layer: 'lcd',

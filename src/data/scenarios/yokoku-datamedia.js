@@ -7,8 +7,10 @@
  * 新規アニメ・新規SFXプリセットの実装は一切なし。
  *
  * 対象サービス: MSK(Kafka) / Amazon MQ / AppFlow / Lake Formation / Neptune /
- * Timestream for InfluxDB / DocumentDB / MemoryDB / GameLift / IVS / MediaConvert /
+ * Timestream for InfluxDB / DocumentDB / MemoryDB / CloudFront / IVS / MediaConvert /
  * Elemental MediaLive / Bedrock Knowledge Bases / Lex / Amazon Connect。
+ * ※ 2026-08-16 U82 で GameLift(ゲーム専用サーバ)を **CloudFront のキャッシュ削除** へ
+ *   1対1で差し替えた(weight・chance・発火条件は据え置き)。理由は I. のコメント。
  * ※ 2026-08-15 椿レビュー #4 で2箇所を差し替えた。詳しくは F. と M. のコメント:
  *     Timestream           … 終了ラインの LiveAnalytics ではなく **for InfluxDB** を名乗る
  *     Kendra(メンテモード) … **Bedrock Knowledge Bases のデータソース同期** へ差し替え
@@ -337,36 +339,52 @@ export default [
     ],
   },
 
-  // ── I. GameLift マッチメイキング予告 ──────────────────────────────
+  /* ── I. CloudFront キャッシュ削除(無効化)予告 ────────────────────────
+   *
+   * ══ 2026-08-16 ユーザー指摘 U82「GameLift とか知らんし」で差し替えた ══
+   *
+   * 旧: ym_gamelift_match_weak / _mid(対戦相手のマッチメイキング)
+   *   GameLift はゲーム専用のサーバ運用サービスで、AWS を触り始めた人が
+   *   最初に出会う名前ではない。「遊んで覚える」台の予告としては、
+   *   同じメディア配信の枠でも **CloudFront** のほうが先に覚えてほしい。
+   *
+   * ■ 発火量は1ミリも動かしていない(1対1の差し替え)
+   *   when / weight(44・46)/ chance(0.30)/ duration / キューの構成は
+   *   **旧 GameLift 版のまま**で、文言とサービス名だけを入れ替えている。
+   *   U61 で Polly が ya_polly_readout_weak を置き換えたときと同じ作法。
+   *
+   * ■ 既存の CloudFront 演出とかぶらない切り口
+   *   Cache HIT(yokoku-light)/ RUSH のエッジ配信(rushes / zones)は
+   *   どちらも「当たりに行く」話。こちらは **配り終わった古いものを消す** 話で、
+   *   キャッシュ無効化(Invalidation)は反映まで少し待つ、という別の側面。
+   */
   {
-    id: 'ym_gamelift_match_weak',
-    name: '【弱】GameLiftマッチング予告(相手見つからず)',
+    id: 'ym_cloudfront_invalidation_weak',
+    name: '【弱】CloudFrontキャッシュ削除予告(まだ古いまま)',
     when: { event: 'leverOn', flag: ['LOSE', 'BELL', 'REPLAY'], mode: ['FREE_TIER'], match: { 'modeState.zenchoActive': [false] } },
     weight: { FREE_TIER: 44, default: 0 },
     chance: 0.30,
     duration: 1100,
     cues: [
-      { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'GameLift: MATCHING…', sub: '対戦相手を探索中', color: '#8ad4ff', ms: 600 } },
+      { at: 0,   layer: 'lcd', action: 'text',  params: { text: 'INVALIDATION…', sub: '配ったファイルの削除を指示中', color: '#8ad4ff', ms: 600 } },
       { at: 30,  layer: 'sfx', action: 'synth', params: { preset: 'countdown_tick', gain: 0.5 } },
-      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: 'MATCH TIMEOUT', sub: 'GameLift — 相手が見つからなかった', color: '#8ad4ff', ms: 500 } },
+      { waitFor: 'stop3', layer: 'lcd', action: 'text',  params: { text: 'STILL CACHED', sub: 'CloudFront — 拠点にはまだ古いファイルが残っている', color: '#8ad4ff', ms: 500 } },
     ],
   },
   {
-    id: 'ym_gamelift_match_mid',
-    name: '【中】GameLiftマッチング予告(手強い相手が見つかる)',
+    id: 'ym_cloudfront_invalidation_mid',
+    name: '【中】CloudFrontキャッシュ削除予告(全拠点が新しくなる)',
     when: { event: 'leverOn', rare: true, mode: ['FREE_TIER'] },
     weight: { FREE_TIER: 46, default: 0 },
     duration: 1800,
     cues: [
       { at: 0,   layer: 'lamp', action: 'pattern', params: { pattern: 'rare' } },
-      { at: 0,   layer: 'lcd',  action: 'text',    params: { text: 'GameLift: MATCHING…', sub: '対戦相手を探索中', color: '#ffe066', ms: 600 } },
+      { at: 0,   layer: 'lcd',  action: 'text',    params: { text: 'INVALIDATION…', sub: '配ったファイルの削除を指示中', color: '#ffe066', ms: 600 } },
       { at: 40,  layer: 'sfx',  action: 'synth',   params: { preset: 'rare_flag' } },
       { waitFor: 'stop3', layer: 'lcd',  action: 'particles', params: { preset: 'spark', x: 200, y: 200, count: 14 } },
       { waitFor: 'stop3', after: 30, layer: 'sfx',  action: 'synth',   params: { preset: 'cutin_whoosh', gain: 0.6 } },
-      // U78: 「影の軍団」は台のどこにも出てこない架空の相手で意味が通らなかった。
-      //      マッチメイキングが何をしたのかを書く
       { waitFor: 'stop3', after: 150, layer: 'lcd',  action: 'text',
-        params: { text: 'MATCH FOUND', sub: 'GameLift — 実力の近い相手をマッチングした', color: '#ffe066', ms: 1100 } },
+        params: { text: 'COMPLETED', sub: 'CloudFront — 全拠点が新しいファイルに入れ替わった', color: '#ffe066', ms: 1100 } },
     ],
   },
 

@@ -414,6 +414,81 @@ const PHRASES = [
   { char: 'luna', key: 'luna_quiz_ng_04', file: 'luna_38.mp3',
     modes: ['FREE_TIER', 'CZ'],
     text: 'うーん、ざんねん!' },
+
+  /* ── ルナ 軽い相槌の増量(2026-08-16 U81)────────────────────────────
+   *
+   * 【指示】「ルナの声をもっと頻繁に。バリエーションが足りなければ生成してよい」
+   *
+   * U71 までのプールは **前兆と煽り(疑問形)** に偏っていて、
+   *   ・レア役が止まった瞬間
+   *   ・CZ の1コマが進んだ瞬間
+   *   ・RUSH で上乗せされた瞬間
+   * のような「もう事実が確定している場面」に貼れる短い声が1本も無かった。
+   * そこへ既存の疑問形を貼ると「もう起きたこと」を疑うことになって噛み合わないし、
+   * かといって当落を断定する声は貼れない。そこで
+   *   cheer  … 起きた進捗への後押し(当落にも残りゲーム数にも触れない)
+   *   relief … 決着したあとの一息
+   * の2系統を新設した(束の定義は src/data/voicepools.js)。
+   *
+   * ■ 断定してよい線引き(U71b のクイズと同じ考え方)
+   *   cheer / relief を貼るのは **すでに画面で確定している事実** の直後だけ:
+   *     レア役の第3停止 / CZ の1コマ進行 / RUSH の上乗せ / ステージ昇格 /
+   *     ヒーローRUSH の毎ゲーム抽選(当落が出た後)。
+   *   ガセにも本物にも等しく貼る「予兆・煽り」の側(react / tease / doubt)には
+   *   **今回も疑問形か非断定しか足していない**ので、声で当たりが割れる経路は増えない。
+   *
+   * ■ 1本 1〜2秒
+   *   何度も聞くものほど短く。既存の 01〜38 には手を触れず、
+   *   未使用の 39〜51 を新規に割り当てている(ファイル名固定の掟)。
+   */
+  // 進捗への後押し(cheer プール)
+  { char: 'luna', key: 'luna_cheer_yoshi_01', file: 'luna_39.mp3',
+    modes: ['FREE_TIER', 'CZ', 'AS_RUSH', 'CF_RUSH', 'AURORA_RUSH', 'HERO_RUSH'],
+    text: 'よしっ' },
+  { char: 'luna', key: 'luna_cheer_iikanji_01', file: 'luna_41.mp3',
+    modes: ['FREE_TIER', 'CZ', 'AS_RUSH', 'CF_RUSH', 'AURORA_RUSH', 'HERO_RUSH'],
+    text: 'いい感じ!' },
+  { char: 'luna', key: 'luna_cheer_tsugitsugi_01', file: 'luna_42.mp3',
+    modes: ['FREE_TIER', 'CZ', 'AS_RUSH', 'CF_RUSH', 'AURORA_RUSH', 'HERO_RUSH'],
+    text: 'つぎつぎ!' },
+  { char: 'luna', key: 'luna_cheer_atosukoshi_01', file: 'luna_43.mp3',
+    modes: ['FREE_TIER', 'CZ', 'AS_RUSH', 'CF_RUSH', 'AURORA_RUSH', 'HERO_RUSH'],
+    text: 'あと少し!' },
+  { char: 'luna', key: 'luna_cheer_shuuchuu_01', file: 'luna_49.mp3',
+    modes: ['FREE_TIER', 'CZ', 'AS_RUSH', 'CF_RUSH', 'AURORA_RUSH', 'HERO_RUSH'],
+    text: '集中集中' },
+  { char: 'luna', key: 'luna_cheer_ganbare_01', file: 'luna_50.mp3',
+    modes: ['FREE_TIER', 'CZ', 'AS_RUSH', 'CF_RUSH', 'AURORA_RUSH', 'HERO_RUSH'],
+    text: 'がんばれがんばれ!' },
+  // 決着のあとの一息(relief プール)
+  { char: 'luna', key: 'luna_relief_okke_01', file: 'luna_40.mp3',
+    modes: ['FREE_TIER', 'CZ', 'HERO_RUSH'],
+    text: 'おっけー' },
+  { char: 'luna', key: 'luna_relief_kuu_01', file: 'luna_45.mp3',
+    modes: ['FREE_TIER', 'CZ', 'HERO_RUSH'],
+    text: 'くぅ〜!' },
+  { char: 'luna', key: 'luna_relief_fuu_01', file: 'luna_47.mp3',
+    modes: ['FREE_TIER', 'CZ', 'HERO_RUSH'],
+    text: 'ふぅ…' },
+  // 予兆の入り(react プール)。疑問形のまま
+  { char: 'luna', key: 'luna_react_mita_01', file: 'luna_46.mp3',
+    modes: ['FREE_TIER', 'CZ'],
+    text: 'ねぇ、今の見た?' },
+  // 煽り(tease プール)。全部が非断定
+  { char: 'luna', key: 'luna_tease_dokidoki_01', file: 'luna_44.mp3',
+    modes: ['FREE_TIER', 'CZ'],
+    text: 'ドキドキする…' },
+  { char: 'luna', key: 'luna_tease_sorosoro_01', file: 'luna_48.mp3',
+    modes: ['FREE_TIER', 'CZ'],
+    text: 'そろそろかな?' },
+  /*
+   * 豆知識カード(U59 / data/scenarios/trivia.js)専用の1本。
+   * カードは当落と完全に無関係な読み物なので、ここだけは
+   * プールを使わず key 直指定で「へぇ〜」と受ける。
+   */
+  { char: 'luna', key: 'luna_learn_hee_01', file: 'luna_51.mp3',
+    modes: ['BONUS'],
+    text: 'へぇ〜、そうなんだ' },
 ];
 
 // ─────────────────────────────────────────────

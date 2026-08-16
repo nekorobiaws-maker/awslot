@@ -12,6 +12,8 @@
 import { NOT_NORMAL_MODES } from '../rushes.js';
 // 結論行(U57)/ 役色(U62)の唯一の正。ハズレを言い切る行はこれを通す
 import { conclusionCue } from '../rolecolors.js';
+// レア役の定義(この配列が唯一の正)。役が増減してもリアクションが自動で追従する
+import { RARE_ROLE_IDS } from '../rareroles.js';
 
 export default [
   {
@@ -38,8 +40,13 @@ export default [
        * chance で間引くのは、レア役はそこそこ引けるので毎回喋ると耳につくため
        * (engine/voice.js 側でも1ゲーム1本 + cooldown の二重の歯止めがある)。
        * プールから1本引くので、同じ場面でも毎回同じ声にはならない(data/voicepools.js)。
+       *
+       * U81(2026-08-16)で 0.22 → 0.45。「もっと頻繁に」の指示に対して、
+       * **歯止めの仕組みは1つも外さず** chance だけを上げている。
        */
-      { at: 200, layer: 'voice',   action: 'play',  params: { pool: 'react', chance: 0.22 } },
+      { at: 200, layer: 'voice',   action: 'play',  params: { pool: 'react', chance: 0.45 } },
+      // 第3停止の反応は、どの予告が選ばれても同じように鳴らしたいので
+      // このシナリオではなく下の luna_rare_landed(judge契機)が担当する(U81)
       { waitFor: 'stop3', after: 300, layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'normal' } },
     ],
   },
@@ -101,6 +108,56 @@ export default [
       { waitFor: 'stop3', after: 150, layer: 'lcd', action: 'text',
         params: { text: 'INSUFFICIENT_DATA', sub: 'CloudWatch アラーム — 判定するデータが足りません', color: '#ffd166', ms: 1200 } },
       { waitFor: 'stop3', after: 200, layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'normal' } },
+    ],
+  },
+
+  /* ══ レア役が止まった瞬間のひとこと(2026-08-16 U81)════════════════════
+   *
+   * 【指示】「ルナの声をもっと頻繁に」。
+   *
+   * ■ なぜ予告シナリオの中に書かないのか
+   *   レバーONのレア役プールには 予告が数十本ぶら下がっていて、
+   *   director は **その中の1本しか再生しない**。第3停止の相槌を
+   *   normal_rare_flash などに個別に足すと、
+   *   「どの予告が選ばれたか」で喋る / 喋らないが決まってしまい、
+   *   プレイヤーから見ると理由の分からないムラになる
+   *   (実測でも、その書き方では発声機会が 1%も増えなかった)。
+   *   レア役が止まったら **必ず一言のチャンスがある**、という
+   *   場面そのものの性格にしたいので、独立したシナリオとして置く。
+   *
+   * ■ 予告の取り分も演出の枠も1つも奪わない
+   *   ・契機が judge(全リール停止 = 当落確定の瞬間)。この event に居るのは
+   *     ほかに bonus.js の1本(BONUS_READY 限定)だけなので、
+   *     leverOn の重み付き抽選には一切参加しない = 予告の発火率は不変
+   *   ・キューは voice だけ。classifyScenario は 'ambient' と判定するので
+   *     告知枠も視覚枠も 1ゲーム2本の予算も消費しない(staging/director.js)
+   *   ・scaleChance:false … これは賑やかしの予告ではなく相棒の相槌なので、
+   *     予告の総量ノブ(YOKOKU_CHANCE_SCALE)に釣られて動かさない
+   *
+   * ■ 嘘をつかない
+   *   when.flag がレア役だけなので **鳴った時点でレア役は既に止まっている**。
+   *   つまり声は画面に出ている事実を追認するだけで、当落は何も語らない
+   *   (cheer の中身も当落・残りゲーム数に触れない。data/voicepools.js)。
+   *   前兆中かどうか・本ガセの別で条件を分けていないので、
+   *   「喋ったから当たり」も成立しない。
+   */
+  {
+    id: 'luna_rare_landed',
+    name: 'レア役が止まった瞬間のルナのひとこと(音だけ)',
+    when: { event: 'judge', flag: RARE_ROLE_IDS, mode: ['FREE_TIER', 'CZ'] },
+    weight: { default: 100 },
+    priority: 'ambient',
+    /*
+     * レア役は通常時で 1/6G ほど引ける。0.65 だと **1/9G に1回** はここで喋る計算で、
+     * 実測の全体像は「100Gあたり 22回 = 1/4.6G に1回」(U81 の実測。内訳は
+     * ここ以外に前兆・CZ道中・RUSH上乗せ・豆知識・確定告知がある)。
+     * これ以上上げると engine/voice.js の cooldown に頭を打つだけで体感は変わらない。
+     */
+    chance: 0.65,
+    scaleChance: false,
+    duration: 600,
+    cues: [
+      { at: 140, layer: 'voice', action: 'play', params: { pool: 'cheer', chance: 1 } },
     ],
   },
 
@@ -297,6 +354,14 @@ export default [
           color: '#e0b3ff', ms: 1800, sticky: true,
         } },
       { at: 1400, layer: 'overlay', action: 'particles', params: { preset: 'rainbow', x: 360, y: 380, count: 18 } },
+      /*
+       * ステージ昇格の一言(U81 で新設)。
+       * 昇格そのものは **もう起きた事実**(背景も液晶の告知も切り替わっている)なので、
+       * cheer で追認してよい。force は付けない = 確定告知(ボーナス確定・RUSH突入)より
+       * 必ず優先度が下になる(engine/voice.js の _admit)。
+       * 願望の側(「インベント行きたいな〜」)は前兆に貼ってあるので重ならない。
+       */
+      { at: 1200, layer: 'voice',   action: 'play',   params: { pool: 'cheer', chance: 0.6 } },
       // U71: 到着後はペンライトを振って会場のノリに乗る(chance → penlight)。
       // 9秒放置されれば render/chars/index.js が静かな立ち姿へ寝かせる
       { at: 2400, layer: 'char',    action: 'pose',   params: { char: 'kiro', pose: 'chance' } },
@@ -330,6 +395,8 @@ export default [
       { at: 240, layer: 'char',    action: 'motion', params: { char: 'kiro', motion: 'dashBy' } },
       { at: 1150, layer: 'char',   action: 'pose',   params: { char: 'kiro', pose: 'chance' } },
       { at: 1200, layer: 'char',   action: 'motion', params: { char: 'kiro', motion: 'bounce' } },
+      // ステージ昇格の一言(U81)。1段目なので Invent会場より控えめな確率にしてある
+      { at: 1250, layer: 'voice',  action: 'play',   params: { pool: 'cheer', chance: 0.5 } },
       // 2026-08-14 ユーザー指摘 U6:
       // 実際には「もう移動した(高確に居る)」ので、近づいてきた表現は嘘だった。
       // U55: 告知は1本だけ / sticky = 次のゲームのレバーONで消える

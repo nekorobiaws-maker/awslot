@@ -98,17 +98,19 @@ function zenchoBeat({
       // 読ませる文字はすべて lcd.text = 座布団つき(V31-08)
       { at: 240, layer: 'lcd', action: 'text', params: { text, sub, color, ms: 1100 } },
       /*
-       * 前兆中の相槌(U71)。「あれ?」「なんか来てる…?」あたりが **たまに** ぽつりと鳴る。
+       * 前兆中の相槌(U71 → U81 で増量)。「あれ?」「なんか来てる…?」あたりが鳴る。
        *
-       * ■ chance 0.25 の理由
+       * ■ chance 0.5 の理由(U81 で 0.25 から倍)
        *   前兆は 3〜5ゲーム続き、そのあいだ毎ゲームこの1コマが出る。
-       *   毎回喋ると相棒がうるさくなるので、4回に1回くらい = 前兆1回につき1度あるかないか。
-       *   さらに engine/voice.js が「1ゲーム1本 + cooldown 4秒」で二重に抑えるので、
+       *   0.25 は「前兆1回につき1度あるかないか」で、前兆に入っても
+       *   相棒がほとんど黙ったままだった。2回に1回くらいに上げても、
+       *   engine/voice.js が「1ゲーム1本 + cooldown」で二重に抑えるので
        *   赤文字予兆(下の zenchoHot)と重なった回はどちらか片方しか鳴らない。
        * ■ 断定しない
        *   react は全部が疑問形。ガセ前兆で鳴っても嘘にならない(data/voicepools.js)。
+       *   本前兆とガセ前兆で **同じプール・同じ確率**なので、声で本ガセは割れない。
        */
-      { at: 620, layer: 'voice', action: 'play', params: { pool: 'react', chance: 0.25 } },
+      { at: 620, layer: 'voice', action: 'play', params: { pool: 'react', chance: 0.5 } },
     ],
   };
 }
@@ -143,7 +145,7 @@ function zenchoHot({ id, name, pattern, text, sub, sfx = 'alarm_beep' }) {
        * **全部が疑問形**なので、鳴っても信頼度は漏れない(赤帯そのものが示唆の本体)。
        * 弱い1コマ(zenchoBeat)より少しだけ出やすくして、赤のときの温度差を作る。
        */
-      { at: 700, layer: 'voice', action: 'play', params: { pool: 'tease', chance: 0.35 } },
+      { at: 700, layer: 'voice', action: 'play', params: { pool: 'tease', chance: 0.55 } },
     ],
   };
 }
@@ -208,7 +210,7 @@ export default [
        * 「あれ?」「なになに?」「ん?」… のどれかが鳴る。前兆は何ゲームも続くので、
        * 1本固定だと同じ声を繰り返し聞くことになる(pool の詳細は data/voicepools.js)。
        */
-      { at: 320, layer: 'voice', action: 'play', params: { pool: 'react', chance: 0.25 } },
+      { at: 320, layer: 'voice', action: 'play', params: { pool: 'react', chance: 0.5 } },
       { at: 1400, layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'normal' } },
     ],
   },
@@ -236,7 +238,7 @@ export default [
        * tease プールは「チャンスかも?」「これは…」「くるかも…」など **全部が疑問形**なので、
        * どれが鳴っても断定しない = ガセ前兆で鳴っても嘘にならない。
        */
-      { at: 700, layer: 'voice', action: 'play', params: { pool: 'tease', chance: 0.28 } },
+      { at: 700, layer: 'voice', action: 'play', params: { pool: 'tease', chance: 0.5 } },
     ],
   },
 
@@ -265,7 +267,8 @@ export default [
        *   前兆 = 何かが動いている時間なので、期待を口にする場としてはここが一番近い。
        *   到着の告知(normal.js の stage_up_*)には貼らない — あちらは結果であって願望ではない。
        */
-      { at: 800, layer: 'voice',  action: 'play', params: { key: 'luna_stage_invent_01', chance: 0.2 } },
+      // U81: 0.2 → 0.4(声を増やす指示。願望なので断定にはならない)
+      { at: 800, layer: 'voice',  action: 'play', params: { key: 'luna_stage_invent_01', chance: 0.4 } },
     ],
   },
 
@@ -335,7 +338,8 @@ export default [
         params: { text: 'BILLING +${step}00%', sub: '今月の請求額が跳ね上がっている', color: '#ffd166', ms: 1100 } },
       // ステージ昇格への願望(U68)。こちらは1段目の「サミット会場(高確)」版。
       // 貼り先の考え方は zn_xray_trace のコメントを参照
-      { at: 760, layer: 'voice', action: 'play', params: { key: 'luna_stage_summit_01', chance: 0.2 } },
+      // U81: 0.2 → 0.4(理由は zn_xray_trace と同じ)
+      { at: 760, layer: 'voice', action: 'play', params: { key: 'luna_stage_summit_01', chance: 0.4 } },
     ],
   },
 
@@ -481,7 +485,32 @@ export default [
   {
     id: 'zn_final_push',
     name: '【前兆】インシデントレベル引き上げ(次ゲームで判定)',
-    // 前兆が段階3まで伸び、かつ残り1G。長く伸びている時点で本前兆寄り
+    /*
+     * 前兆が段階3(step 3以上)まで伸び、かつ残り1G。
+     *
+     * ══ U73(2026-08-16)/ ここは「一番熱い赤」ではない ═══════════════
+     * 旧コメントは「前兆が伸びきった状態 = 最も信頼できるサイン」と書いていたが、
+     * **U72 でその前提が反転している**。実測(hot-trust-probe.mjs / 3,600セッション)は
+     *   zn_final_push の信頼度 **52%**(赤全体の平均 79% / zn_hot_* は 93%)
+     * で、赤の中では **一番低い**。理由は前兆の長さの内訳が変わったこと:
+     *   ・CZ確定役(チャンス目 / サメ揃い)の移行前兆は
+     *     freetier.js の CZ_CONFIRM_ZENCHO_MAX_GAMES で **最長3G** に詰められる
+     *     → step3 で残り1G まで伸びることが無い = ここには 100% の当選が来ない
+     *   ・一方 ガセ前兆は最長4G(ZENCHO.fake.gamesDist)なので、
+     *     4Gガセは必ず step3・残り1G を通る = ここに全部乗ってくる
+     * 結果、この枠に来るのは「確定役以外の当選(ステージ抽選など)」と「4Gガセ」が半々。
+     *
+     * 【それでも赤のまま残す理由】
+     * 赤の総合信頼度の目標は 75〜85% で、確定にしないための **裏切りの受け皿** が要る。
+     * 何も走っていないゲームに出す純粋な空振り(yh_hot_false_alarm)を増やすより、
+     * 「前兆が伸びきったのに外れた」のほうが台として筋が通っている
+     * (伸びた前兆を見せてから落とすのは前兆システムの本来の仕事)。
+     * 文言も「エスカレーション先を選定中」= 結論を出していないので嘘にならない。
+     *
+     * 【触るときの注意】ここの tone:'hot' を外すと赤の平均が 79% → 82% へ上がる。
+     * 外すなら裏切り枠(yh_hot_false_alarm / yw_hot_false_evacuation)の chance を
+     * 同時に戻すこと。必ず scripts/hot-trust-probe.mjs --human で測り直す。
+     */
     when: { event: 'paramChange', mode: ['FREE_TIER'], match: { param: ['zencho'], level: [3], left: [1] } },
     weight: { FREE_TIER: 200, default: 0 },
     duration: 2200,
@@ -490,12 +519,12 @@ export default [
       { at: 0,    layer: 'lamp',    action: 'pattern', params: { pattern: 'rare' } },
       { at: 0,    layer: 'overlay', action: 'shake', params: { power: 8, ms: 500 } },
       { at: 140,  layer: 'lcd',     action: 'anim',  params: { anim: 'step_up', step: 3 } },
-      // 赤文字予兆。level3 かつ残り1G = 前兆が伸びきった状態で、最も信頼できるサイン
+      // 赤文字予兆(信頼度 約52%。赤の中では低いほうで、裏切りの受け皿を兼ねる)
       { at: 260,  layer: 'lcd',     action: 'text',
         params: { text: 'ESCALATED', sub: 'エスカレーション先を選定中…', tone: 'hot', color: '#ff3b30', ms: 1400 } },
       { at: 300,  layer: 'char',    action: 'show', params: { char: 'kiro', pose: 'panic' } },
       // 前兆が伸びきった場面の煽り(U68 → U71 でプール化)。tease は全部が疑問形なので断定しない
-      { at: 620,  layer: 'voice',   action: 'play', params: { pool: 'tease', chance: 0.5 } },
+      { at: 620,  layer: 'voice',   action: 'play', params: { pool: 'tease', chance: 0.65 } },
       { at: 1000, layer: 'sfx',     action: 'synth', params: { preset: 'countdown_tick' } },
       { at: 1700, layer: 'char',    action: 'pose', params: { char: 'kiro', pose: 'surprised' } },
     ],
@@ -610,8 +639,9 @@ export default [
       // ここは泣くほどの負けではない = 表情の格を場面に合わせる)
       { at: 300,  layer: 'char',  action: 'show', params: { char: 'kiro', pose: 'angry' } },
       { at: 900,  layer: 'lamp',  action: 'pattern', params: { pattern: 'idle' } },
-      // 落胆しすぎない「気のせいかな?」「んー…」あたりで流す(U68 → U71 でプール化)
-      { at: 1100, layer: 'voice', action: 'play', params: { pool: 'doubt', chance: 0.5 } },
+      // 落胆しすぎない「気のせいかな?」「んー…」「ふぅ…」あたりで流す
+      // (U68 → U71 でプール化 → U81 で 0.5 → 0.65)
+      { at: 1100, layer: 'voice', action: 'play', params: { pool: 'doubt', chance: 0.65 } },
       { at: 1650, layer: 'char',  action: 'pose', params: { char: 'kiro', pose: 'normal' } },
     ],
   },

@@ -192,6 +192,23 @@ export default [
       { at: 60,  layer: 'lcd',     action: 'anim',  params: { anim: 'sfn_task', ok: true } },
       { at: 80,  layer: 'lcd',     action: 'particles', params: { preset: 'scale', x: 220, y: 62, count: 12 } },
       { at: 100, layer: 'char',    action: 'pose',  params: { char: 'kiro', pose: 'happy' } },
+      /*
+       * ── CZ道中の相槌(2026-08-16 U81 で新設。8種のCZ全部に同じ形で入れてある)──
+       *
+       * 【指示】「ルナの声をもっと頻繁に」。CZ は数ゲーム遊ぶのに、
+       * 突入と結果でしか喋っていなかった(道中が無音)。
+       *
+       * ■ 当落は漏れない
+       *   貼っているのは **「1コマ進んだ」ことを通知する paramChange** で、
+       *   その事実は盤面が常設で数字にして出している(この画自体が
+       *   「途中経過。当落は言わない」という前提で作られている)。
+       *   声は cheer(「よしっ」「つぎつぎ!」)= 進捗の追認だけで、
+       *   残りいくつで突破かも、この先どうなるかも一言も言わない。
+       * ■ 喋りすぎない
+       *   chance 0.4 + engine/voice.js の 1ゲーム1本 + cooldown。
+       *   結果告知(突破 / 非突破)は force なので必ずそちらが優先される。
+       */
+      { at: 300, layer: 'voice',   action: 'play',  params: { pool: 'cheer', chance: 0.4 } },
       { at: 1000, layer: 'char',   action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
     ],
   },
@@ -476,6 +493,8 @@ export default [
         params: { anim: 'health_check', ok: true, label: 'HEALTHY ${value}/${total}' } },
       { at: 80,  layer: 'lcd',     action: 'particles', params: { preset: 'scale', x: 220, y: 120, count: 12 } },
       { at: 100, layer: 'char',    action: 'pose',  params: { char: 'kiro', pose: 'happy' } },
+      // CZ道中の相槌(U81)。理由と条件は cz_sfn_state_step のコメントを参照
+      { at: 300, layer: 'voice',   action: 'play',  params: { pool: 'cheer', chance: 0.4 } },
       { at: 1100, layer: 'char',   action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
     ],
   },
@@ -586,6 +605,8 @@ export default [
        */
       { at: 80,  layer: 'lcd', action: 'particles', params: { preset: 'stream', x: 250, y: 130, count: 14 } },
       { at: 120, layer: 'char', action: 'pose',  params: { char: 'kiro', pose: 'happy' } },
+      // CZ道中の相槌(U81)。理由と条件は cz_sfn_state_step のコメントを参照
+      { at: 300, layer: 'voice', action: 'play', params: { pool: 'cheer', chance: 0.4 } },
       { at: 1300, layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'normal' } },
     ],
   },
@@ -700,6 +721,8 @@ export default [
       // シフト率の数字は盤面のバーが出す。ここは「1段進んだ」流れだけを見せる
       { at: 80, layer: 'lcd',     action: 'particles', params: { preset: 'stream', x: 250, y: 150, count: 12 } },
       { at: 100, layer: 'char',   action: 'pose',  params: { char: 'kiro', pose: 'happy' } },
+      // CZ道中の相槌(U81)。理由と条件は cz_sfn_state_step のコメントを参照
+      { at: 300, layer: 'voice',  action: 'play',  params: { pool: 'cheer', chance: 0.4 } },
       { at: 1200, layer: 'char',  action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
     ],
   },
@@ -821,6 +844,13 @@ export default [
        * ここは音と揺れだけで「削られた」を伝える(U8: 同じことは1か所)。
        */
       { at: 120, layer: 'char',    action: 'pose',  params: { char: 'kiro', pose: 'panic' } },
+      /*
+       * CZ道中の相槌(U81)。ここは「耐えた」= 良い方向へ1コマ進んだ場面なので
+       * 他のCZと同じ cheer で揃える(理由は cz_sfn_state_step のコメント)。
+       * バジェットが削られたことは盤面のゲージが常設で出しているので、
+       * 声が状況を明るく見せすぎることはない。
+       */
+      { at: 320, layer: 'voice',   action: 'play',  params: { pool: 'cheer', chance: 0.4 } },
       { at: 1400, layer: 'char',   action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
     ],
   },
@@ -974,6 +1004,8 @@ export default [
       { at: 0,   layer: 'lcd', action: 'anim',  params: { anim: 'checklist_green', index: '$value' } },
       { at: 60,  layer: 'lcd', action: 'particles', params: { preset: 'scale', x: 220, y: 120, count: 10 } },
       { at: 100, layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'happy' } },
+      // CZ道中の相槌(U81)。理由と条件は cz_sfn_state_step のコメントを参照
+      { at: 300, layer: 'voice', action: 'play', params: { pool: 'cheer', chance: 0.4 } },
       { at: 1100, layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'normal' } },
     ],
   },
@@ -1089,6 +1121,8 @@ export default [
       { at: 0,   layer: 'lcd', action: 'anim',  params: { anim: 'pillar_raise', index: '$value', count: '$total' } },
       { at: 80,  layer: 'lcd', action: 'particles', params: { preset: 'stream', x: 220, y: 170, count: 12 } },
       { at: 120, layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'happy' } },
+      // CZ道中の相槌(U81)。理由と条件は cz_sfn_state_step のコメントを参照
+      { at: 300, layer: 'voice', action: 'play', params: { pool: 'cheer', chance: 0.4 } },
       { at: 1200, layer: 'char', action: 'pose', params: { char: 'kiro', pose: 'normal' } },
     ],
   },
@@ -1196,6 +1230,8 @@ export default [
       // V80-21②: 盤面上部の ERROR BUDGET ゲージと二重になるので出さない
       // (理由は cz_fis_fault_survived のコメント)
       { at: 120, layer: 'char',    action: 'pose',  params: { char: 'kiro', pose: 'panic' } },
+      // CZ道中の相槌(U81)。理由は cz_fis_fault_survived と同じ
+      { at: 320, layer: 'voice',   action: 'play',  params: { pool: 'cheer', chance: 0.4 } },
       { at: 1300, layer: 'char',   action: 'pose',  params: { char: 'kiro', pose: 'normal' } },
     ],
   },

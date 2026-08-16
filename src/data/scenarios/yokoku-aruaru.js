@@ -357,12 +357,14 @@ function badScenario(t) {
        *   この声が鳴るのは **ハズレ確定の stop3 のあと** で、
        *   ベストプラクティス側(下の goodScenario)にも同じ chance で正解側の声を貼ってある。
        *   どちらの声も「もう決まったこと」への反応なので、期待度は1ミリも動かない。
-       * ■ 低めの chance
+       * ■ chance(U81 で 0.3 → 0.5)
        *   あるあるは頻発する枠なので、毎回ツッコむとうるさい。
        *   engine/voice.js の 1ゲーム1本 + cooldown も併せて効く。
+       *   **上げるときは下の成立側(quizOk)と必ず同じ値で動かすこと**
+       *   (片方だけ上げると声の有無で当落が読める)。
        */
       { waitFor: 'stop3', after: 420, layer: 'voice', action: 'play',
-        params: { pool: 'quizNg', chance: 0.3 } },
+        params: { pool: 'quizNg', chance: 0.5 } },
     ],
   };
 }
@@ -378,7 +380,7 @@ function goodScenario(t) {
     // ベストプラクティスへの相づち(U71b)。ハズレ側と同じ chance で対になっている
     // (声の有無で当落が読めないようにするための対称配置。上の badScenario を参照)
     { waitFor: 'stop3', after: 420, layer: 'voice', action: 'play',
-      params: { pool: 'quizOk', chance: 0.3 } },
+      params: { pool: 'quizOk', chance: 0.5 } },
   ];
   if (t.emphasis) {
     // レア役・特殊役のときだけ、確定後に電飾と一瞬のフラッシュを足す。
